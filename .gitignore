@@ -13,3 +13,4 @@ ReaPersona/toolbars/
 *.ReaperThemeZip
 *.ReaperTheme
 __pycache__/
+ReaPersona/_incoming/

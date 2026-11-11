@@ -412,6 +412,14 @@ local function detail(sel, alt)
       end
       ImGui.SetItemTooltip(ctx, "Save this style (keys, MIDI keys, feel, and your theme version if you made one) as one file to give someone.")
     end
+    if sel.preset then
+      ImGui.SameLine(ctx)
+      if ImGui.Button(ctx, "Share...##preset") then
+        local ok, p = reaper.JS_Dialog_BrowseForSaveFile and reaper.JS_Dialog_BrowseForSaveFile("Share " .. sel.name, reaper.GetResourcePath(), sel.name .. ".reapersona-preset.json", "ReaPersona preset (*.json)\0*.json\0\0")
+        if ok == 1 and p ~= "" then reaper.MB(core.export_preset(sel.id, p) and ("Saved " .. p .. ".\n\nAnyone with ReaPersona can drop it on the window.") or "Couldn't save it.", "ReaPersona", 0) end
+      end
+      ImGui.SetItemTooltip(ctx, "This preset as one file: drop it on someone's ReaPersona window (they need the styles it's built on).")
+    end
     if sel.preset or sel.user then
       ImGui.SameLine(ctx)
       ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.RED)
@@ -561,11 +569,51 @@ local function themes_page(sel, alt)
   end
 end
 
+local mix = { keys = "pro_tools", feel = "ableton", theme = "", name = "" }
 local function presets_page(sel, alt)
   if card("presets top") then
     heading("Presets")
     muted("A preset is a style the way you like it: its keys and toolbar, plus the theme, transport and mixer layout, snap, the Media Explorer's place and the mouse behaviours as they were when you saved it. Use any style, change what you like, then save.")
     if primary("Save what's in use as a preset...") then save_preset_prompt() end
+    ImGui.SameLine(ctx)
+    if ImGui.Button(ctx, "Import a preset...") then
+      local ok, p = reaper.GetUserFileNameForRead("", "Import a ReaPersona preset", "*.json")
+      if ok then
+        local r = core.import_file(p)[1]
+        reaper.MB(r[1] == "preset" and (r[2] .. " is in your presets.") or ("Not imported: " .. tostring(r[3])), "ReaPersona", 0)
+      end
+    end
+    card_end()
+  end
+  if card("mix") then
+    heading("Mix and match")
+    muted("One style's keys, another's layout, toolbar and feel, and any theme: for example Pro Tools' shortcuts in Ableton's layout with a theme you like. It's saved as a profile in your presets.")
+    local function combo(label, key, list)
+      ImGui.SetNextItemWidth(ctx, 260)
+      local cur = core.by_id(mix[key])
+      if ImGui.BeginCombo(ctx, label, cur and cur.name or "(pick one)") then
+        for _, st in ipairs(list) do if ImGui.Selectable(ctx, st.name, st.id == mix[key]) then mix[key] = st.id end end
+        ImGui.EndCombo(ctx)
+      end
+    end
+    combo("Keys from##mk", "keys", styles)
+    combo("Layout, toolbar and feel from##mf", "feel", styles)
+    theme_list = theme_list or theme_files()
+    if mix.theme == "" then mix.theme = core.theme_for(core.by_id(mix.feel) or styles[1]) or "" end
+    ImGui.SetNextItemWidth(ctx, 260)
+    if ImGui.BeginCombo(ctx, "Theme##mt", mix.theme) then
+      for _, th in ipairs(theme_list) do if ImGui.Selectable(ctx, th, th == mix.theme) then mix.theme = th end end
+      ImGui.EndCombo(ctx)
+    end
+    ImGui.SetNextItemWidth(ctx, 260)
+    local _, n = ImGui.InputTextWithHint(ctx, "Name##mn", "e.g. Pro Tools keys, Live layout", mix.name); mix.name = n
+    ImGui.BeginDisabled(ctx, mix.name == "")
+    if primary("Save the mix") then
+      local st = core.save_mix(mix.name, mix.keys, mix.feel, mix.theme)
+      selected = st.id; mix.name = ""
+      say("Saved " .. st.name .. ": it's in your presets.")
+    end
+    ImGui.EndDisabled(ctx)
     card_end()
   end
   if #core.presets == 0 then return end
@@ -943,7 +991,151 @@ local function check_page()
 end
 
 -- ---------------------------------------------------------------- the window: a bar on top, pages down the side
+-- ---------------------------------------------------------------- Setup: everything ReaPersona can use, what's there, and one click for each
+local last_drop = {}
+local function drop_report(list)
+  last_drop = list
+  local lines, n = {}, 0
+  for _, r in ipairs(list) do
+    if r[1] ~= "skipped" then n = n + 1 end
+    lines[#lines + 1] = (r[1] == "skipped" and "Skipped " or ("Added " .. r[1] .. ": ")) .. r[2] .. (r[3] and ("  (" .. r[3] .. ")") or "")
+  end
+  theme_list = nil
+  say(n .. " added" .. (#list > n and (", " .. (#list - n) .. " skipped") or ""))
+  if #list > 0 then reaper.MB(table.concat(lines, "\n"), "ReaPersona: dropped in", 0) end
+end
+local function setup_row(id, done, what, why, button, fn, tip)
+  ImGui.TableNextRow(ctx)
+  ImGui.TableNextColumn(ctx); ImGui.AlignTextToFramePadding(ctx)
+  ImGui.TextColored(ctx, done and C.GREEN or C.YELLOW, done and "Done" or "To do")
+  ImGui.TableNextColumn(ctx); ImGui.AlignTextToFramePadding(ctx); ImGui.PushTextWrapPos(ctx, 0); ImGui.Text(ctx, what)
+  if why and why ~= "" then ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.MUTED); ImGui.Text(ctx, why); ImGui.PopStyleColor(ctx) end
+  ImGui.PopTextWrapPos(ctx)
+  ImGui.TableNextColumn(ctx)
+  if button and fn and ImGui.SmallButton(ctx, button .. "##" .. id) then fn() end
+  if tip then ImGui.SetItemTooltip(ctx, tip) end
+end
+local function get_url(u)
+  if u == "builtin" then return reaper.MB("It comes with REAPER: it should already be in ColorThemes.", "ReaPersona", 0) end
+  core.open_url(u)
+end
+local function shortcuts_state()
+  local want, have = 0, 0
+  for _, st in ipairs(styles) do if (st.alt or 0) > 0 then want = want + 1; if installed[st.alt] then have = have + 1 end end end
+  return have, want
+end
+local function build_themes()
+  say("Building ReaPersona's themes...")
+  local made, why = core.build_own_themes()
+  theme_list = nil
+  reaper.MB(made and (#made .. " themes built in ColorThemes, from your REAPER's own Default 7:\n\n" .. table.concat(made, "\n") ..
+    "\n\nEach DAW style uses its ReaPersona theme unless you've picked another.") or ("Not built: " .. tostring(why)), "ReaPersona", 0)
+end
+local function install_shortcuts()
+  local choice = reaper.MB("REAPER reads its keymap when it starts, so this is done with REAPER closed or by importing a file.\n\n" ..
+    "Yes: make the keymap file now (then Actions window > Key Map > Import..., choose merge).\n" ..
+    "No: show the folder with install_shortcuts.py (close REAPER, run it with Python, start REAPER; it also installs toolbars).", "ReaPersona: shortcuts", 3)
+  if choice == 6 then
+    local path, n = core.make_keymap()
+    reaper.MB(n .. " shortcuts written to\n" .. path .. "\n\nNext: Actions window > Key Map > Import..., pick that file, choose merge.", "ReaPersona", 0)
+    reaper.Main_OnCommand(40605, 0)
+  elseif choice == 7 then core.open_url(core.here) end
+end
+local function setup_all()
+  if reaper.MB("Set up everything ReaPersona can do from here?\n\n" ..
+    "- build ReaPersona's own DAW themes (needs Python)\n- add the startup line that brings your style back when REAPER starts\n" ..
+    "- offer the smooth playhead / smooth scrolling extensions\n- then the shortcut install (one more step outside REAPER)", "ReaPersona: set up", 4) ~= 6 then return end
+  local done = {}
+  if core.python() then local m = core.build_own_themes(); done[#done + 1] = m and (#m .. " themes built") or "themes not built" end
+  if not core.startup_on() then done[#done + 1] = core.add_startup() and "startup line added" or "startup line not added" end
+  for key, x in pairs(core.EXTENSIONS) do
+    if core.extension_state(key) == "missing" and core.can_install(key)
+      and reaper.MB("Install " .. x.name .. "? (" .. x.why .. ")", "ReaPersona", 4) == 6 and core.install_extension(key) then
+      done[#done + 1] = x.name .. " installed (restart REAPER)"
+    end
+  end
+  theme_list = nil
+  reaper.MB(table.concat(done, "\n") .. "\n\nLast step: the shortcuts.", "ReaPersona: set up", 0)
+  install_shortcuts()
+end
+local function setup_page()
+  if card("setup top") then
+    heading("Set up ReaPersona")
+    muted("What ReaPersona can use, whether it's there, and one click to get each. Drag files onto this window any time to add them: themes (.ReaperThemeZip, .ReaperTheme or the theme pack .zip as downloaded), toolbars (.ReaperMenu), keymaps (.ReaperKeyMap, become a style of their own), and shared styles and presets.")
+    if primary("Set up everything") then setup_all() end
+    card_end()
+  end
+  if card("setup core") then
+    heading("ReaPersona")
+    if ImGui.BeginTable(ctx, "setup", 3, ImGui.TableFlags_SizingStretchProp | ImGui.TableFlags_RowBg) then
+      ImGui.TableSetupColumn(ctx, "state", ImGui.TableColumnFlags_WidthFixed, 56)
+      ImGui.TableSetupColumn(ctx, "what", ImGui.TableColumnFlags_WidthStretch)
+      ImGui.TableSetupColumn(ctx, "do", ImGui.TableColumnFlags_WidthFixed)
+      local js = reaper.JS_Window_Find ~= nil
+      setup_row("js", js, "js_ReaScriptAPI", "Docks the Media Explorer where each DAW keeps its browser, and the file dialogs.", not js and "Get it" or nil,
+        function() if reaper.ReaPack_BrowsePackages then reaper.ReaPack_BrowsePackages("js_ReaScriptAPI") else core.open_url("https://forum.cockos.com/showthread.php?t=212174") end end)
+      local rp = reaper.ReaPack_BrowsePackages ~= nil
+      setup_row("rp", rp, "ReaPack", "Installs the smooth playhead and keeps ReaPersona up to date.", not rp and "Get it" or nil, function() core.open_url("https://reapack.com/") end)
+      local py = core.python()
+      setup_row("py", py ~= nil, "Python 3" .. (py and (" (" .. py .. ")") or ""), "Builds ReaPersona's themes and installs the shortcuts in one step (pip install pillow numpy).",
+        not py and "Get it" or nil, function() core.open_url("https://www.python.org/downloads/") end)
+      if py then
+        local libs = core.python_libs()
+        setup_row("libs", libs, "Pillow and numpy for Python", "The image tools the theme builder uses.", not libs and "Install them" or nil, function()
+          if reaper.MB("Run: python -m pip install --user pillow numpy\n\nREAPER waits while pip downloads them (a minute or two).", "ReaPersona", 1) ~= 1 then return end
+          local ok, why = core.install_python_libs()
+          reaper.MB(ok and "Installed." or ("pip didn't finish: " .. tostring(why)), "ReaPersona", 0)
+        end)
+      end
+      local n, total = core.own_themes_built()
+      setup_row("own", n == total, "ReaPersona's own themes: " .. n .. " of " .. total .. " built", "A theme per DAW in its colours, made from your REAPER's own Default 7.",
+        py and core.python_libs() and (n == total and "Rebuild" or "Build") or nil, build_themes)
+      local have, want = shortcuts_state()
+      setup_row("keys", have == want, "Shortcut layers: " .. have .. " of " .. want .. " styles installed", "Each style's keys. Needs REAPER closed, or a keymap file to import.", "Install...", install_shortcuts)
+      setup_row("start", core.startup_on(), "Brings your style back when REAPER starts", "One block in Scripts/__startup.lua.", not core.startup_on() and "Add it" or nil,
+        function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end)
+      for key, x in pairs(core.EXTENSIONS) do
+        local s = core.extension_state(key)
+        setup_row("ext" .. key, s == "on" or s == "off", x.name .. (s == "restart" and " (restart REAPER to load it)" or ""), x.why .. " Recommended by the DAW styles.",
+          s == "missing" and core.can_install(key) and "Install" or nil, function() install_ext(key) end)
+      end
+      ImGui.EndTable(ctx)
+    end
+    card_end()
+  end
+  if card("setup themes") then
+    heading("Themes by other people")
+    muted("Made by REAPER's theme authors in each DAW's likeness. They can't ship with ReaPersona, so: Get it opens the author's page; download, then drop the file (zip and all) onto this window.")
+    if ImGui.BeginTable(ctx, "setup themes", 3, ImGui.TableFlags_SizingStretchProp | ImGui.TableFlags_RowBg) then
+      ImGui.TableSetupColumn(ctx, "state", ImGui.TableColumnFlags_WidthFixed, 56)
+      ImGui.TableSetupColumn(ctx, "what", ImGui.TableColumnFlags_WidthStretch)
+      ImGui.TableSetupColumn(ctx, "do", ImGui.TableColumnFlags_WidthFixed)
+      local shown = {}
+      for _, st in ipairs(styles) do
+        for _, th in ipairs(st.themes or {}) do
+          local c = core.CATALOG[th]
+          if c and c.url ~= "reapersona" and c.url ~= "builtin" and not c.from and not shown[th] then
+            shown[th] = true
+            local have = reaper.file_exists(themes_dir .. th)
+            setup_row("t" .. th, have, st.name .. ": " .. th:gsub("%.ReaperThemeZip$", ""), (c.by and ("by " .. c.by) or "") .. (c.note and ((c.by and ", " or "") .. c.note) or ""),
+              not have and "Get it" or nil, function() get_url(c.url) end, c.url)
+          end
+        end
+      end
+      local tb = reaper.file_exists(core.here .. "/toolbars/CubeX_Toolbar1.ReaperMenu")
+      setup_row("tbcube", tb, "Cubase toolbars (from CubicPack3)", "Its .ReaperMenu files: drop the CubicPack3 zip here.", not tb and "Get it" or nil,
+        function() core.open_url("https://stash.reaper.fm/theme/2310/CubicPack3.zip") end)
+      local tl = reaper.file_exists(core.here .. "/toolbars/CFLogic_Toolbar1.ReaperMenu")
+      setup_row("tblogic", tl, "Logic toolbars (from CLogic)", "Its .ReaperMenu files: drop the CLogic zip here.", not tl and "Get it" or nil,
+        function() core.open_url("https://stash.reaper.fm/theme/1932/CLogic.zip") end)
+      ImGui.EndTable(ctx)
+    end
+    card_end()
+  end
+end
+
 local PAGES = {
+  { "Setup", "Get everything installed: ReaPersona's themes, shortcuts, extensions, the startup line, other people's themes. Drop files here." },
   { "DAWs", "Make REAPER feel like another DAW, or stock REAPER, or your own setup." },
   { "Themes", "Theme styles, every theme on this computer, adding your own, and where to find more." },
   { "Presets", "Your saved setups: a style plus your theme and settings." },
@@ -1005,7 +1197,8 @@ local function loop()
     ImGui.SameLine(ctx, 0, 0)
     ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowPadding, 16, 12)
     if ImGui.BeginChild(ctx, "page", 0, 0, ImGui.ChildFlags_AlwaysUseWindowPadding) then
-      if page == "DAWs" or page == "Styles" then daws_page(sel, alt)
+      if page == "Setup" then setup_page()
+      elseif page == "DAWs" or page == "Styles" then daws_page(sel, alt)
       elseif page == "Themes" then themes_page(sel, alt)
       elseif page == "Presets" then presets_page(sel, alt)
       elseif page == "Settings" then settings_page()
@@ -1014,6 +1207,18 @@ local function loop()
       elseif page == "Merge" then merge_page(sel)
       elseif page == "Check" then check_page() end
       ImGui.EndChild(ctx)
+    end
+    if ImGui.BeginDragDropTarget(ctx) then -- (files dropped anywhere on the page: themes, packs, toolbars, keymaps, styles, presets)
+      local rv, count = ImGui.AcceptDragDropPayloadFiles(ctx)
+      if rv then
+        local got = {}
+        for i = 0, count - 1 do
+          local ok, fn = ImGui.GetDragDropPayloadFile(ctx, i)
+          if ok then core.import_file(fn, got) end
+        end
+        drop_report(got)
+      end
+      ImGui.EndDragDropTarget(ctx)
     end
     ImGui.PopStyleVar(ctx)
     if reaper.time_precise() < toast_until then -- (what just happened, bottom right, for a few seconds)

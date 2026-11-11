@@ -10,7 +10,7 @@ import os, shutil, sys
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DST = os.path.join(HERE, "ReaPersona")
 FILES = ["ReaPersona.lua", "reapersona_core.lua", "styles.json", "install_shortcuts.py", "validate.py", "merge_themes.py",
-         "make_demo.lua", "make_previews.lua", "colour_keys.txt", "demo/ReaPersona demo.rpp"]
+         "make_demo.lua", "make_previews.lua", "build_themes.py", "colour_keys.txt", "demo/ReaPersona demo.rpp"]
 
 
 def main():

@@ -26,7 +26,8 @@
         ["Big clock Alt+C, virtual MIDI keyboard Alt+B, FX browser Shift+F, track manager Ctrl+Shift+M.", 40378, "Alt+C"],
         ["Shift+F1: every key and mouse modifier on this computer, as one web page.", 40308, "Shift+F1"]
       ],
-      "accent": "#59CC73"
+      "accent": "#59CC73",
+      "themes": []
     },
     {
       "id": "base_reaper",
@@ -118,10 +119,13 @@
       "alt": 1,
       "theme": "ProTools2020.ReaperThemeZip",
       "themes": [
+        "ReaPersona - Pro Tools.ReaperThemeZip",
         "ProTools2020.ReaperThemeZip",
         "PRO TOOLS GOLD 2026.ReaperThemeZip",
         "ProTools 12.5_MC-edit.ReaperThemeZip",
-        "Default_7.0 + ProTools2020 colours + ProTools2020 faders+knobs+transport.ReaperThemeZip"
+        "Default_7.0 + ProTools2020 colours + ProTools2020 faders+knobs+transport.ReaperThemeZip",
+        "ProTools Clone 2.ReaperThemeZip",
+        "Pro_Tools_Utimate.ReaperThemeZip"
       ],
       "description": "Avid Pro Tools (Windows keys). Space starts and stops and goes back to where you started, Ctrl+Space records, Enter returns to the start, Ctrl+E separates, Ctrl+H heals, Ctrl+= swaps Edit and Mix, R/T zoom (Commands Keyboard Focus). Smart Tool: the top half of a clip moves it, the bottom half selects. Playlists are REAPER's fixed lanes, with Pro Tools' comping keys. Memory locations: period, number, Enter on the keypad.",
       "docs": ["https://resources.avid.com/SupportFiles/PT/Pro_Tools_Shortcuts_2025.10.pdf"],
@@ -196,7 +200,10 @@
         ["Playlists: turn on fixed lanes for a track; each take is a lane. Shift+S solos the lane under the mouse, Ctrl+Shift+Up/Down cycles the comp area through lanes.", 42430, null],
         ["Memory Locations: REAPER's markers. Keypad period, number, Enter recalls one; the Region/Marker Manager lists them.", 40326, "Num."],
         ["Pro Tools track colours: in SWS Color Management, Load the palette PT2020.SWSColor (or PT125) from ColorThemes, then colour tracks from it.", "_SWSCOLORWND", null],
-        ["Clip gain: drag an item's top edge (its volume handle), or show a take volume envelope to draw it.", 40693, null]
+        ["Clip gain: drag an item's top edge (its volume handle), or show a take volume envelope to draw it.", 40693, null],
+        ["Clip groups: REAPER's item groups (G groups, U ungroups).", 40032, null],
+        ["Elastic Audio: REAPER's stretch markers and item timebase.", null, null],
+        ["Track Freeze/Commit: REAPER's track freeze; render items to a new take to commit.", 41223, null]
       ],
       "toolbar_slot": 20,
       "toolbar": [
@@ -228,7 +235,13 @@
       "name": "Logic Pro",
       "alt": 2,
       "theme": "I Logic V2 Public.ReaperThemeZip",
-      "themes": ["I Logic V2 Public.ReaperThemeZip", "FLogic.ReaperThemeZip", "CLogic.ReaperThemeZip"],
+      "themes": [
+        "ReaPersona - Logic Pro.ReaperThemeZip",
+        "I Logic V2 Public.ReaperThemeZip",
+        "FLogic.ReaperThemeZip",
+        "CLogic.ReaperThemeZip",
+        "Theme FLogic B.ReaperThemeZip"
+      ],
       "description": "Apple Logic Pro, with Command as Ctrl and Option as Alt. Space plays and stops (the playhead stays where it stopped), R records, Return goes to the beginning, C cycles, K is the metronome, X the mixer, P the piano roll, Cmd+T splits, Cmd+J joins, Cmd+Shift+D makes a Track Stack. Drag in empty space to rubber-band select, Option-drag copies.",
       "docs": [
         "https://help.apple.com/logicpro/mac/10.1/en.lproj/lgcp02bf31b6.html",
@@ -311,7 +324,10 @@
         ["Step Sequencer: MPL's RS5k step sequencer.", "_RSa31e94c408150d20aad669ba609f01c4083975ae", null],
         ["Track Stacks: REAPER's folder tracks (Cmd+Shift+D moves the selected tracks into a new folder).", 42785, "Ctrl+Shift+D"],
         ["Quick Swipe Comping: turn on fixed lanes and swipe across a lane to comp.", 42430, null],
-        ["Flex Time: REAPER's stretch markers on audio items.", null, null]
+        ["Flex Time: REAPER's stretch markers on audio items.", null, null],
+        ["Freeze: REAPER's track freeze.", 41223, null],
+        ["Take folders: REAPER's takes and fixed lanes (Ctrl+L shows all takes).", 40435, null],
+        ["Bounce in place: render items to a new take.", 41999, null]
       ],
       "toolbar_slot": 21,
       "toolbar_file": "CFLogic_Toolbar1.ReaperMenu",
@@ -323,7 +339,12 @@
       "name": "Ableton Live",
       "alt": 3,
       "theme": "ReAbleton.ReaperThemeZip",
-      "themes": ["ReAbleton.ReaperThemeZip", "Live.ReaperThemeZip", "Reaper4Live.ReaperThemeZip"],
+      "themes": [
+        "ReaPersona - Ableton Live.ReaperThemeZip",
+        "ReAbleton.ReaperThemeZip",
+        "Live.ReaperThemeZip",
+        "Reaper4Live.ReaperThemeZip"
+      ],
       "description": "Ableton Live 12 (Windows keys), Arrangement view. Space plays from the start marker and stops, Shift+Space continues, F9 records, Ctrl+E splits, Ctrl+J consolidates, O is the metronome, Ctrl+Alt+M the mixer, C arms, Ctrl+T adds a track, Ctrl+Shift+C captures MIDI. Session View is Helgobox's Playtime; racks are REAPER's FX containers.",
       "docs": ["https://www.ableton.com/en/manual/live-keyboard-shortcuts/"],
       "keys": [
@@ -402,7 +423,10 @@
         ["Capture MIDI: REAPER keeps what you play while stopped or not recording (retroactive record): Ctrl+Shift+C puts it on the armed, selected tracks.", 40211, "Ctrl+Shift+C"],
         ["Device View: the track's FX chain (Shift+Tab); Clip View: the MIDI editor (Ctrl+Alt+3).", 40291, "Shift+Tab"],
         ["Warping: REAPER's stretch markers and item timebase.", null, null],
-        ["Follow: auto-scroll during playback (Ctrl+Shift+F).", 40036, "Ctrl+Shift+F"]
+        ["Follow: auto-scroll during playback (Ctrl+Shift+F).", 40036, "Ctrl+Shift+F"],
+        ["Freeze and Flatten: REAPER's track freeze, then render items to a new take.", 41223, null],
+        ["Groove Pool: SWS groove tool (extract and apply grooves).", "_FNG_GROOVE_TOOL", null],
+        ["Slice to new MIDI track: REAPER's dynamic split at transients.", 40760, null]
       ],
       "toolbar_slot": 22,
       "toolbar": [
@@ -429,7 +453,7 @@
       "name": "FL Studio",
       "alt": 4,
       "theme": "FruityCocktail.ReaperThemeZip",
-      "themes": ["FruityCocktail.ReaperThemeZip"],
+      "themes": ["ReaPersona - FL Studio.ReaperThemeZip", "FruityCocktail.ReaperThemeZip"],
       "description": "Image-Line FL Studio (Windows keys). Space starts and stops, Ctrl+Space pauses, R records, F6 channel rack (step sequencer), F7 piano roll, F8 plug-in picker, F9 mixer, Alt+F8 browser, Ctrl+B duplicates, Insert slices, Backspace toggles snap, Ctrl+M the metronome. In the piano roll right-click deletes notes. Patterns are pooled MIDI items.",
       "docs": ["https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/basics_shortcuts.htm"],
       "keys": [
@@ -502,7 +526,10 @@
         ["Patterns: copies of a MIDI item can share their notes (pooled). To pool every copy, turn on Options > Pooled MIDI when copying; to make one unique again, unpool it.", 41071, null],
         ["Make unique: take a pattern copy out of the pool.", 41613, null],
         ["Playlist: REAPER's arrange view is the playlist.", null, null],
-        ["Piano roll ghost notes: the MIDI editor shows other tracks' notes (View > Show events from other tracks).", null, null]
+        ["Piano roll ghost notes: the MIDI editor shows other tracks' notes (View > Show events from other tracks).", null, null],
+        ["Slicing (Slicex / chop): REAPER's dynamic split at transients.", 40760, null],
+        ["Mixer routing (link channels to inserts): REAPER's routing matrix.", 40251, "Alt+R"],
+        ["Consolidate / render to audio: render items to a new take.", 41999, null]
       ],
       "toolbar_slot": 23,
       "toolbar": [
@@ -528,6 +555,7 @@
       "alt": 5,
       "theme": "CubeXR.ReaperThemeZip",
       "themes": [
+        "ReaPersona - Cubase.ReaperThemeZip",
         "CubeXR.ReaperThemeZip",
         "CubeX.ReaperThemeZip",
         "CubeXD.ReaperThemeZip",
@@ -648,7 +676,10 @@
         ["Pool: the Project Bay (Ctrl+P).", 41157, "Ctrl+P"],
         ["Workspaces: REAPER's screensets (Alt+keypad 1-5 load window sets 1-5; save them in View > Screensets).", 40454, "Alt+Num1"],
         ["Track Versions and Lanes: REAPER's fixed lanes and comping.", 42430, null],
-        ["Toolbars: CubicPack3's Cubase toolbars are in DAW Styles/toolbars (Customize toolbars > Import).", null, null]
+        ["Toolbars: CubicPack3's Cubase toolbars are in DAW Styles/toolbars (Customize toolbars > Import).", null, null],
+        ["Freeze: REAPER's track freeze.", 41223, null],
+        ["Render in place: render items to a new take.", 41999, null],
+        ["Groove quantize: SWS groove tool.", "_FNG_GROOVE_TOOL", null]
       ],
       "toolbar_slot": 24,
       "toolbar_file": "CubeX_Toolbar1.ReaperMenu",
@@ -660,7 +691,12 @@
       "name": "Studio One",
       "alt": 6,
       "theme": "HYDRA.ReaperThemeZip",
-      "themes": ["HYDRA.ReaperThemeZip", "CSIX-BASIC.ReaperThemeZip"],
+      "themes": [
+        "ReaPersona - Studio One.ReaperThemeZip",
+        "HYDRA.ReaperThemeZip",
+        "CSIX-BASIC.ReaperThemeZip",
+        "ReaSonus One.ReaperThemeZip"
+      ],
       "description": "PreSonus Studio One, now Fender Studio Pro (Windows keys). Space plays and stops, comma returns to zero, Alt+X splits, D duplicates, G merges, Q quantizes, N snaps, E/W zoom, F2 editor, F3 mix, F5 browser, T adds a track, Y adds a marker, Tab goes to the next transient. Smart Tool: the bottom half of an event selects a range.",
       "docs": ["https://fenderstudiopromanual.fender.com/en/Content/Fundamentals_Topics/Key_Commands.htm"],
       "keys": [
@@ -730,7 +766,9 @@
         ["Arranger Track: REAPER's regions (drag a region to move its section with the Region/Marker Manager or Region Playlist).", 40326, null],
         ["Takes as layers: REAPER's fixed lanes and comping.", 42430, null],
         ["Patterns: MPL's RS5k step sequencer.", "_RSa31e94c408150d20aad669ba609f01c4083975ae", null],
-        ["Scratch Pads: a second project tab (Ctrl+T in REAPER) to try ideas.", null, null]
+        ["Scratch Pads: a second project tab (Ctrl+T in REAPER) to try ideas.", null, null],
+        ["Transform / Bounce: render items to a new take; track freeze for whole tracks.", 41999, null],
+        ["Track freeze: REAPER's track freeze.", 41223, null]
       ],
       "toolbar_slot": 25,
       "toolbar": [
@@ -757,6 +795,7 @@
       "alt": 7,
       "theme": "Reapertips Theme – Purple.ReaperThemeZip",
       "themes": [
+        "ReaPersona - Bitwig Studio.ReaperThemeZip",
         "Reapertips Theme – Purple.ReaperThemeZip",
         "Reapertips Theme - Purple.ReaperThemeZip",
         "INQUASAR DARK MATTER v.1.0.ReaperThemeZip",
@@ -831,7 +870,9 @@
         ["Clip Launcher: Helgobox's Playtime clip launcher.", "_HB_SHOW_HIDE_PLAYTIME", null],
         ["The Grid and modulators: REAPER's parameter modulation (LFO, envelope follower) on any FX parameter, and FX containers.", 40291, null],
         ["Computer keyboard as MIDI keyboard (Caps Lock): REAPER's virtual MIDI keyboard.", 40377, null],
-        ["Group tracks: REAPER's folder tracks (Ctrl+G).", 42785, "Ctrl+G"]
+        ["Group tracks: REAPER's folder tracks (Ctrl+G).", 42785, "Ctrl+G"],
+        ["Bounce in place: render items to a new take.", 41999, null],
+        ["Groove: SWS groove tool.", "_FNG_GROOVE_TOOL", null]
       ],
       "toolbar_slot": 26,
       "toolbar": [
@@ -849,6 +890,653 @@
       ],
       "accent": "#FF6A1F",
       "recommends": ["playhead", "smoothscroll"]
+    },
+    {
+      "id": "cakewalk",
+      "name": "Cakewalk / Sonar",
+      "alt": 9,
+      "accent": "#E8662C",
+      "theme": "ReaPersona - Cakewalk.ReaperThemeZip",
+      "themes": [
+        "ReaPersona - Cakewalk.ReaperThemeZip",
+        "Reaper Echolot Bandlab.ReaperThemeZip",
+        "Default_7.0.ReaperThemeZip"
+      ],
+      "description": "Cakewalk by BandLab / SONAR (Windows keys). Space plays and stops, R records, Ctrl+Home goes to the start, L loops, S splits at the Now time, N snaps, M adds a marker, Alt+R/M/S arm, mute and solo the track, Ctrl+Left/Right zoom, Alt+2 the Console, Alt+3 the Piano Roll, B the Browser, Tab the next transient. The Console is docked at the bottom with the masters on the right, the Browser on the right. No REAPER theme imitates Cakewalk yet: Echolot's BandLab colours stand in.",
+      "docs": ["https://legacy.cakewalk.com/Documentation?product=Cakewalk&language=3&help=KeyboardShortcuts.html"],
+      "keys": [
+        ["Space", 40044, "Play/Stop"],
+        ["R", 1013, "Record"],
+        ["Ctrl+Space", 40328, "Stop with Now marker"],
+        ["W", 40172, "Rewind to Landmarks"],
+        ["Ctrl+Home", 40042, "Go to Start (RTZ)"],
+        ["Ctrl+End", 40043, "Go to End"],
+        ["L", 1068, "Loop on/off"],
+        ["M", 40157, "Insert marker"],
+        ["Ctrl+Shift+PgDn", 40173, "Go to next marker"],
+        ["Ctrl+Shift+PgUp", 40172, "Go to previous marker"],
+        ["F3", 40364, "Record metronome on/off"],
+        ["S", 40012, "Split selected clips at Now time"],
+        ["N", 1157, "Snap to Grid on/off"],
+        ["Shift+N", 40071, "Open Snap to Grid settings"],
+        ["K", 40175, "Mute clip"],
+        ["Ctrl+D", 41295, "Duplicate Selected Clip(s)"],
+        ["Delete", 40697, "Delete selected clips data"],
+        ["Ctrl+Delete", 40005, "Delete selected track(s)"],
+        ["Insert", 40001, "Insert new track"],
+        ["Ctrl+T", 40001, "Insert Audio track"],
+        ["Ctrl+Shift+T", 40701, "Insert MIDI track (here: an instrument track)"],
+        ["Ctrl+Right", 1012, "Zoom in horizontally"],
+        ["Ctrl+Left", 1011, "Zoom out horizontally"],
+        ["Ctrl+Down", 40111, "Zoom all tracks in vertically"],
+        ["Ctrl+Up", 40112, "Zoom all tracks out vertically"],
+        ["Ctrl+Alt+F", 40295, "Zoom to fit project horizontally"],
+        ["Tab", 40375, "Go to next audio transient"],
+        ["Shift+Tab", 40376, "Go to previous audio transient"],
+        ["Alt+R", 9, "Toggle Track Arm"],
+        ["Alt+M", 6, "Toggle Track Mute"],
+        ["Alt+S", 7, "Toggle Track Solo"],
+        ["Alt+2", 40078, "Console view"],
+        ["Alt+3", 40153, "Piano Roll view"],
+        ["Alt+0", 40377, "Virtual Computer Keyboard"],
+        ["B", 50124, "Show/hide Browser"],
+        ["C", 40259, "Show/hide Control Bar"],
+        ["D", 40279, "Expand/collapse MultiDock"],
+        ["Q", 40316, "Open Quantize dialog"],
+        ["Ctrl+X", 40699, "Cut"],
+        ["Ctrl+C", 40698, "Copy"],
+        ["Ctrl+V", 42398, "Paste"],
+        ["Ctrl+Z", "MAIN:Ctrl+Z", "Undo"],
+        ["Ctrl+Shift+Z", "MAIN:Ctrl+Shift+Z", "Redo"],
+        ["Ctrl+Y", 40030, "Redo"],
+        ["Ctrl+A", 40035, "Select All"]
+      ],
+      "midi_keys": [],
+      "feel": [
+        ["switch", 42739, 41646, "Cakewalk toolbar in place of your main toolbar (REAPER toolbar 27; My REAPER switches yours back)"],
+        ["radio", [41603, 41604, 41605, 41606, 41608], 41606, "Control Bar docked at the top of the window"],
+        ["toggle", 40083, 1, "Console docked in the MultiDock at the bottom (Alt+2)"],
+        ["toggle", 40389, 1, "Console: master buses on the right"],
+        ["toggle", 40549, 1, "(mixer inserts shown)"],
+        ["toggle", 40557, 1, "(mixer sends shown)"],
+        ["dock", "explorer", "right", 0, "Browser docks on the right when you open it (B; here: the Media Explorer)"],
+        ["toggle", 1157, 1, "Snap to Grid on (N)"],
+        ["toggle", 40036, 1, "The view follows the Now time during playback"]
+      ],
+      "extras": [
+        ["ProChannel and FX Rack: the track's FX chain.", 40291, null],
+        ["Take lanes and comping: REAPER's fixed lanes.", 42430, "Shift+T"],
+        ["Arranger sections: REAPER's regions (Region/Marker Manager).", 40326, null],
+        ["Freeze: REAPER's track freeze (unfreeze from the same menu).", 41223, null],
+        ["Step Sequencer: MPL's RS5k step sequencer.", "_RSa31e94c408150d20aad669ba609f01c4083975ae", null]
+      ],
+      "toolbar_slot": 27,
+      "toolbar": [
+        [50124, "Browser"],
+        [40078, "Console", "toolbar_visible_mixer.png"],
+        [40153, "Piano Roll", "toolbar_midi_mode_piano_roll.png"],
+        -1,
+        [1157, "Snap", "toolbar_v3_snap_on.png"],
+        [40036, "Follow Now time", "toolbar_sync_follow_play.png"],
+        -1,
+        [40364, "Metronome", "toolbar_v3_metro_on.png"],
+        [1068, "Loop"],
+        -1,
+        [42430, "Take lanes", "toolbar_item_explode_lane_take.png"],
+        [40326, "Arranger (regions)", "toolbar_marker_list.png"]
+      ],
+      "recommends": ["playhead", "smoothscroll"]
+    },
+    {
+      "id": "reason",
+      "name": "Reason",
+      "alt": 10,
+      "accent": "#D9D9D9",
+      "theme": "ReaPersona - Reason.ReaperThemeZip",
+      "themes": [
+        "ReaPersona - Reason.ReaperThemeZip",
+        "Default_7.0.ReaperThemeZip",
+        "INQUASAR DARK MATTER v.1.0.ReaperThemeZip"
+      ],
+      "description": "Reason Studios Reason 13 (Windows keys). Space toggles play, Ctrl+Enter or keypad * records, keypad 1/2 go to the loop locators, keypad 7/8 move a bar, L loops, C clicks, Alt+X splits at the Song Position, Ctrl+J joins, H/G zoom, S snaps, M mutes clips, Ctrl+K quantizes, F5 Mixer, F6 Rack (here: the track's FX), F9 Browser. The transport sits at the bottom, the Browser docked on the left. No REAPER theme imitates Reason yet: Default 7 stands in.",
+      "docs": ["https://docs.reasonstudios.com/reason13/key-commands"],
+      "keys": [
+        ["Space", 40044, "Toggle Stop/Play"],
+        ["Num0", 1016, "Stop"],
+        ["Ctrl+Enter", 1013, "Record"],
+        ["Num*", 1013, "Record"],
+        ["Num4", 40084, "Rewind"],
+        ["Num5", 40085, "Fast Forward"],
+        ["Alt+Left", 40632, "Go to Loop Start"],
+        ["Num1", 40632, "Go to Loop Start"],
+        ["Alt+Right", 40633, "Go to Loop End"],
+        ["Num2", 40633, "Go to Loop End"],
+        ["Num8", 41042, "Move forward one Bar"],
+        ["Num7", 41043, "Move back one Bar"],
+        ["Num+", 41129, "Tempo Up"],
+        ["Num-", 41130, "Tempo Down"],
+        ["L", 1068, "Loop on/off"],
+        ["Num/", 1068, "Loop on/off"],
+        ["C", 40364, "Metronome click on/off"],
+        ["Num9", 40364, "Metronome click on/off"],
+        ["Ctrl+L", 41039, "Set Loop Locators to encompass selected clips"],
+        ["Alt+X", 40012, "Split selected Clips at the Song Position Marker"],
+        ["Ctrl+J", 41588, "Join selected Clips"],
+        ["Delete", 40697, "Delete"],
+        ["Backspace", 40697, "Delete"],
+        ["Ctrl+X", 40699, "Cut Clip or Event"],
+        ["Ctrl+C", 40698, "Copy Clip or Event"],
+        ["Ctrl+V", 42398, "Paste Clip or Event"],
+        ["Ctrl+D", 41295, "Duplicate"],
+        ["Ctrl+Z", "MAIN:Ctrl+Z", "Undo"],
+        ["Ctrl+Y", 40030, "Redo"],
+        ["H", 1012, "Horizontal zoom in"],
+        ["Ctrl+=", 1012, "Horizontal zoom in"],
+        ["G", 1011, "Horizontal zoom out"],
+        ["Ctrl+-", 1011, "Horizontal zoom out"],
+        ["Ctrl+Alt+=", 40111, "Vertical zoom in"],
+        ["Ctrl+Alt+-", 40112, "Vertical zoom out"],
+        ["Z", 41622, "Zoom To Selection"],
+        ["Shift+Z", 40295, "Show All"],
+        ["S", 1157, "Snap on/off"],
+        ["Ctrl+A", 40035, "Select All"],
+        ["Ctrl+T", 40001, "Create Audio Track"],
+        ["Ctrl+I", 40701, "Create Instrument"],
+        ["Insert", 40701, "Create Instrument"],
+        ["M", 40175, "Mute/Unmute selected Clips"],
+        ["Ctrl+K", 40316, "Quantize"],
+        ["X", 41059, "Crossfade selected overlapping audio clips"],
+        ["Ctrl+Left", 40120, "Nudge selection one Snap unit left"],
+        ["Ctrl+Right", 40119, "Nudge selection one Snap unit right"],
+        ["F", 40036, "Follow Song on/off"],
+        ["Enter", 40153, "Open selected clip for editing"],
+        ["F5", 40078, "Mixer"],
+        ["F6", 40291, "Rack (here: the track's FX chain)"],
+        ["F3", 40271, "Device Palette (here: the FX browser)"],
+        ["F4", 40377, "On-screen Piano Keys"],
+        ["F9", 50124, "Show/hide Browser"]
+      ],
+      "midi_keys": [],
+      "feel": [
+        ["switch", 42740, 41646, "Reason toolbar in place of your main toolbar (REAPER toolbar 28; My REAPER switches yours back)"],
+        ["radio", [41603, 41604, 41605, 41606, 41608], 41605, "Transport panel docked at the bottom of the window"],
+        ["toggle", 40083, 1, "Main Mixer docked in the window (F5)"],
+        ["toggle", 40389, 1, "Mixer: Master Section on the right"],
+        ["toggle", 40549, 1, "(mixer inserts shown)"],
+        ["toggle", 40557, 1, "(mixer sends shown)"],
+        ["dock", "explorer", "left", 1, "Browser docked on the left, open (F9; here: the Media Explorer)"],
+        ["toggle", 1157, 1, "Snap on (S)"],
+        ["toggle", 40036, 1, "Follow Song on (F)"]
+      ],
+      "extras": [
+        ["The Rack: each track's FX chain holds its devices; REAPER's FX containers group them like Combinators.", 40291, "F6"],
+        ["Players and Note Echo: REAPER's MIDI JSFX (arpeggiators, chord players) in the FX browser.", 40271, "F3"],
+        ["Blocks: REAPER's regions and the Region Playlist (SWS).", 40326, null],
+        ["Bounce in place: render items to a new take.", 41999, null]
+      ],
+      "toolbar_slot": 28,
+      "toolbar": [
+        [50124, "Browser"],
+        [40078, "Mixer", "toolbar_visible_mixer.png"],
+        [40291, "Rack (FX)"],
+        [40153, "Edit Mode", "toolbar_midi_mode_piano_roll.png"],
+        -1,
+        [1157, "Snap", "toolbar_v3_snap_on.png"],
+        [40036, "Follow Song", "toolbar_sync_follow_play.png"],
+        -1,
+        [40364, "Click", "toolbar_v3_metro_on.png"],
+        [1068, "Loop"],
+        [40377, "Piano Keys", "toolbar_misc_keyboard.png"]
+      ],
+      "recommends": ["playhead", "smoothscroll"]
     }
-  ]
+  ],
+  "themes": {
+    "Default_7.0.ReaperThemeZip": {
+      "by": "Cockos",
+      "url": "builtin",
+      "note": "comes with REAPER"
+    },
+    "Default_6.0.ReaperThemeZip": {
+      "by": "Cockos",
+      "url": "builtin",
+      "note": "comes with REAPER"
+    },
+    "Reapertips Theme (base).ReaperThemeZip": {
+      "by": "Reapertips (Alejandro)",
+      "url": "https://www.reapertips.com/",
+      "from": "Reapertips Theme.ReaperThemeZip"
+    },
+    "Reapertips Theme.ReaperThemeZip": {
+      "by": "Reapertips (Alejandro)",
+      "url": "https://www.reapertips.com/"
+    },
+    "Reapertips Theme – Purple.ReaperThemeZip": {
+      "by": "Reapertips (Alejandro)",
+      "url": "https://www.reapertips.com/"
+    },
+    "ProTools2020.ReaperThemeZip": {
+      "by": "revsfmc",
+      "url": "https://stash.reaper.fm/theme/2572/Pro%20Tools%202020"
+    },
+    "PRO TOOLS GOLD 2026.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/3293/PRO%20TOOLS%20GOLD%202026.ReaperThemeZIP"
+    },
+    "ProTools 12.5_MC-edit.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/2270/ProTools%2012.5_MC-edit.ReaperThemeZip"
+    },
+    "Pro_Tools_Utimate.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/3115/Pro_Tools_Utimate.ReaperThemezip",
+      "note": "8,000+ downloads"
+    },
+    "ProTools Clone 2.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/3096/ProTools%20Clone%202%20%281%29.ReaperThemeZIP",
+      "note": "10,000+ downloads"
+    },
+    "I Logic V2 Public.ReaperThemeZip": {
+      "by": "Blankfiles",
+      "url": "https://stash.reaper.fm/theme/1964/I%20Logic%20V2%20Public.ReaperThemeZip"
+    },
+    "FLogic.ReaperThemeZip": {
+      "by": "Cubic13",
+      "url": "https://stash.reaper.fm/theme/2146/FLogic.zip",
+      "zip": true
+    },
+    "Theme FLogic B.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/3229/Theme%20FLogic%20B.zip",
+      "zip": true,
+      "note": "newer FLogic, 7,700+ downloads"
+    },
+    "CLogic.ReaperThemeZip": {
+      "by": "Cubic13",
+      "url": "https://stash.reaper.fm/theme/1932/CLogic.zip",
+      "zip": true,
+      "toolbars": true
+    },
+    "ReAbleton.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/1930/ReAbleton.ReaperThemeZip"
+    },
+    "Live.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/1920/Live.ReaperThemeZip"
+    },
+    "Reaper4Live.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/3203/Reaper4Live.zip",
+      "zip": true
+    },
+    "FruityCocktail.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/2218/FruityCocktail.ReaperThemeZip"
+    },
+    "CubeXR.ReaperThemeZip": {
+      "by": "Cubic13",
+      "url": "https://stash.reaper.fm/theme/2310/CubicPack3.zip",
+      "zip": true,
+      "toolbars": true,
+      "pack": "CubicPack3"
+    },
+    "CubeX.ReaperThemeZip": {
+      "by": "Cubic13",
+      "url": "https://stash.reaper.fm/theme/2310/CubicPack3.zip",
+      "zip": true,
+      "pack": "CubicPack3"
+    },
+    "CubeXD.ReaperThemeZip": {
+      "by": "Cubic13",
+      "url": "https://stash.reaper.fm/theme/2309/CubicPack3_DarkThemes.zip",
+      "zip": true,
+      "pack": "CubicPack3 dark"
+    },
+    "CubeXRD.ReaperThemeZip": {
+      "by": "Cubic13",
+      "url": "https://stash.reaper.fm/theme/2309/CubicPack3_DarkThemes.zip",
+      "zip": true,
+      "pack": "CubicPack3 dark"
+    },
+    "Cube6.ReaperThemeZip": {
+      "by": "Cubic13",
+      "url": "https://stash.reaper.fm/theme/2310/CubicPack3.zip",
+      "zip": true,
+      "pack": "CubicPack3"
+    },
+    "Cube6R.ReaperThemeZip": {
+      "by": "Cubic13",
+      "url": "https://stash.reaper.fm/theme/2310/CubicPack3.zip",
+      "zip": true,
+      "pack": "CubicPack3"
+    },
+    "Cube6D.ReaperThemeZip": {
+      "by": "Cubic13",
+      "url": "https://stash.reaper.fm/theme/2309/CubicPack3_DarkThemes.zip",
+      "zip": true,
+      "pack": "CubicPack3 dark"
+    },
+    "Cube6RD.ReaperThemeZip": {
+      "by": "Cubic13",
+      "url": "https://stash.reaper.fm/theme/2309/CubicPack3_DarkThemes.zip",
+      "zip": true,
+      "pack": "CubicPack3 dark"
+    },
+    "Reaper Cubase 2.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/3176/Reaper%20Cubase%202.ReaperThemeZip"
+    },
+    "HYDRA.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/2085/HYDRA.ReaperThemeZip",
+      "note": "49,000+ downloads"
+    },
+    "ReaSonus One.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/3046/ReaSonus%20One.ReaperThemeZip",
+      "note": "a Studio One look"
+    },
+    "CSIX-BASIC.ReaperThemeZip": {
+      "by": "CONCEPT SIX",
+      "url": "https://stash.reaper.fm/theme/2493/CONCEPT%20SIX%20-%20BASIC%20",
+      "zip": true,
+      "note": "personal use only"
+    },
+    "INQUASAR DARK MATTER v.1.0.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/2115/INQUASAR%20DARK%20MATTER%20v.1.0.ReaperThemeZip"
+    },
+    "Reaper Echolot Bandlab.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/3377/Reaper%20Echolot%20Bandlab.reaperthemezip",
+      "note": "Echolot in BandLab colours"
+    },
+    "ReaPersona - Pro Tools.ReaperThemeZip": {
+      "by": "ReaPersona",
+      "url": "reapersona",
+      "note": "ours: built on your computer from REAPER's own Default 7, in this DAW's colours"
+    },
+    "ReaPersona - Logic Pro.ReaperThemeZip": {
+      "by": "ReaPersona",
+      "url": "reapersona",
+      "note": "ours: built on your computer from REAPER's own Default 7, in this DAW's colours"
+    },
+    "ReaPersona - Ableton Live.ReaperThemeZip": {
+      "by": "ReaPersona",
+      "url": "reapersona",
+      "note": "ours: built on your computer from REAPER's own Default 7, in this DAW's colours"
+    },
+    "ReaPersona - FL Studio.ReaperThemeZip": {
+      "by": "ReaPersona",
+      "url": "reapersona",
+      "note": "ours: built on your computer from REAPER's own Default 7, in this DAW's colours"
+    },
+    "ReaPersona - Cubase.ReaperThemeZip": {
+      "by": "ReaPersona",
+      "url": "reapersona",
+      "note": "ours: built on your computer from REAPER's own Default 7, in this DAW's colours"
+    },
+    "ReaPersona - Studio One.ReaperThemeZip": {
+      "by": "ReaPersona",
+      "url": "reapersona",
+      "note": "ours: built on your computer from REAPER's own Default 7, in this DAW's colours"
+    },
+    "ReaPersona - Bitwig Studio.ReaperThemeZip": {
+      "by": "ReaPersona",
+      "url": "reapersona",
+      "note": "ours: built on your computer from REAPER's own Default 7, in this DAW's colours"
+    },
+    "ReaPersona - Cakewalk.ReaperThemeZip": {
+      "by": "ReaPersona",
+      "url": "reapersona",
+      "note": "ours: built on your computer from REAPER's own Default 7, in this DAW's colours"
+    },
+    "ReaPersona - Reason.ReaperThemeZip": {
+      "by": "ReaPersona",
+      "url": "reapersona",
+      "note": "ours: built on your computer from REAPER's own Default 7, in this DAW's colours"
+    }
+  },
+  "own_themes": {
+    "Pro Tools": {
+      "palette": [
+        "#2E3034",
+        "#3A3D42",
+        "#373A3E",
+        "#4E5A6B",
+        "#26282B",
+        "#D2D5D9",
+        "#1C1D20",
+        "#B8BCC2",
+        "#4A4D52",
+        "#E9E9E9",
+        "#3E97F5",
+        "#7FA6D6",
+        "#3E97F5",
+        "#2A2C30",
+        "#6FB2F2"
+      ],
+      "tint": "#C9CDD5",
+      "gain": 1.0,
+      "mute": "#F2A33A",
+      "solo": "#F5D23C",
+      "record": "#E5413B",
+      "play": "#4CC66A",
+      "color_strength": 20,
+      "text": 105,
+      "select": 30
+    },
+    "Logic Pro": {
+      "palette": [
+        "#2C2C2E",
+        "#38383A",
+        "#343436",
+        "#4A4A50",
+        "#232325",
+        "#E2E2E4",
+        "#1E1E20",
+        "#BDBDC2",
+        "#454548",
+        "#FFFFFF",
+        "#FFFFFF",
+        "#9A9AA2",
+        "#F2C94C",
+        "#262628",
+        "#59B6F2"
+      ],
+      "tint": "#D0D0D6",
+      "gain": 0.95,
+      "mute": "#3DA9FC",
+      "solo": "#F7D046",
+      "record": "#E5413B",
+      "play": "#4CC66A",
+      "color_strength": 45,
+      "text": 105,
+      "select": 25
+    },
+    "Ableton Live": {
+      "palette": [
+        "#1E1E1E",
+        "#2A2A2A",
+        "#262626",
+        "#3B3B3B",
+        "#171717",
+        "#CFCFCF",
+        "#121212",
+        "#A8A8A8",
+        "#3A3A3A",
+        "#FFB532",
+        "#E8E8E8",
+        "#B0B0B0",
+        "#FF764D",
+        "#1B1B1B",
+        "#FFB532"
+      ],
+      "tint": "#C8C8C8",
+      "gain": 0.8,
+      "mute": "#FFD23F",
+      "solo": "#5DA9E9",
+      "record": "#FF4B3A",
+      "play": "#A6E35A",
+      "color_strength": 70,
+      "text": 100,
+      "select": 30
+    },
+    "FL Studio": {
+      "palette": [
+        "#2D3740",
+        "#36414B",
+        "#323C46",
+        "#46545F",
+        "#252D35",
+        "#C9D3DC",
+        "#1F262D",
+        "#A9B5C0",
+        "#45515C",
+        "#FF9F3B",
+        "#5BD15B",
+        "#8FA3B3",
+        "#FF9F3B",
+        "#26303A",
+        "#7AC943"
+      ],
+      "tint": "#A9BFD6",
+      "gain": 0.95,
+      "mute": "#7AC943",
+      "solo": "#7AC943",
+      "record": "#E5413B",
+      "play": "#7AC943",
+      "color_strength": 35,
+      "text": 105,
+      "select": 30
+    },
+    "Cubase": {
+      "palette": [
+        "#1F2429",
+        "#2A3137",
+        "#272D33",
+        "#3B4854",
+        "#1A1E22",
+        "#D8DDE2",
+        "#15191C",
+        "#B2BAC2",
+        "#38424B",
+        "#FFFFFF",
+        "#E8E8E8",
+        "#7E95AB",
+        "#3BA0FF",
+        "#1E2328",
+        "#E85A4F"
+      ],
+      "tint": "#AFC0D2",
+      "gain": 0.85,
+      "mute": "#F28C28",
+      "solo": "#F2D12A",
+      "record": "#E5413B",
+      "play": "#4CC66A",
+      "color_strength": 35,
+      "text": 100,
+      "select": 30
+    },
+    "Studio One": {
+      "palette": [
+        "#2A2E33",
+        "#363B41",
+        "#32373C",
+        "#46505B",
+        "#232629",
+        "#D6DBE0",
+        "#1D2023",
+        "#B0B7BE",
+        "#40464D",
+        "#FFFFFF",
+        "#4C9BFF",
+        "#86A2C2",
+        "#4C9BFF",
+        "#25292D",
+        "#4C9BFF"
+      ],
+      "tint": "#B9C4D0",
+      "gain": 0.95,
+      "mute": "#3D8EFF",
+      "solo": "#F2D12A",
+      "record": "#E5413B",
+      "play": "#4CC66A",
+      "color_strength": 50,
+      "text": 105,
+      "select": 25
+    },
+    "Bitwig Studio": {
+      "palette": [
+        "#282828",
+        "#323232",
+        "#2E2E2E",
+        "#414141",
+        "#202020",
+        "#D0D0D0",
+        "#1A1A1A",
+        "#AAAAAA",
+        "#3C3C3C",
+        "#FF6A1F",
+        "#FF6A1F",
+        "#A8A8A8",
+        "#FF6A1F",
+        "#232323",
+        "#FF8A3D"
+      ],
+      "tint": "#C8C8C8",
+      "gain": 0.85,
+      "mute": "#FF9A3C",
+      "solo": "#F2D12A",
+      "record": "#E5413B",
+      "play": "#FF6A1F",
+      "color_strength": 65,
+      "text": 100,
+      "select": 30
+    },
+    "Cakewalk": {
+      "palette": [
+        "#232527",
+        "#2E3133",
+        "#2A2D2F",
+        "#3E4347",
+        "#1C1E20",
+        "#D3D6D9",
+        "#17191A",
+        "#AEB2B6",
+        "#3B3F42",
+        "#F2802F",
+        "#F2C230",
+        "#8E979E",
+        "#F2802F",
+        "#202224",
+        "#2FC2E0"
+      ],
+      "tint": "#C8CDD2",
+      "gain": 0.85,
+      "mute": "#F2C230",
+      "solo": "#4CD964",
+      "record": "#E5413B",
+      "play": "#4CD964",
+      "color_strength": 30,
+      "text": 100,
+      "select": 30
+    },
+    "Reason": {
+      "palette": [
+        "#2F3032",
+        "#3B3C3F",
+        "#37383B",
+        "#4A4F57",
+        "#27282A",
+        "#DADBDD",
+        "#202123",
+        "#B5B7BA",
+        "#46484B",
+        "#FFFFFF",
+        "#E6E6E6",
+        "#9AA0A8",
+        "#3D7EFF",
+        "#2A2B2D",
+        "#58A6FF"
+      ],
+      "tint": "#CCCCCC",
+      "gain": 1.0,
+      "mute": "#E5413B",
+      "solo": "#4CD964",
+      "record": "#E5413B",
+      "play": "#4CD964",
+      "color_strength": 25,
+      "text": 100,
+      "select": 25
+    }
+  }
 }

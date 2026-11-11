@@ -278,6 +278,13 @@ function M.preset_style(p)
   st.id, st.name, st.theme, st.themes, st.feel, st.preset, st.base = p.id, p.name, p.theme, { p.theme }, p.feel or {}, true, base.id
   st.description = "Your preset, on " .. base.name .. "'s keys" .. ((base.alt or 0) > 0 and "" or " (your own)") .. ": its theme, toolbar, " ..
     "transport and mixer layout, snap and the mouse behaviours as they were when you saved it (" .. (p.saved or "") .. ")."
+  local feel_from = p.feel_from and M.by_id(p.feel_from)
+  if feel_from then -- (a mix: one style's keys, another's layout and feel, any theme)
+    st.feel = feel_from.feel or {}
+    st.recommends = feel_from.recommends
+    st.description = "Your mix: " .. base.name .. "'s keys" .. ((base.alt or 0) > 0 and "" or " (your own)") .. " with " .. feel_from.name ..
+      "'s layout, toolbar and feel, and the theme " .. tostring(p.theme) .. "."
+  end
   st.extras, st.tips, st.description_base = base.extras, base.tips, base.description
   return st
 end
@@ -333,6 +340,30 @@ function M.save_preset(name) -- -> the new preset (as a style)
   M.write(PRESETS, M.json_encode({ presets = list }) .. "\n")
   load_presets()
   reaper.SetExtState(M.SECTION, "style", p.id, true) -- (it is what's in use now: switching away puts back what the style changed)
+  return M.by_id(p.id)
+end
+-- Mix and match: one style's keys (its shortcut layer and MIDI keys), another style's layout, toolbar and feel, any theme. -> the profile
+function M.save_mix(name, keys_id, feel_id, theme)
+  local list = load_presets()
+  local p = { id = "mix_" .. os.time(), name = name, base = keys_id, feel_from = feel_id, theme = theme, saved = os.date("%Y-%m-%d") }
+  list[#list + 1] = p
+  M.write(PRESETS, M.json_encode({ presets = list }) .. "\n")
+  load_presets()
+  return M.by_id(p.id)
+end
+-- A preset as a file to give someone, and taking one in (its styles have to exist on that computer). -> true / the preset, or nil + why
+function M.export_preset(id, path)
+  for _, p in ipairs(load_presets()) do if p.id == id then return M.write(path, M.json_encode({ reapersona_preset = 1, preset = p }) .. "\n") end end
+end
+function M.import_preset(d)
+  local p = d and d.preset
+  if not (p and p.name and p.base) then return nil, "not a ReaPersona preset" end
+  if not M.by_id(p.base) then return nil, "it's built on the style '" .. p.base .. "', which isn't here" end
+  local list = load_presets()
+  p.id = (p.feel_from and "mix_" or "preset_") .. os.time() .. "_" .. #list
+  list[#list + 1] = p
+  M.write(PRESETS, M.json_encode({ presets = list }) .. "\n")
+  load_presets()
   return M.by_id(p.id)
 end
 function M.delete_preset(id)
@@ -473,7 +504,7 @@ function M.ensure_scripts()
   for _, st in ipairs(M.styles) do main["use " .. st.id] = 'use_id("' .. st.id .. '")' end
   local todo = {}
   for name, call in pairs(main) do
-    local label = name:match("^use ") and ("use " .. M.by_id(name:sub(5)).name) or name
+    local label = (name:match("^use ") and ("use " .. M.by_id(name:sub(5)).name) or name):gsub('[/\\:%*%?"<>|]', "-") -- (a file name)
     local p = M.here .. "/actions/ReaPersona - " .. label .. ".lua"
     stub(p, call); todo[#todo + 1] = { 0, p, "main", name }
   end
@@ -684,6 +715,173 @@ function M.toolbar_installed(section) -- is [Floating toolbar N] / [Floating MID
   local t = M.read(res .. "/reaper-menu.ini") or ""
   local body = t:match("%[" .. section:gsub("%p", "%%%0") .. "%]([^%[]*)")
   return body ~= nil and (body:find("title=ReaPersona", 1, true) ~= nil or body:find("title=DAW Styles", 1, true) ~= nil)
+end
+
+-- ---------------------------------------------------------------- setup: Python, ReaPersona's own themes, the startup line
+local function sh(cmd, ms) local out = reaper.ExecProcess(cmd, ms or 20000) or ""; local code, text = out:match("^(%-?%d+)\n(.*)$"); return code, text or out end
+function M.python() -- -> "Python 3.x" when python runs here, else nil (cached)
+  if M._py == nil then
+    local code, text = sh('python --version', 8000)
+    M._py = (code == "0" and text:match("Python %S+")) or false
+  end
+  return M._py or nil
+end
+function M.python_libs() -- -> true when this Python has Pillow and numpy (theme building needs them); cached
+  if M._libs == nil then M._libs = M.python() ~= nil and sh('python -c "import PIL, numpy"', 15000) == "0" end
+  return M._libs
+end
+function M.install_python_libs() -- pip install --user pillow numpy (REAPER waits while it downloads). -> true, or nil + what pip said
+  local code, text = sh("python -m pip install --user pillow numpy", 600000)
+  M._libs = nil
+  if code == "0" and M.python_libs() then return true end
+  return nil, (text or ""):sub(-400)
+end
+M.OWN = (function() local t = M.read(M.here .. "/styles.json"); local ok, d = pcall(M.json_decode, t or "{}"); return ok and d and d.own_themes or {} end)()
+M.CATALOG = (function() local t = M.read(M.here .. "/styles.json"); local ok, d = pcall(M.json_decode, t or "{}"); return ok and d and d.themes or {} end)()
+function M.own_theme_file(name) return "ReaPersona - " .. name .. ".ReaperThemeZip" end
+function M.own_themes_built()
+  local n, total = 0, 0
+  for name in pairs(M.OWN) do total = total + 1; if reaper.file_exists(M.themes_dir .. M.own_theme_file(name)) then n = n + 1 end end
+  return n, total
+end
+-- Each built theme's Default 7 settings: its panels in the DAW's colour, how strongly track colours show, text brightness. REAPER keeps
+-- them per theme (reaper-themeconfig.ini). Loads each theme for a moment, then puts yours back.
+local function apply_own_params()
+  local was = reaper.GetLastColorThemeFile()
+  for name, rec in pairs(M.OWN) do
+    local path = M.themes_dir .. M.own_theme_file(name)
+    if reaper.file_exists(path) then
+      reaper.OpenColorThemeFile(path)
+      local t = rec.tint or "#C8C8C8"
+      local r, g, b = tonumber(t:sub(2, 3), 16), tonumber(t:sub(4, 5), 16), tonumber(t:sub(6, 7), 16)
+      local scale = 134 / math.max((r + g + b) / 3, 1) * (rec.gain or 1) -- (Default 7's own panel colour sits near 134)
+      local want = { textBrightness = rec.text or 100, customColorDepthParam = rec.color_strength or 30, selectStrength = rec.select or 25 }
+      for _, part in ipairs({ "tcpBgCol", "mcpBgCol" }) do
+        want[part .. "R"], want[part .. "G"], want[part .. "B"] = math.floor(math.min(255, r * scale)), math.floor(math.min(255, g * scale)), math.floor(math.min(255, b * scale))
+      end
+      for i = 0, 600 do
+        local pname = reaper.ThemeLayout_GetParameter(i)
+        if not pname then break end
+        if want[pname] then reaper.ThemeLayout_SetParameter(i, want[pname], true) end
+      end
+    end
+  end
+  if was and was ~= "" then reaper.OpenColorThemeFile(was) end
+  reaper.ThemeLayout_RefreshAll()
+end
+M.apply_own_params = apply_own_params
+function M.build_own_themes() -- -> list of themes written, or nil + why
+  if not M.python() then return nil, "it needs Python 3 (python.org), with Pillow and numpy" end
+  if not M.python_libs() then return nil, "Python needs Pillow and numpy: Setup > Install them (or: python -m pip install --user pillow numpy)" end
+  local code, text = sh('python "' .. M.here .. '/build_themes.py" "' .. M.themes_dir:gsub("/$", "") .. '"', 180000)
+  local first, rest = (text or ""):match("^(%d)\n(.*)$")
+  if code ~= "0" or first ~= "0" then return nil, (rest or text or ""):sub(1, 400) end
+  apply_own_params()
+  local made = {}
+  for l in rest:gmatch("[^\r\n]+") do made[#made + 1] = l end
+  return made
+end
+function M.startup_path() return res .. "/Scripts/__startup.lua" end
+function M.startup_on() return (M.read(M.startup_path()) or ""):find("reapersona_core.lua", 1, true) ~= nil end
+function M.add_startup() -- one block in Scripts/__startup.lua that brings back the last style's keys when REAPER starts
+  if M.startup_on() then return true end
+  local rel = M.here:sub(#res + 2) -- (e.g. Scripts/ReaPersona or Scripts/ReaPersona/Workflow)
+  local block = "\n-- >>> ReaPersona: REAPER forgets the shortcut layer at restart, so bring back the last style's keys\ndo\n" ..
+    '  local ok, err = pcall(function() dofile(reaper.GetResourcePath() .. "/' .. rel .. '/reapersona_core.lua").restore_last() end)\n' ..
+    '  if not ok then reaper.ShowConsoleMsg("[ReaPersona] restore failed: " .. tostring(err) .. "\\n") end\nend\n-- <<< ReaPersona <<<\n'
+  local f = io.open(M.startup_path(), "a")
+  if not f then return nil, "couldn't write " .. M.startup_path() end
+  f:write(block); f:close()
+  return true
+end
+
+-- ---------------------------------------------------------------- dropping files in: themes, theme packs, toolbars, keymaps, styles, presets
+local KEYNAME = {} -- (key code -> name, for keymaps dropped in)
+for k, v in pairs(NAMED) do KEYNAME[v] = k end
+local function decode(f, k) -- reaper-kb.ini flags, key -> "Ctrl+Shift+L" (the reverse of M.encode), or nil
+  f, k = tonumber(f), tonumber(k)
+  if not (f and k) or f == 255 then return nil end
+  local mods = {}
+  if f & CTRL ~= 0 then mods[#mods + 1] = "Ctrl" end
+  if f & ALT ~= 0 then mods[#mods + 1] = "Alt" end
+  if f & SHIFT ~= 0 then mods[#mods + 1] = "Shift" end
+  local key
+  if f & VIRT == 0 then key = string.char(k)
+  elseif KEYNAME[k] then key = KEYNAME[k]
+  elseif (k >= 65 and k <= 90) or (k >= 48 and k <= 57) then key = string.char(k)
+  else for ch, code in pairs(OEM) do if code == k and ch ~= "+" and ch ~= "?" then key = ch end end end
+  if not key then return nil end
+  mods[#mods + 1] = key
+  return table.concat(mods, "+")
+end
+M.decode = decode
+-- A .ReaperKeyMap's Main-section keys as a new style on its own shortcut layer. -> the style, or nil + why
+function M.style_from_keymap(path)
+  local name = (path:gsub("\\", "/"):match("([^/]+)%.[Rr]eaper[Kk]ey[Mm]ap$") or "Keymap")
+  local keys, seen = {}, {}
+  for line in (M.read(path) or ""):gmatch("[^\r\n]+") do
+    local f, k, cmd, sec = line:match("^KEY (%d+) (%d+) (%S+) (%d+)")
+    if sec == "0" and cmd ~= "0" then
+      local spec = decode(f, k)
+      if spec and not seen[spec] then
+        seen[spec] = true
+        local label = line:match("#%s*[^:]+:%s*[^:]+:%s*(.+)$") or ("action " .. cmd)
+        keys[#keys + 1] = { spec, tonumber(cmd) or (cmd:sub(1, 1) == "_" and cmd or "_" .. cmd), label }
+      end
+    end
+  end
+  if #keys == 0 then return nil, "no Main-section keys in it" end
+  local alt = free_alt()
+  if not alt then return nil, "all 16 shortcut layers are in use" end
+  local st = { id = "keymap_" .. os.time(), name = name, alt = alt, kind = "daw", keys = keys, feel = {},
+    description = name .. ": the keys from " .. name .. ".ReaperKeyMap on their own shortcut layer (alt-" .. alt .. "); your theme and settings." }
+  local users = load(M.here .. "/user_styles.json")
+  users[#users + 1] = st
+  M.write(M.here .. "/user_styles.json", M.json_encode({ styles = users }) .. "\n")
+  st.user = true
+  M.styles[#M.styles + 1] = st
+  return st
+end
+-- Whatever was dropped on the window. -> list of { kind, name, detail } (kind: theme, toolbar, style, preset, skipped)
+function M.import_file(path, out)
+  out = out or {}
+  local p = path:gsub("\\", "/")
+  local base = p:match("[^/]+$") or p
+  local low = base:lower()
+  if low:match("%.reaperthemezip$") or low:match("%.reapertheme$") then
+    local n, why = M.import_theme(p)
+    out[#out + 1] = { n and "theme" or "skipped", n or base, why }
+  elseif low:match("%.reapermenu$") then
+    reaper.RecursiveCreateDirectory(M.here .. "/toolbars", 0)
+    local ok = M.write(M.here .. "/toolbars/" .. base, M.read(p) or "")
+    out[#out + 1] = { ok and "toolbar" or "skipped", base, ok and "in ReaPersona's toolbars folder: install the shortcuts to use it" or "couldn't copy" }
+  elseif low:match("%.reaperkeymap$") then
+    local st, why = M.style_from_keymap(p)
+    out[#out + 1] = { st and "style" or "skipped", st and st.name or base, st and ("shortcut layer alt-" .. st.alt) or why }
+  elseif low:match("%.json$") then
+    local ok, d = pcall(M.json_decode, M.read(p) or "")
+    if ok and d and d.preset then
+      local pr, why = M.import_preset(d)
+      out[#out + 1] = { pr and "preset" or "skipped", pr and pr.name or base, why }
+    elseif ok and d and d.style then
+      local st, why = M.import(p)
+      out[#out + 1] = { st and "style" or "skipped", st and st.name or base, st and ("shortcut layer alt-" .. st.alt) or why }
+    else out[#out + 1] = { "skipped", base, "not a ReaPersona style or preset" } end
+  elseif low:match("%.zip$") then -- (a theme pack: unpacked with Windows' or macOS's own tar, then everything usable inside comes in)
+    local dir = M.here .. "/_incoming/" .. base:gsub("%.[Zz][Ii][Pp]$", "")
+    reaper.RecursiveCreateDirectory(dir, 0)
+    sh('tar -xf "' .. p .. '" -C "' .. dir .. '"', 60000)
+    local function walk(d)
+      reaper.EnumerateFiles(d, -1); reaper.EnumerateSubdirectories(d, -1) -- (REAPER caches folder listings: rescan)
+      for i = 0, 2000 do local f = reaper.EnumerateFiles(d, i); if not f then break end M.import_file(d .. "/" .. f, out) end
+      for i = 0, 200 do local s = reaper.EnumerateSubdirectories(d, i); if not s then break end walk(d .. "/" .. s) end
+    end
+    walk(dir)
+    local win = reaper.GetOS():find("^Win") -- (the unpacked copy was ours, made just above: gone again)
+    sh(win and ('cmd /c rmdir /s /q "' .. dir:gsub("/", "\\") .. '"') or ("rm -rf '" .. dir .. "'"), 20000)
+    if #out == 0 then out[#out + 1] = { "skipped", base, "nothing ReaPersona can use inside" } end
+  else out[#out + 1] = { "skipped", base, "not a theme, toolbar, keymap, style or preset" } end
+  return out
 end
 
 -- ---------------------------------------------------------------- share a style, print its cheat sheet
