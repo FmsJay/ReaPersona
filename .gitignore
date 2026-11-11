@@ -1,0 +1,15 @@
+# generated on each computer by ReaPersona / install_shortcuts.py
+ReaPersona/scripts.json
+ReaPersona/midi_fallback.json
+ReaPersona/midi_defaults.json
+ReaPersona/presets.json
+ReaPersona/user_styles.json
+ReaPersona/actions_*.tsv
+ReaPersona/actions/
+ReaPersona/midi_keys/
+ReaPersona/cheat sheets/
+# third-party: themes and toolbar packs belong to their authors (see THEMES.md)
+ReaPersona/toolbars/
+*.ReaperThemeZip
+*.ReaperTheme
+__pycache__/
