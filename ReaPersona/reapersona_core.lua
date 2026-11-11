@@ -396,6 +396,8 @@ function M.use(st)
   local th = M.theme_for(st)
   if th and reaper.file_exists(M.themes_dir .. th) and th ~= (reaper.GetLastColorThemeFile() or ""):gsub("\\", "/"):match("[^/]+$") then
     reaper.OpenColorThemeFile(M.themes_dir .. th)
+    local own = th:match("^ReaPersona %- (.+)%.ReaperThemeZip$") -- (a ReaPersona theme built outside REAPER: its Default 7 settings, once)
+    if own and M.params_for_loaded and reaper.GetExtState(M.SECTION, "params " .. own) == "" then M.params_for_loaded(own); reaper.ThemeLayout_RefreshAll() end
   end
   reaper.SetExtState(M.SECTION, "style", st.id, true)
   set_toggles(st.base or st.id)
@@ -746,25 +748,29 @@ function M.own_themes_built()
 end
 -- Each built theme's Default 7 settings: its panels in the DAW's colour, how strongly track colours show, text brightness. REAPER keeps
 -- them per theme (reaper-themeconfig.ini). Loads each theme for a moment, then puts yours back.
+local function params_for_loaded(name) -- the recipe's Default 7 settings, onto the ReaPersona theme that's loaded now
+  local rec = M.OWN[name]
+  if not rec then return end
+  local t = rec.tint or "#C8C8C8"
+  local r, g, b = tonumber(t:sub(2, 3), 16), tonumber(t:sub(4, 5), 16), tonumber(t:sub(6, 7), 16)
+  local scale = 134 / math.max((r + g + b) / 3, 1) * (rec.gain or 1) -- (Default 7's own panel colour sits near 134)
+  local want = { textBrightness = rec.text or 100, customColorDepthParam = rec.color_strength or 30, selectStrength = rec.select or 25 }
+  for _, part in ipairs({ "tcpBgCol", "mcpBgCol" }) do
+    want[part .. "R"], want[part .. "G"], want[part .. "B"] = math.floor(math.min(255, r * scale)), math.floor(math.min(255, g * scale)), math.floor(math.min(255, b * scale))
+  end
+  for i = 0, 600 do
+    local pname = reaper.ThemeLayout_GetParameter(i)
+    if not pname then break end
+    if want[pname] then reaper.ThemeLayout_SetParameter(i, want[pname], true) end
+  end
+  reaper.SetExtState(M.SECTION, "params " .. name, "1", true)
+end
+M.params_for_loaded = params_for_loaded
 local function apply_own_params()
   local was = reaper.GetLastColorThemeFile()
-  for name, rec in pairs(M.OWN) do
+  for name in pairs(M.OWN) do
     local path = M.themes_dir .. M.own_theme_file(name)
-    if reaper.file_exists(path) then
-      reaper.OpenColorThemeFile(path)
-      local t = rec.tint or "#C8C8C8"
-      local r, g, b = tonumber(t:sub(2, 3), 16), tonumber(t:sub(4, 5), 16), tonumber(t:sub(6, 7), 16)
-      local scale = 134 / math.max((r + g + b) / 3, 1) * (rec.gain or 1) -- (Default 7's own panel colour sits near 134)
-      local want = { textBrightness = rec.text or 100, customColorDepthParam = rec.color_strength or 30, selectStrength = rec.select or 25 }
-      for _, part in ipairs({ "tcpBgCol", "mcpBgCol" }) do
-        want[part .. "R"], want[part .. "G"], want[part .. "B"] = math.floor(math.min(255, r * scale)), math.floor(math.min(255, g * scale)), math.floor(math.min(255, b * scale))
-      end
-      for i = 0, 600 do
-        local pname = reaper.ThemeLayout_GetParameter(i)
-        if not pname then break end
-        if want[pname] then reaper.ThemeLayout_SetParameter(i, want[pname], true) end
-      end
-    end
+    if reaper.file_exists(path) then reaper.OpenColorThemeFile(path); params_for_loaded(name) end
   end
   if was and was ~= "" then reaper.OpenColorThemeFile(was) end
   reaper.ThemeLayout_RefreshAll()
