@@ -1,5 +1,25 @@
 # Changelog
 
+## 5.8.0
+- **One-click theme installs.** 41 of the catalog's themes install with one click (Install on a persona's page and on Home), downloaded from where their authors share them: the REAPER Stash, or the author's own link. Themes that need a browser (paid, or a sign-in) keep a Get it link.
+- **Each persona's recommended look:** a button on its page installs it and makes it the persona's theme; switching to a persona whose look isn't installed offers it once. *Install all* gets every version of a persona's theme.
+- **Involved installs done for you:**
+  - theme packs in .zip or .rar, including a pack inside a pack (I Logic's bonus Ultimate theme);
+  - unzipped themes keep their folder of images (Mordi's FL Studio theme);
+  - fonts a theme needs are installed for your account on your yes, with no administrator needed (Beatwing, CONCEPT SIX, FL Studio theme); REAPER uses them after a restart;
+  - a theme's own scripts (CONCEPT SIX's theme adjuster) go into the Actions list on your yes;
+  - mod packs become theme versions you can click: rLive's ModPack gives five (two item-selection styles, three routing-icon styles).
+- **More looks per DAW:**
+  - Ableton: rLive by Odys, now the recommended look, plus its ModPack.
+  - Logic: I Logic 3.90, normal, Big and Ultimate.
+  - FL Studio: Mordi's FL Studio theme.
+  - Studio One: CONCEPT SIX Basic SX.
+  - Bitwig: Beatwing Bright.
+  - Cakewalk: Echolot.
+  - Reason: IMPERIAL 24 and Dark Side Imperial, hardware looks.
+  - Audacity: ReAudacity.
+- The catalog's names now match what the downloads contain (FLogic B, CONCEPT SIX Basic SX, I Logic 3.90).
+
 ## 5.7.0
 - **REAPER tweaks** (Settings > REAPER tweaks): about 60 of REAPER's and SWS's options in groups, switched live: playback and scrolling, editing, recording, view, **colours and icons (SWS auto-colour, auto icons, auto layouts, red ruler while recording)**, automation and mixer. New ones include count-in and metronome for playback and recording, what recording over an item does, fixed lanes, the edit cursor after recording, grouping what's recorded together, media cues, item tooltips, FX inserts and sends in the track panel, the track panel on the right, and automation behaviour. *Colour the tracks now* and *Colour and icon rules...* open SWS's auto-colour. Options that need SWS say so.
 - Each group has **Add to the Builder**: it goes into the Persona Builder as a block, set the way you have it, so a persona (or a project) can carry its own workflow.

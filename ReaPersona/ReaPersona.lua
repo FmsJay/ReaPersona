@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.7.0
+-- @version 5.8.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -253,6 +253,7 @@ local function go(pg) page = pg; search_q = ""; reaper.SetExtState(SECTION, "pag
 local merge = { base = "Default_7.0.ReaperThemeZip", colours = "", graphics = "", parts = {}, fonts = false, msg = "" }
 local PARTS = { "faders", "knobs", "meters", "transport", "buttons", "toolbar", "backgrounds" }
 local bld_load -- (opens the Persona Builder on a persona; set up with its page)
+local drop_report, install_theme_ui -- (what came in, and a one-click theme install: set up with the setup helpers)
 local trying, try_theme -- (a theme on trial: { name, back = the theme to go back to, ends = time }; set up with the setup helpers)
 local quit_check -- (when the install's quit should be over)
 local ensure_new = false -- (a merged style needs its one-key action registered)
@@ -293,6 +294,14 @@ local function use(st)
         install_ext(key)
       else reaper.SetExtState(SECTION, "declined " .. key, "1", true) end
     end
+  end
+  local rec = st.theme -- (its recommended look, when there's a download for it: offered once too)
+  if rec and not reaper.file_exists(themes_dir .. rec) and core.can_install_theme(rec) and reaper.GetExtState(SECTION, "declined theme " .. st.id) == "" then
+    local c = core.CATALOG[rec]
+    if reaper.MB(st.name .. "'s recommended look is " .. rec:gsub("%.ReaperTheme%a*$", "") .. (c.by and (", by " .. c.by) or "") .. (c.note and (" (" .. c.note .. ")") or "") ..
+        ".\n\nInstall it now? ReaPersona downloads it and takes it in, with its fonts and extras on your yes.", "ReaPersona: recommended for " .. st.name, 4) == 6 then
+      install_theme_ui(rec, st, true)
+    else reaper.SetExtState(SECTION, "declined theme " .. st.id, "1", true) end
   end
 end
 
@@ -518,10 +527,20 @@ local function detail(sel, alt)
     local vers, seen, mine = {}, {}, {}
     for _, th in ipairs(sel.themes or { sel.theme }) do if th and not seen[th] then vers[#vers + 1] = th; seen[th] = true end end
     for _, th in ipairs(core.forks(sel)) do if not seen[th] then vers[#vers + 1] = th; seen[th] = true; mine[th] = true end end
-    local have, missing = {}, {}
+    local have, missing, can = {}, {}, 0
     for _, th in ipairs(vers) do
       if reaper.file_exists(themes_dir .. th) then have[#have + 1] = th
-      elseif core.CATALOG[th] and core.CATALOG[th].url and core.CATALOG[th].url:match("^https?:") then missing[#missing + 1] = th end
+      elseif core.can_install_theme(th) or (core.CATALOG[th] and core.CATALOG[th].url and core.CATALOG[th].url:match("^https?:")) then
+        missing[#missing + 1] = th
+        if core.can_install_theme(th) then can = can + 1 end
+      end
+    end
+    local rec = sel.theme
+    if rec and not reaper.file_exists(themes_dir .. rec) and core.can_install_theme(rec) then
+      ImGui.Dummy(ctx, 0, 2)
+      if primary("Install " .. sel.name .. "'s recommended look: " .. rec:gsub("%.ReaperTheme%a*$", ""), col) then install_theme_ui(rec, sel, true) end
+      local c = core.CATALOG[rec]
+      ImGui.SetItemTooltip(ctx, "Downloads it" .. (c.by and (" (by " .. c.by .. ")") or "") .. " and takes it in, with its fonts, scripts and extras on your yes. " .. (c.note or ""))
     end
     if #have > 1 or #missing > 0 then
       ImGui.Dummy(ctx, 0, 2)
@@ -554,13 +573,28 @@ local function detail(sel, alt)
           ImGui.EndPopup(ctx)
         end
       end
+      for i, th in ipairs(have) do -- (mod packs for a version you have: each mod becomes a version of its own)
+        for k, m in ipairs((core.CATALOG[th] or {}).mods or {}) do
+          if ImGui.SmallButton(ctx, "Add " .. th:gsub("%.ReaperTheme%a*$", "") .. "'s " .. m.name .. "##tvmod" .. i .. "_" .. k) then
+            local got, why = core.install_mod(th, k)
+            if got then drop_report(got) else say("Couldn't get it: " .. tostring(why)) end
+          end
+          ImGui.SetItemTooltip(ctx, "Downloads the mod pack and makes each mod a version of " .. th:gsub("%.ReaperTheme%a*$", "") .. " you can click above.")
+        end
+      end
       if #missing > 0 and ImGui.TreeNode(ctx, #missing .. " more version" .. (#missing == 1 and "" or "s") .. " you can get##tvget") then
+        if can > 1 and ImGui.Button(ctx, "Install all " .. can .. "##tvall") then
+          for _, th in ipairs(missing) do if core.can_install_theme(th) and not reaper.file_exists(themes_dir .. th) then install_theme_ui(th, sel, false) end end
+        end
         for i, th in ipairs(missing) do
           local c = core.CATALOG[th]
-          if ImGui.SmallButton(ctx, "Get it##tvg" .. i) then core.open_url(c.url) end
-          ImGui.SameLine(ctx); ImGui.Text(ctx, th:gsub("%.ReaperTheme%a*$", "") .. " by " .. tostring(c.by) .. (c.note and (" (" .. c.note .. ")") or ""))
+          if core.can_install_theme(th) then
+            if ImGui.SmallButton(ctx, "Install##tvi" .. i) then install_theme_ui(th, sel, false) end
+            ImGui.SetItemTooltip(ctx, "Downloads it and takes it in, with its fonts and extras on your yes.")
+          elseif ImGui.SmallButton(ctx, "Get it##tvg" .. i) then core.open_url(c.url) end
+          ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, th:gsub("%.ReaperTheme%a*$", "") .. (c.by and (" by " .. c.by) or "") .. (c.note and (" (" .. c.note .. ")") or ""))
         end
-        muted("Drop the download on this window and it joins the list.")
+        muted("Get it opens a page that needs your browser (a paid theme, or a sign-in): download it there, then drop the file on this window.")
         ImGui.TreePop(ctx)
       end
     end
@@ -1113,7 +1147,7 @@ end
 -- ---------------------------------------------------------------- the window: a bar on top, pages down the side
 -- ---------------------------------------------------------------- Setup: everything ReaPersona can use, what's there, and one click for each
 local daws_found -- (other DAWs on this computer, looked for once)
-local function drop_report(list) -- what came in, in a few lines (a pack's leftover files are one line, not one each)
+function drop_report(list) -- what came in, in a few lines (a pack's leftover files are one line, not one each)
   local lines, n, themes = {}, 0, {}
   for _, r in ipairs(list) do
     if r[1] ~= "skipped" and r[1] ~= "note" then n = n + 1 end
@@ -1126,6 +1160,34 @@ local function drop_report(list) -- what came in, in a few lines (a pack's lefto
   if #themes > 0 then lines[#lines + 1] = "\nThemes are under Themes > Your themes, at the top (marked new)." end
   say(n .. " added" .. (#themes > 0 and (": " .. table.concat(themes, ", ")) or ""))
   if #list > 0 then reaper.MB(table.concat(lines, "\n"), "ReaPersona: added", 0) end
+  local stages = {}
+  for _, r in ipairs(list) do -- (a pack's fonts and scripts: installed only on a yes)
+    if r.stage then stages[r.stage] = true end
+    if r[2] == "fonts" and r.files and reaper.MB("Install the " .. #r.files .. " font" .. (#r.files == 1 and "" or "s") .. " the theme uses?\n\nThey go into your own account's fonts " ..
+        "(no administrator needed). REAPER uses them after a restart.", "ReaPersona: fonts", 4) == 6 then
+      local n, why = core.install_fonts(r.files)
+      say(n and (n .. " font" .. (n == 1 and "" or "s") .. " installed. Restart REAPER to see them in the theme.") or ("Fonts not installed: " .. tostring(why)))
+    elseif r[2] == "scripts" and r.files and reaper.MB("Add the pack's " .. #r.files .. " script" .. (#r.files == 1 and "" or "s") .. " (a theme adjuster, say) to REAPER's Actions list?\n\n" ..
+        "They're the theme author's own scripts; they go in Scripts/ReaPersona theme scripts.", "ReaPersona: scripts", 4) == 6 then
+      local names = core.register_scripts(r.files, r.stage)
+      say(#names > 0 and ("In the Actions list now: " .. table.concat(names, ", ")) or "No scripts added.")
+    end
+  end
+  for st in pairs(stages) do core.forget_staged(st) end
+end
+function install_theme_ui(th, st, pick) -- one click: download, take in (fonts and scripts on a yes), and with pick make it st's theme
+  local got, why = core.install_theme(th)
+  if not got then
+    say("Couldn't install " .. th:gsub("%.ReaperTheme%a*$", "") .. ": " .. tostring(why) .. ". Its page opens instead.")
+    local c = core.CATALOG[th]
+    if c and c.url and c.url:match("^https?:") then core.open_url(c.url) end
+    return
+  end
+  drop_report(got)
+  if pick and st and reaper.file_exists(themes_dir .. th) then
+    reaper.SetExtState(SECTION, "theme " .. st.id, th, true)
+    if core.current() == st then trying = nil; reaper.OpenColorThemeFile(themes_dir .. th) end
+  end
 end
 local function setup_row(id, done, what, why, button, fn, tip)
   ImGui.TableNextRow(ctx)
@@ -1335,7 +1397,7 @@ local function setup_page()
   end
   if card("setup themes") then
     heading("Themes by other people")
-    muted("Made by REAPER's theme authors in each DAW's likeness. They can't ship with ReaPersona, so: Get it opens the author's page; download, then drop the file (zip and all) onto this window.")
+    muted("Made by REAPER's theme authors in each DAW's likeness. They can't ship with ReaPersona, so Install downloads one from where its author shares it and takes it in, fonts and extras too. Get it opens a page that needs your browser (paid, or a sign-in): download there, then drop the file onto this window.")
     if ImGui.BeginTable(ctx, "setup themes", 3, ImGui.TableFlags_SizingStretchProp | ImGui.TableFlags_RowBg) then
       ImGui.TableSetupColumn(ctx, "state", ImGui.TableColumnFlags_WidthFixed, 56)
       ImGui.TableSetupColumn(ctx, "what", ImGui.TableColumnFlags_WidthStretch)
@@ -1348,7 +1410,8 @@ local function setup_page()
             shown[th] = true
             local have = reaper.file_exists(themes_dir .. th)
             setup_row("t" .. th, have, st.name .. ": " .. th:gsub("%.ReaperThemeZip$", ""), (c.by and ("by " .. c.by) or "") .. (c.note and ((c.by and ", " or "") .. c.note) or ""),
-              not have and "Get it" or nil, function() get_url(c.url) end, c.url)
+              not have and (core.can_install_theme(th) and "Install" or "Get it") or nil,
+              function() if core.can_install_theme(th) then install_theme_ui(th, st, false) else get_url(c.url) end end, c.url)
           end
         end
       end

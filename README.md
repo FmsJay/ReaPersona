@@ -43,7 +43,9 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
 - **Shortcut layers:** one button. REAPER closes (asking about anything unsaved), the shortcuts install with a backup of your keymap, and REAPER opens again. Without Python, ReaPersona makes a keymap file and walks you through importing it (Key Map > Import, choose **merge**).
 - **The startup line:** brings your persona back when REAPER starts.
 - **Smooth playhead and smooth scrolling:** ReaSmoothPlayhead installs through ReaPack; Smooth Wheel Scroll comes with ReaPersona on Windows.
-- **Themes by other people:** each one the personas can use, with a *Get it* button to its author's page.
+- **Themes by other people:** each one the personas can use. *Install* downloads it from where its author shares it (the REAPER Stash or the author's own link) and takes it in; *Get it* opens the page for the few that need a browser (paid, or a sign-in).
+  - Each persona's page has *Install <DAW>'s recommended look* and *Install all*; switching to a persona offers its look once.
+  - Packs are handled for you: .zip and .rar packs (even one inside another), unzipped themes with their image folders, the fonts a theme needs (installed for your account on your yes, no administrator), a theme's own scripts (added to the Actions list on your yes), and mod packs, whose mods become theme versions to click (rLive's ModPack gives five).
 
 **Drag and drop:** drop files onto ReaPersona's window to add them.
 - Themes, either `.ReaperThemeZip`/`.ReaperTheme` files or a theme pack `.zip` straight from the download.

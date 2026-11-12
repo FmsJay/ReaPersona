@@ -291,14 +291,16 @@
       "id": "logic",
       "name": "Logic Pro",
       "alt": 2,
-      "theme": "I Logic V2 Public.ReaperThemeZip",
+      "theme": "I Logic V3 WC.ReaperThemeZip",
       "themes": [
         "ReaPersona - Logic Pro.ReaperThemeZip",
-        "iLogic 3.9.ReaperThemeZip",
+        "I Logic V3 WC.ReaperThemeZip",
+        "I Logic V3 Big WC.ReaperThemeZip",
+        "ULTIMATE.ReaperThemeZip",
         "I Logic V2 Public.ReaperThemeZip",
         "FLogic.ReaperThemeZip",
         "CLogic.ReaperThemeZip",
-        "Theme FLogic B.ReaperThemeZip"
+        "FLogic - B.ReaperTheme"
       ],
       "description": "Apple Logic Pro, with Command as Ctrl and Option as Alt. Space plays and stops (the playhead stays where it stopped), R records, Return goes to the beginning, C cycles, K is the metronome, X the mixer, P the piano roll, Cmd+T splits, Cmd+J joins, Cmd+Shift+D makes a Track Stack. Drag in empty space to rubber-band select, Option-drag copies.",
       "docs": [
@@ -474,10 +476,10 @@
       "id": "ableton",
       "name": "Ableton Live",
       "alt": 3,
-      "theme": "ReAbleton.ReaperThemeZip",
+      "theme": "rLive.ReaperThemeZip",
       "themes": [
         "ReaPersona - Ableton Live.ReaperThemeZip",
-        "RLive.ReaperThemeZip",
+        "rLive.ReaperThemeZip",
         "ReAbleton.ReaperThemeZip",
         "Live.ReaperThemeZip"
       ],
@@ -667,10 +669,10 @@
       "id": "fl_studio",
       "name": "FL Studio",
       "alt": 4,
-      "theme": "FruityCocktail.ReaperThemeZip",
+      "theme": "FL Studio Theme (beta 4).ReaperTheme",
       "themes": [
         "ReaPersona - FL Studio.ReaperThemeZip",
-        "FL Studio Theme.ReaperThemeZip",
+        "FL Studio Theme (beta 4).ReaperTheme",
         "INQUASAR DARK MATTER v.FL.ReaperThemeZip",
         "FruityCocktail.ReaperThemeZip"
       ],
@@ -1055,7 +1057,7 @@
         "HYDRA.ReaperThemeZip",
         "ReaSonus One ALPHA.ReaperThemeZip",
         "CSIX-BASIC.ReaperThemeZip",
-        "CONCEPT SIX - BASIC SX.ReaperThemeZip",
+        "CSIX-BASIC-SX.ReaperThemeZip",
         "ReaSonus One.ReaperThemeZip"
       ],
       "description": "PreSonus Studio One, now Fender Studio Pro (Windows keys), from Fender's Studio Pro key shortcuts sheet. Space starts and stops, Enter starts, NumPad , returns to zero, Alt+X splits, D duplicates, G merges, Q quantizes, N snaps, E/W zoom, F2 editor, F3 console, F5 browser, T adds tracks, Insert adds a marker, Ctrl+K finds a command. Smart Tool: the top half of an event selects a range, the bottom half moves it (Studio One's Arrow tool with the range link on).",
@@ -1263,6 +1265,7 @@
       "themes": [
         "ReaPersona - Bitwig Studio.ReaperThemeZip",
         "Beatwing v2.5.ReaperThemeZip",
+        "Beatwing v2.5_bright.ReaperThemeZip",
         "Reapertips Theme – Purple.ReaperThemeZip",
         "Reapertips Theme - Purple.ReaperThemeZip",
         "INQUASAR DARK MATTER v.1.0.ReaperThemeZip",
@@ -1408,10 +1411,11 @@
       "name": "Cakewalk / Sonar",
       "alt": 9,
       "accent": "#E8662C",
-      "theme": "ReaPersona - Cakewalk.ReaperThemeZip",
+      "theme": "Reaper Echolot Bandlab.ReaperThemeZip",
       "themes": [
         "ReaPersona - Cakewalk.ReaperThemeZip",
         "Reaper Echolot Bandlab.ReaperThemeZip",
+        "Echolot_1.12.ReaperThemeZip",
         "Default_7.0.ReaperThemeZip"
       ],
       "description": "Cakewalk by BandLab / SONAR (Windows keys). Space plays and stops, R records, Ctrl+Home goes to the start, L loops, S splits at the Now time, N snaps, M adds a marker, Alt+R/M/S arm, mute and solo the track, Ctrl+Left/Right zoom, Alt+2 the Console, Alt+3 the Piano Roll, B the Browser, Tab the next transient. The Console is docked at the bottom with the masters on the right, the Browser on the right. No REAPER theme imitates Cakewalk yet: Echolot's BandLab colours stand in. Keys checked against Cakewalk by BandLab's documentation; Sonar (2025) has no published list yet.",
@@ -1546,6 +1550,8 @@
       "theme": "ReaPersona - Reason.ReaperThemeZip",
       "themes": [
         "ReaPersona - Reason.ReaperThemeZip",
+        "IMPERIAL 24.ReaperThemeZip",
+        "Dark_Side_Imperial.ReaperThemeZip",
         "Default_7.0.ReaperThemeZip",
         "INQUASAR DARK MATTER v.1.0.ReaperThemeZip"
       ],
@@ -1697,8 +1703,8 @@
       "id": "audacity",
       "name": "Audacity",
       "alt": 11,
-      "theme": "Default_7.0.ReaperThemeZip",
-      "themes": ["Default_7.0.ReaperThemeZip"],
+      "theme": "ReAudacity.ReaperThemeZip",
+      "themes": ["ReAudacity.ReaperThemeZip", "Default_7.0.ReaperThemeZip"],
       "accent": "#3A7BD5",
       "description": "Audacity (Windows keys), for editing audio and podcasts. Space plays and stops, X stops where you are, P pauses, R records, L loops, Ctrl+I splits, Ctrl+K deletes the selection and closes the gap (ripple is on), Ctrl+T trims to the selection, Ctrl+B adds a label (a marker here), Ctrl+1/3 zoom, Ctrl+E zooms to the selection, Ctrl+F fits the project. Dragging in the audio selects time, as Audacity's Selection Tool does. Keys from Audacity's Keyboard Shortcut Reference (default set). Adobe Audition isn't covered: its key list couldn't be checked.",
       "docs": ["https://manual.audacityteam.org/man/keyboard_shortcut_reference.html"],
@@ -1860,130 +1866,150 @@
     },
     "ProTools2020.ReaperThemeZip": {
       "by": "revsfmc",
-      "url": "https://stash.reaper.fm/theme/2572/Pro%20Tools%202020"
+      "url": "https://stash.reaper.fm/theme/2572/Pro%20Tools%202020",
+      "get": "https://stash.reaper.fm/39674/ProTools2020.ReaperThemeZIP"
     },
     "PRO TOOLS GOLD 2026.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/3293/PRO%20TOOLS%20GOLD%202026.ReaperThemeZIP",
-      "note": "uploader: Circuito Ativo Brasil; base theme not credited"
+      "note": "uploader: Circuito Ativo Brasil; base theme not credited",
+      "get": "https://stash.reaper.fm/51441/PRO%20TOOLS%20GOLD%202026.ReaperThemeZIP"
     },
     "ProTools 12.5_MC-edit.ReaperThemeZip": {
-      "url": "https://stash.reaper.fm/theme/2270/ProTools%2012.5_MC-edit.ReaperThemeZip"
+      "url": "https://stash.reaper.fm/theme/2270/ProTools%2012.5_MC-edit.ReaperThemeZip",
+      "get": "https://stash.reaper.fm/35260/ProTools%2012.5_MC-edit.ReaperThemeZip"
     },
     "Pro_Tools_Utimate.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/3115/Pro_Tools_Utimate.ReaperThemezip",
-      "note": "8,000+ downloads; uploader: Circuito Ativo Brasil; base theme not credited"
+      "note": "8,000+ downloads; uploader: Circuito Ativo Brasil; base theme not credited",
+      "get": "https://stash.reaper.fm/48927/Pro_Tools_Utimate.ReaperThemezip"
     },
     "ProTools Clone 2.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/3096/ProTools%20Clone%202%20%281%29.ReaperThemeZIP",
-      "note": "10,000+ downloads; uploader: Circuito Ativo Brasil; base theme not credited"
+      "note": "10,000+ downloads; uploader: Circuito Ativo Brasil; base theme not credited",
+      "get": "https://stash.reaper.fm/48718/ProTools%20Clone%202%20%281%29.ReaperThemeZIP"
     },
     "I Logic V2 Public.ReaperThemeZip": {
       "by": "Blankfiles",
       "url": "https://stash.reaper.fm/theme/1964/I%20Logic%20V2%20Public.ReaperThemeZip",
-      "note": "2017; iLogic 3.9 is newer"
+      "note": "2017; iLogic 3.9 is newer",
+      "get": "https://stash.reaper.fm/30321/I%20Logic%20V2%20Public.ReaperThemeZip"
     },
     "FLogic.ReaperThemeZip": {
       "by": "Cubic13",
       "url": "https://stash.reaper.fm/theme/2146/FLogic.zip",
-      "zip": true
-    },
-    "Theme FLogic B.ReaperThemeZip": {
-      "url": "https://stash.reaper.fm/theme/3229/Theme%20FLogic%20B.zip",
       "zip": true,
-      "note": "newer FLogic, 7,700+ downloads"
+      "get": "https://stash.reaper.fm/33532/FLogic.zip"
     },
     "CLogic.ReaperThemeZip": {
       "by": "Cubic13",
       "url": "https://stash.reaper.fm/theme/1932/CLogic.zip",
       "zip": true,
-      "toolbars": true
+      "toolbars": true,
+      "get": "https://stash.reaper.fm/29810/CLogic.zip"
     },
     "ReAbleton.ReaperThemeZip": {
-      "url": "https://stash.reaper.fm/theme/1930/ReAbleton.ReaperThemeZip"
+      "url": "https://stash.reaper.fm/theme/1930/ReAbleton.ReaperThemeZip",
+      "get": "https://stash.reaper.fm/29798/ReAbleton.ReaperThemeZip"
     },
     "Live.ReaperThemeZip": {
-      "url": "https://stash.reaper.fm/theme/1920/Live.ReaperThemeZip"
+      "url": "https://stash.reaper.fm/theme/1920/Live.ReaperThemeZip",
+      "get": "https://stash.reaper.fm/29435/Live.ReaperThemeZip"
     },
     "FruityCocktail.ReaperThemeZip": {
-      "url": "https://stash.reaper.fm/theme/2218/FruityCocktail.ReaperThemeZip"
+      "url": "https://stash.reaper.fm/theme/2218/FruityCocktail.ReaperThemeZip",
+      "get": "https://stash.reaper.fm/34532/FruityCocktail.ReaperThemeZip"
     },
     "CubeXR.ReaperThemeZip": {
       "by": "Cubic13",
       "url": "https://stash.reaper.fm/theme/2310/CubicPack3.zip",
       "zip": true,
       "toolbars": true,
-      "pack": "CubicPack3"
+      "pack": "CubicPack3",
+      "get": "https://stash.reaper.fm/36043/CubicPack3.zip"
     },
     "CubeX.ReaperThemeZip": {
       "by": "Cubic13",
       "url": "https://stash.reaper.fm/theme/2310/CubicPack3.zip",
       "zip": true,
-      "pack": "CubicPack3"
+      "pack": "CubicPack3",
+      "get": "https://stash.reaper.fm/36043/CubicPack3.zip"
     },
     "CubeXD.ReaperThemeZip": {
       "by": "Cubic13",
       "url": "https://stash.reaper.fm/theme/2309/CubicPack3_DarkThemes.zip",
       "zip": true,
-      "pack": "CubicPack3 dark"
+      "pack": "CubicPack3 dark",
+      "get": "https://stash.reaper.fm/36040/CubicPack3_DarkThemes.zip"
     },
     "CubeXRD.ReaperThemeZip": {
       "by": "Cubic13",
       "url": "https://stash.reaper.fm/theme/2309/CubicPack3_DarkThemes.zip",
       "zip": true,
-      "pack": "CubicPack3 dark"
+      "pack": "CubicPack3 dark",
+      "get": "https://stash.reaper.fm/36040/CubicPack3_DarkThemes.zip"
     },
     "Cube6.ReaperThemeZip": {
       "by": "Cubic13",
       "url": "https://stash.reaper.fm/theme/2310/CubicPack3.zip",
       "zip": true,
-      "pack": "CubicPack3"
+      "pack": "CubicPack3",
+      "get": "https://stash.reaper.fm/36043/CubicPack3.zip"
     },
     "Cube6R.ReaperThemeZip": {
       "by": "Cubic13",
       "url": "https://stash.reaper.fm/theme/2310/CubicPack3.zip",
       "zip": true,
-      "pack": "CubicPack3"
+      "pack": "CubicPack3",
+      "get": "https://stash.reaper.fm/36043/CubicPack3.zip"
     },
     "Cube6D.ReaperThemeZip": {
       "by": "Cubic13",
       "url": "https://stash.reaper.fm/theme/2309/CubicPack3_DarkThemes.zip",
       "zip": true,
-      "pack": "CubicPack3 dark"
+      "pack": "CubicPack3 dark",
+      "get": "https://stash.reaper.fm/36040/CubicPack3_DarkThemes.zip"
     },
     "Cube6RD.ReaperThemeZip": {
       "by": "Cubic13",
       "url": "https://stash.reaper.fm/theme/2309/CubicPack3_DarkThemes.zip",
       "zip": true,
-      "pack": "CubicPack3 dark"
+      "pack": "CubicPack3 dark",
+      "get": "https://stash.reaper.fm/36040/CubicPack3_DarkThemes.zip"
     },
     "Reaper Cubase 2.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/3176/Reaper%20Cubase%202.ReaperThemeZip",
-      "note": "uploader: Circuito Ativo Brasil; base theme not credited"
+      "note": "uploader: Circuito Ativo Brasil; base theme not credited",
+      "get": "https://stash.reaper.fm/49705/Reaper%20Cubase%202.ReaperThemeZip"
     },
     "HYDRA.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/2085/HYDRA.ReaperThemeZip",
       "note": "49,000+ downloads",
-      "by": "Blankfiles"
+      "by": "Blankfiles",
+      "get": "https://stash.reaper.fm/32338/HYDRA.ReaperThemeZip"
     },
     "ReaSonus One.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/3046/ReaSonus%20One.ReaperThemeZip",
       "note": "a Studio One look; its uploader calls it glitchy",
-      "by": "donrainahhh (mod of ReaSonus by Amberience)"
+      "by": "donrainahhh (mod of ReaSonus by Amberience)",
+      "get": "https://stash.reaper.fm/48230/ReaSonus%20One.ReaperThemeZip"
     },
     "CSIX-BASIC.ReaperThemeZip": {
       "by": "CONCEPT SIX",
       "url": "https://stash.reaper.fm/theme/2493/CONCEPT%20SIX%20-%20BASIC%20",
       "zip": true,
-      "note": "personal use only"
+      "note": "personal use only",
+      "get": "https://stash.reaper.fm/38967/CONCEPT-SIX-BASIC_small-install.zip"
     },
     "INQUASAR DARK MATTER v.1.0.ReaperThemeZip": {
-      "url": "https://stash.reaper.fm/theme/2115/INQUASAR%20DARK%20MATTER%20v.1.0.ReaperThemeZip"
+      "url": "https://stash.reaper.fm/theme/2115/INQUASAR%20DARK%20MATTER%20v.1.0.ReaperThemeZip",
+      "get": "https://stash.reaper.fm/32870/INQUASAR%20DARK%20MATTER%20v.1.0.ReaperThemeZip"
     },
     "Reaper Echolot Bandlab.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/3377/Reaper%20Echolot%20Bandlab.reaperthemezip",
       "note": "Echolot in BandLab colours; Echolot itself: https://stash.reaper.fm/theme/2864/Echolot_1.12.ReaperThemeZip",
       "by": "Circuito Ativo Brasil (recolour of Echolot by mawi)",
-      "licence": "CC BY-NC-SA 4.0 (Echolot's): non-commercial, share alike"
+      "licence": "CC BY-NC-SA 4.0 (Echolot's): non-commercial, share alike",
+      "get": "https://stash.reaper.fm/52916/Reaper%20Echolot%20Bandlab.reaperthemezip"
     },
     "ReaPersona - Pro Tools.ReaperThemeZip": {
       "by": "ReaPersona",
@@ -2038,48 +2064,110 @@
     "ProTools 12.5_F_edit_V5-mawi dark mod.ReaperThemeZip": {
       "by": "mawi",
       "url": "https://stash.reaper.fm/theme/2662/ProTools%2012.5_F_edit_V5-mawi%20dark%20mod",
-      "note": "26,000+ downloads"
-    },
-    "iLogic 3.9.ReaperThemeZip": {
-      "by": "Blankfiles",
-      "url": "https://forum.cockos.com/showthread.php?t=214879",
-      "note": "the newest I Logic; reported free and working in REAPER 7"
-    },
-    "RLive.ReaperThemeZip": {
-      "by": "Odis",
-      "url": "https://forum.cockos.com/showthread.php?t=230905",
-      "note": "the most recommended Ableton look (beta, on the forum)"
-    },
-    "FL Studio Theme.ReaperThemeZip": {
-      "by": "Mordi",
-      "url": "https://forum.cockos.com/showthread.php?t=229919",
-      "note": "classic FL colours (beta, on the forum)"
+      "note": "26,000+ downloads",
+      "get": "https://stash.reaper.fm/40859/ProTools%2012.5_F_edit_V5-mawi%20mod%202.ReaperThemeZip"
     },
     "INQUASAR DARK MATTER v.FL.ReaperThemeZip": {
       "by": "georgedayren",
       "url": "https://stash.reaper.fm/theme/2383/INQUASAR%20DARK%20MATTER%20v.FL.ReaperThemeZip",
-      "note": "FL-style piano roll"
+      "note": "FL-style piano roll",
+      "get": "https://stash.reaper.fm/37259/INQUASAR%20DARK%20MATTER%20v.FL.ReaperThemeZip"
     },
     "Vex Cubase 5 Remix.ReaperThemeZip": {
       "by": "vex_cro (remix of EricM's Shoelace Cubase 5)",
       "url": "https://stash.reaper.fm/theme/2259/Vex%20Cubase%205%20Remix%20%282nd%20try%29",
-      "note": "12,000+ downloads"
+      "note": "12,000+ downloads",
+      "get": "https://stash.reaper.fm/35064/Vex%20Cubase%205%20Remix.ReaperThemeZip"
     },
     "ReaSonus One ALPHA.ReaperThemeZip": {
       "by": "Amberience",
       "url": "https://stash.reaper.fm/theme/2793/ReaSonus%20One%20ALPHA.ReaperThemeZip",
-      "note": "the original ReaSonus One, 6,700+ downloads"
-    },
-    "CONCEPT SIX - BASIC SX.ReaperThemeZip": {
-      "by": "CONCEPT SIX",
-      "url": "https://stash.reaper.fm/theme/3365/CONCEPT%20SIX%20-%20BASIC%20SX",
-      "note": "2026, needs the latest REAPER 7, HiDPI"
+      "note": "the original ReaSonus One, 6,700+ downloads",
+      "get": "https://stash.reaper.fm/43528/ReaSonus%20One%20ALPHA.ReaperThemeZip"
     },
     "Beatwing v2.5.ReaperThemeZip": {
       "by": "spinlud",
       "url": "https://stash.reaper.fm/theme/1459/Beatwing%20v2.5.zip",
       "zip": true,
-      "note": "inspired by Bitwig Studio; REAPER 4/5 era, check it in REAPER 7"
+      "note": "inspired by Bitwig Studio; REAPER 4/5 era, check it in REAPER 7",
+      "get": "https://stash.reaper.fm/21597/Beatwing%20v2.5.zip"
+    },
+    "rLive.ReaperThemeZip": {
+      "by": "Odys",
+      "url": "https://forum.cockos.com/showthread.php?t=230905",
+      "note": "the most recommended Ableton look (Beta 3, free; the author takes donations on the forum)",
+      "get": "https://www.dropbox.com/s/y170gcmcatu3hme/rLive%20-%20BETA_3.ReaperThemeZip?dl=1",
+      "mods": [
+        {
+          "name": "ModPack: item selection and routing icon versions",
+          "get": "https://www.dropbox.com/s/s7f3ydrb0ksmsyu/MODPACK_V1.zip?dl=1"
+        }
+      ]
+    },
+    "I Logic V3 WC.ReaperThemeZip": {
+      "by": "Blankfiles",
+      "url": "https://forum.cockos.com/showthread.php?t=214879",
+      "note": "I Logic 3.90, now free; the pack has a Big version for high-resolution screens too",
+      "get": "https://www.dropbox.com/s/9su2evfejxx9b17/I%20LOGIC%20V3.rar?dl=1"
+    },
+    "I Logic V3 Big WC.ReaperThemeZip": {
+      "by": "Blankfiles",
+      "url": "https://forum.cockos.com/showthread.php?t=214879",
+      "note": "I Logic 3.90 for big screens",
+      "get": "https://www.dropbox.com/s/9su2evfejxx9b17/I%20LOGIC%20V3.rar?dl=1"
+    },
+    "FLogic - B.ReaperTheme": {
+      "url": "https://stash.reaper.fm/theme/3229/Theme%20FLogic%20B.zip",
+      "zip": true,
+      "note": "newer FLogic, 7,700+ downloads",
+      "get": "https://stash.reaper.fm/50642/Theme%20FLogic%20B.zip"
+    },
+    "FL Studio Theme (beta 4).ReaperTheme": {
+      "by": "Mordi",
+      "url": "https://forum.cockos.com/showthread.php?t=229919",
+      "note": "classic FL colours (beta 4, 1080p); comes with fonts, which ReaPersona installs for you",
+      "get": "https://www.dropbox.com/s/kchq02x6nikx39j/FL%20Studio%20Theme%20%28beta%204%29.zip?dl=1"
+    },
+    "CSIX-BASIC-SX.ReaperThemeZip": {
+      "by": "CONCEPT SIX",
+      "url": "https://stash.reaper.fm/theme/3365/CONCEPT%20SIX%20-%20BASIC%20SX",
+      "note": "2026, needs the latest REAPER 7, HiDPI",
+      "get": "https://stash.reaper.fm/52423/CONCEPT-SIX-BASIC-SX_small-install.zip"
+    },
+    "Beatwing v2.5_bright.ReaperThemeZip": {
+      "by": "spinlud",
+      "url": "https://stash.reaper.fm/theme/1459/Beatwing%20v2.5.zip",
+      "note": "Beatwing's bright version",
+      "get": "https://stash.reaper.fm/21597/Beatwing%20v2.5.zip"
+    },
+    "Echolot_1.12.ReaperThemeZip": {
+      "by": "mawi",
+      "url": "https://stash.reaper.fm/theme/2864/Echolot_1.12.ReaperThemeZip",
+      "note": "Echolot, the theme the BandLab recolour is built on",
+      "get": "https://stash.reaper.fm/45397/Echolot_1.12.ReaperThemeZip"
+    },
+    "IMPERIAL 24.ReaperThemeZip": {
+      "by": "House of White Tie",
+      "url": "https://stash.reaper.fm/theme/1629/IMPERIAL%2024.ReaperThemeZip",
+      "note": "a hardware look, the nearest REAPER has to Reason's rack",
+      "get": "https://stash.reaper.fm/24913/IMPERIAL%2024.ReaperThemeZip"
+    },
+    "Dark_Side_Imperial.ReaperThemeZip": {
+      "by": "House of White Tie",
+      "url": "https://stash.reaper.fm/theme/1049/Dark_Side_Imperial.ReaperThemeZip",
+      "note": "Imperial in dark",
+      "get": "https://stash.reaper.fm/13791/Dark_Side_Imperial.ReaperThemeZip"
+    },
+    "ReAudacity.ReaperThemeZip": {
+      "url": "https://stash.reaper.fm/theme/2973/ReAudacity.zip",
+      "note": "an Audacity look",
+      "get": "https://stash.reaper.fm/46900/ReAudacity.zip"
+    },
+    "ULTIMATE.ReaperThemeZip": {
+      "by": "Blankfiles",
+      "url": "https://forum.cockos.com/showthread.php?t=214879",
+      "note": "I Logic Ultimate 1080p, the bonus in the I Logic 3.90 pack",
+      "get": "https://www.dropbox.com/s/9su2evfejxx9b17/I%20LOGIC%20V3.rar?dl=1"
     }
   },
   "own_themes": {

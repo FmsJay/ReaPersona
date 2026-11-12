@@ -876,8 +876,8 @@ function M.install_extension(key) -- -> true, or nil + why. REAPER loads it at i
 end
 
 -- ---------------------------------------------------------------- themes you add, styles made by merging shortcuts
-function M.import_theme(path) -- copy a downloaded theme into ColorThemes -> its file name, or nil + why
-  local name = path:gsub("\\", "/"):match("[^/]+$") or ""
+function M.import_theme(path, as_name) -- copy a downloaded theme into ColorThemes (as as_name, when given) -> its file name, or nil + why
+  local name = as_name or path:gsub("\\", "/"):match("[^/]+$") or ""
   if not (name:match("%.ReaperThemeZip$") or name:match("%.ReaperTheme$")) then return nil, "not a .ReaperThemeZip or .ReaperTheme" end
   local data = M.read(path)
   if not data then return nil, "couldn't read it" end
@@ -1623,13 +1623,20 @@ end
 -- Whatever was dropped on the window. -> list of { kind, name, detail } (kind: theme, toolbar, style, preset, skipped)
 -- Inside a zip (in_zip) only themes and toolbars come in: a pack's keymaps go to REAPER's KeyMaps folder, to drop in on purpose,
 -- rather than each taking one of the few free shortcut layers.
-function M.import_file(path, out, in_zip)
+function M.import_file(path, out, in_zip, depth) -- (depth: how many packs deep; a pack inside a pack is opened, one more is not)
   out = out or {}
   local p = path:gsub("\\", "/")
   local base = p:match("[^/]+$") or p
   local low = base:lower()
   if low:match("%.reaperthemezip$") or low:match("%.reapertheme$") then
     local n, why = M.import_theme(p)
+    local folder = in_zip and low:match("%.reapertheme$") and p:gsub("%.[Rr][Ee][Aa][Pp][Ee][Rr][Tt][Hh][Ee][Mm][Ee]$", "")
+    if n and folder and M.is_dir(folder) then -- (its images: without them the theme draws nothing)
+      local to = M.themes_dir .. folder:match("[^/]+$")
+      if M.is_dir(to) then os.rename(to, to .. ".before-" .. os.date("%Y%m%d-%H%M%S")) end
+      if not os.rename(folder, to) then M.copy_tree(folder, to) end
+      why = (why and (why .. "; ") or "") .. "with its folder of images"
+    end
     out[#out + 1] = { n and "theme" or "skipped", n or base, why }
   elseif low:match("%.reapermenu$") then
     reaper.RecursiveCreateDirectory(M.here .. "/toolbars", 0)
@@ -1654,9 +1661,9 @@ function M.import_file(path, out, in_zip)
       local st, why = M.import(p)
       out[#out + 1] = { st and "style" or "skipped", st and st.name or base, st and ("shortcut layer alt-" .. st.alt) or why }
     else out[#out + 1] = { "skipped", base, "not a ReaPersona persona or preset" } end
-  elseif low:match("%.zip$") then -- (a theme pack: unpacked with Windows' or macOS's own tar, then the themes and toolbars inside come in)
-    if in_zip then out[#out + 1] = { "skipped", base, "a zip inside the pack: unpack it and drop that in" }; return out end
-    local nm = M.file_name(base:gsub("%.[Zz][Ii][Pp]$", "")):gsub("^%s+$", "")
+  elseif low:match("%.zip$") or low:match("%.rar$") then -- (a theme pack: unpacked with Windows' or macOS's own tar, then what's inside comes in)
+    if in_zip and (depth or 1) >= 2 then out[#out + 1] = { "skipped", base, "a pack inside a pack inside a pack: unpack it and drop that in" }; return out end
+    local nm = M.file_name(base:gsub("%.[ZzRr][IiAa][PpRr]$", "")):gsub("^%s+$", "")
     local dir = M.here .. "/_incoming/" .. (nm ~= "" and nm or "pack") .. "-" .. os.time()
     reaper.RecursiveCreateDirectory(dir, 0)
     local win = reaper.GetOS():find("^Win")
@@ -1665,16 +1672,16 @@ function M.import_file(path, out, in_zip)
     local q = win and function(s) return '"' .. s .. '"' end or function(s) return "'" .. s:gsub("'", "'\\''") .. "'" end
     local code, text = sh(q(tar) .. " -xf " .. q(p) .. " -C " .. q(dir), 60000)
     local n0 = #out
+    local skip = M.pack_prepass(dir, nm, out) -- (fonts, scripts and mods for themes you have: dealt with before the walk)
     local function walk(d)
       reaper.EnumerateFiles(d, -1); reaper.EnumerateSubdirectories(d, -1) -- (REAPER caches folder listings: rescan)
-      for i = 0, 2000 do local f = reaper.EnumerateFiles(d, i); if not f then break end M.import_file(d .. "/" .. f, out, true) end
-      for i = 0, 200 do local s = reaper.EnumerateSubdirectories(d, i); if not s then break end walk(d .. "/" .. s) end
+      for i = 0, 2000 do local f = reaper.EnumerateFiles(d, i); if not f then break end if not skip[d .. "/" .. f] then M.import_file(d .. "/" .. f, out, true, (depth or 0) + 1) end end
+      for i = 0, 200 do local s = reaper.EnumerateSubdirectories(d, i); if not s then break end if not skip[d .. "/" .. s] then walk(d .. "/" .. s) end end
     end
     walk(dir)
     M.remove_tree(dir) -- (the unpacked copy was ours, made just above: gone again)
     if out.left then out[#out + 1] = { "skipped", out.left .. " other files", "readmes, images and the like: not themes or toolbars" }; out.left = nil end
-    if out.fonts then out[#out + 1] = { "note", "fonts", "the pack comes with fonts: unzip it and install them (double-click each) so the theme looks right" }; out.fonts = nil end
-    if out.scripts then out[#out + 1] = { "note", "scripts", "the pack has its own scripts (a theme adjuster, say): unzip it and load them in the Actions list if you want them" }; out.scripts = nil end
+    out.fonts, out.scripts = nil, nil
     if code ~= "0" and #out == n0 then out[#out + 1] = { "skipped", base, "couldn't unpack it: " .. (text or ""):sub(1, 200) }
     elseif #out == n0 then out[#out + 1] = { "skipped", base, "nothing ReaPersona can use inside" } end
   elseif in_zip then -- (a pack's readmes, images, fonts and scripts: counted, not listed one by one)
@@ -1683,6 +1690,170 @@ function M.import_file(path, out, in_zip)
     if low:match("%.lua$") or low:match("%.eel$") then out.scripts = true end
   else out[#out + 1] = { "skipped", base, "not a theme, toolbar, keymap, persona or preset" } end
   return out
+end
+
+-- ---------------------------------------------------------------- installing themes: one click from the catalog, and packs made easy
+function M.is_dir(d) reaper.EnumerateFiles(d, -1); reaper.EnumerateSubdirectories(d, -1); return (reaper.EnumerateFiles(d, 0) or reaper.EnumerateSubdirectories(d, 0)) ~= nil end
+function M.copy_tree(from, to) -- every file under from, to the same place under to -> how many copied
+  reaper.RecursiveCreateDirectory(to, 0)
+  reaper.EnumerateFiles(from, -1); reaper.EnumerateSubdirectories(from, -1)
+  local n = 0
+  for i = 0, 5000 do local f = reaper.EnumerateFiles(from, i); if not f then break end if M.write(to .. "/" .. f, M.read(from .. "/" .. f) or "") then n = n + 1 end end
+  for i = 0, 500 do local d = reaper.EnumerateSubdirectories(from, i); if not d then break end n = n + M.copy_tree(from .. "/" .. d, to .. "/" .. d) end
+  return n
+end
+local function untar(archive, dir) -- (Windows' own tar by full path: another tar on PATH, Git's say, reads "J:/..." as a remote host)
+  local win = reaper.GetOS():find("^Win")
+  local tar = win and ((os.getenv("SystemRoot") or "C:\\Windows") .. "\\System32\\tar.exe") or "/usr/bin/tar"
+  local q = win and function(x) return '"' .. x .. '"' end or function(x) return "'" .. x:gsub("'", "'\\''") .. "'" end
+  reaper.RecursiveCreateDirectory(dir, 0)
+  return sh(q(tar) .. " -xf " .. q(archive) .. " -C " .. q(dir), 60000)
+end
+-- A mod for a theme you have (a pack folder holding "Name/" images, maybe "Name.ReaperTheme", where Name.ReaperThemeZip is installed):
+-- the theme unpacked, the mod laid over it, saved as "Name (label)" next to it. -> the new theme's file name, or nil + why
+function M.make_variant(base, mod_dir, label)
+  local name = M.file_name(base .. " (" .. label .. ")")
+  local tmp = M.here .. "/_incoming/variant-" .. os.time() .. "-" .. math.random(1000, 9999)
+  untar(M.themes_dir .. base .. ".ReaperThemeZip", tmp)
+  local rt = M.read(mod_dir .. "/" .. base .. ".ReaperTheme") or M.read(tmp .. "/" .. base .. ".ReaperTheme")
+  if not (rt and M.is_dir(tmp .. "/" .. base)) then M.remove_tree(tmp); return nil, "couldn't unpack " .. base end
+  M.copy_tree(mod_dir .. "/" .. base, tmp .. "/" .. base)
+  local to = M.themes_dir .. name
+  if M.is_dir(to) then os.rename(to, to .. ".before-" .. os.date("%Y%m%d-%H%M%S")) end
+  if not os.rename(tmp .. "/" .. base, to) then M.copy_tree(tmp .. "/" .. base, to) end
+  M.remove_tree(tmp)
+  if rt:find("\nui_img=[^\n]*") then rt = rt:gsub("\nui_img=[^\r\n]*", "\nui_img=" .. name, 1)
+  elseif rt:find("%[REAPER%]") then rt = rt:gsub("%[REAPER%]", "[REAPER]\nui_img=" .. name, 1)
+  else rt = rt .. "\n[REAPER]\nui_img=" .. name .. "\n" end
+  if not M.write(M.themes_dir .. name .. ".ReaperTheme", rt) then return nil, "couldn't write into ColorThemes" end
+  M.recent_themes[name .. ".ReaperTheme"] = true
+  return name .. ".ReaperTheme"
+end
+-- Before a pack's walk: its fonts and scripts are put aside (installed on your yes), and mods for themes you have become theme versions.
+-- -> the paths the walk leaves out
+function M.pack_prepass(root, pack, out)
+  local skip, fonts, scripts, script_dirs = {}, {}, {}, {}
+  local stage = M.here .. "/_staged/" .. M.file_name(pack)
+  M.remove_tree(stage)
+  reaper.EnumerateSubdirectories(root, -1); reaper.EnumerateFiles(root, -1)
+  local one_top = reaper.EnumerateSubdirectories(root, 0) and not reaper.EnumerateSubdirectories(root, 1) and not reaper.EnumerateFiles(root, 0)
+  local function scan(d, rel)
+    reaper.EnumerateFiles(d, -1); reaper.EnumerateSubdirectories(d, -1)
+    for i = 0, 5000 do
+      local f = reaper.EnumerateFiles(d, i)
+      if not f then break end
+      local low = f:lower()
+      if low:match("%.ttf$") or low:match("%.otf$") then
+        reaper.RecursiveCreateDirectory(stage .. "/fonts", 0)
+        if M.write(stage .. "/fonts/" .. f, M.read(d .. "/" .. f) or "") then fonts[#fonts + 1] = stage .. "/fonts/" .. f end
+      elseif (low:match("%.lua$") or low:match("%.eel$")) and not script_dirs[d] and not (function()
+          for k in pairs(script_dirs) do if d:sub(1, #k + 1) == k .. "/" then return true end end end)() then -- (helpers inside a copied folder: not actions)
+        script_dirs[d] = true -- (the script's whole folder: its images and helpers come along)
+        local to = stage .. "/scripts/" .. M.file_name(d:match("[^/]+$") or "scripts")
+        M.copy_tree(d, to)
+        reaper.EnumerateFiles(to, -1)
+        for k = 0, 500 do local g = reaper.EnumerateFiles(to, k); if not g then break end if g:lower():match("%.lua$") or g:lower():match("%.eel$") then scripts[#scripts + 1] = to .. "/" .. g end end
+      end
+    end
+    for i = 0, 500 do
+      local s = reaper.EnumerateSubdirectories(d, i)
+      if not s then break end
+      local full, label = d .. "/" .. s, rel
+      if s:lower() ~= "fonts" and reaper.file_exists(M.themes_dir .. s .. ".ReaperThemeZip") and not reaper.file_exists(d .. "/" .. s .. ".ReaperThemeZip") then
+        label = (label ~= "" and label or pack)
+        local v, why = M.make_variant(s, d, label)
+        out[#out + 1] = { v and "theme" or "skipped", v or (s .. " (" .. label .. ")"), v and ("a version of " .. s .. " with this mod") or why }
+        skip[full], skip[d .. "/" .. s .. ".ReaperTheme"] = true, true
+      else
+        scan(full, (one_top and d == root) and "" or ((rel ~= "" and (rel .. " ") or "") .. s))
+      end
+    end
+  end
+  scan(root, "")
+  if #fonts > 0 then out[#out + 1] = { "note", "fonts", #fonts .. " font" .. (#fonts == 1 and "" or "s") .. " the theme uses: ReaPersona can install them for you", files = fonts, stage = stage } end
+  if #scripts > 0 then out[#out + 1] = { "note", "scripts", #scripts .. " script" .. (#scripts == 1 and "" or "s") .. " (a theme adjuster, say): ReaPersona can add them to the Actions list", files = scripts, stage = stage } end
+  return skip
+end
+-- Fonts for your account only (no administrator): Windows' per-user fonts folder and registry key, ~/Library/Fonts on a Mac.
+-- REAPER sees them after a restart. -> how many, or nil + why
+function M.install_fonts(files)
+  if #files == 0 then return 0 end
+  if reaper.GetOS():find("^Win") then
+    local lines = { "$ErrorActionPreference = 'Stop'", "$d = Join-Path $env:LOCALAPPDATA 'Microsoft\\Windows\\Fonts'",
+      "New-Item -ItemType Directory -Force -Path $d | Out-Null", "$k = 'HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts'", "$n = 0" }
+    for _, f in ipairs(files) do
+      local w = f:gsub("/", "\\"):gsub("'", "''")
+      lines[#lines + 1] = "$t = Join-Path $d (Split-Path -Leaf '" .. w .. "'); Copy-Item -LiteralPath '" .. w .. "' -Destination $t -Force; " ..
+        "New-ItemProperty -Path $k -Name ([IO.Path]::GetFileNameWithoutExtension($t) + ' (TrueType)') -Value $t -PropertyType String -Force | Out-Null; $n++"
+    end
+    lines[#lines + 1] = "Write-Output $n"
+    local ps1 = M.here .. "/_staged/install_fonts.ps1"
+    reaper.RecursiveCreateDirectory(M.here .. "/_staged", 0)
+    M.write(ps1, table.concat(lines, "\r\n") .. "\r\n")
+    local code, text = sh('powershell -NoProfile -ExecutionPolicy Bypass -File "' .. ps1:gsub("/", "\\") .. '"', 60000)
+    os.remove(ps1)
+    if code ~= "0" then return nil, (text or ""):sub(1, 200) end
+    return tonumber((text or ""):match("(%d+)%s*$")) or #files
+  end
+  local to = (os.getenv("HOME") or "") .. (M.IS_MAC and "/Library/Fonts" or "/.local/share/fonts")
+  reaper.RecursiveCreateDirectory(to, 0)
+  local n = 0
+  for _, f in ipairs(files) do if M.write(to .. "/" .. f:match("[^/]+$"), M.read(f) or "") then n = n + 1 end end
+  return n
+end
+-- A pack's scripts into Scripts/ReaPersona theme scripts/<pack>/, each added to the Actions list. -> the action names, or nil + why
+function M.register_scripts(files, stage)
+  local dest = res .. "/Scripts/ReaPersona theme scripts/" .. M.file_name(stage:match("[^/]+$") or "pack")
+  M.copy_tree(stage .. "/scripts", dest)
+  local names = {}
+  for n, f in ipairs(files) do
+    local p = dest .. f:sub(#stage + #"/scripts" + 1)
+    if reaper.file_exists(p) and reaper.AddRemoveReaScript(true, 0, p, n == #files) ~= 0 then names[#names + 1] = p:match("[^/]+$") end
+  end
+  return names
+end
+function M.forget_staged(stage) if stage then M.remove_tree(stage) end end
+local GET_OK = { "^https://stash%.reaper%.fm/", "^https://www%.dropbox%.com/", "^https://dl%.dropboxusercontent%.com/" }
+local function fetch(url) -- a catalog download into _downloads -> its path, or nil + why
+  url = url:gsub("[^%w%-%._~/:%%%?=&]", function(c) return string.format("%%%02X", c:byte()) end)
+  local ok = false
+  for _, pat in ipairs(GET_OK) do if url:match(pat) then ok = true end end
+  if not ok then return nil, "not a download ReaPersona knows" end
+  if url:match("dropbox%.com") then url = url:gsub("dl=0", "dl=1"); if not url:find("dl=1", 1, true) then url = url .. (url:find("?", 1, true) and "&" or "?") .. "dl=1" end end
+  local name = urldecode(url:match("([^/?]+)%?") or url:match("[^/]+$") or ""):gsub("[^%w%._ %-%(%)]", "_"):gsub("^[%. ]+", "")
+  local dir = M.here .. "/_downloads"
+  reaper.RecursiveCreateDirectory(dir, 0)
+  local path = dir .. "/" .. (name ~= "" and name or "download")
+  local code = sh('curl -s -L --max-time 120 -o "' .. path .. '" "' .. url .. '"', 130000)
+  local head = (M.read(path) or ""):sub(1, 300):lower()
+  if code ~= "0" or head == "" or head:find("<!doctype", 1, true) or head:find("<html", 1, true) then os.remove(path); return nil, "the download didn't come (offline, or the site wants a browser)" end
+  return path
+end
+function M.can_install_theme(name) local c = M.CATALOG[name]; return c ~= nil and type(c.get) == "string" end
+-- One click: a catalog theme (or the pack it comes in) downloaded and taken in, under the name the catalog knows it by.
+-- -> import results (like a dropped file), or nil + why
+function M.install_theme(name)
+  local c = M.CATALOG[name]
+  if not (c and c.get) then return nil, "no download known" end
+  local path, why = fetch(c.get)
+  if not path then return nil, why end
+  local low, got = path:lower(), nil
+  if low:match("%.reaperthemezip$") or low:match("%.reapertheme$") then
+    local n, w = M.import_theme(path, name)
+    got = { { n and "theme" or "skipped", n or name, w } }
+  else got = M.import_file(path) end
+  os.remove(path)
+  if not reaper.file_exists(M.themes_dir .. name) then got[#got + 1] = { "note", name, "wasn't in the download under that name: the pack's own themes are in your list" } end
+  return got
+end
+function M.install_mod(base, n) -- one of a theme's mod packs from the catalog (rLive's ModPack, say) -> import results, or nil + why
+  local m = ((M.CATALOG[base] or {}).mods or {})[n]
+  if not (m and m.get) then return nil, "no download known" end
+  local path, why = fetch(m.get)
+  if not path then return nil, why end
+  local got = M.import_file(path)
+  os.remove(path)
+  return got
 end
 
 -- ---------------------------------------------------------------- share a style, print its cheat sheet
