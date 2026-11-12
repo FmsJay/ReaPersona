@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One or Bitwig (or stock REAPER), switch on the fly, save your own presets, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.4.4
+-- @version 5.4.5
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each style is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings such
@@ -573,14 +573,6 @@ local function import_theme()
 end
 local trying, try_theme -- (a theme on trial: { name, back = the theme to go back to, ends = time }; set up with the setup helpers)
 local function themes_page(sel, alt)
-  local list = {}
-  for _, st in ipairs(styles) do if st.kind == "theme" then list[#list + 1] = st end end
-  if #list > 0 then
-    view_switch()
-    chooser(list, pick_in(list, sel), alt)
-    ImGui.Dummy(ctx, 0, 4)
-    detail(pick_in(list, sel), alt)
-  end
   if card("all themes") then
     heading("Every theme on this computer")
     muted("Use one on its own (your keys and settings stay as they are), or add it to the Theme list of the style in use.")
@@ -617,6 +609,14 @@ local function themes_page(sel, alt)
       ImGui.EndTable(ctx)
     end
     card_end()
+  end
+  local list = {}
+  for _, st in ipairs(styles) do if st.kind == "theme" then list[#list + 1] = st end end
+  if #list > 0 then
+    view_switch()
+    chooser(list, pick_in(list, sel), alt)
+    ImGui.Dummy(ctx, 0, 4)
+    detail(pick_in(list, sel), alt)
   end
   if card("theme sources") then
     heading("Where to get more themes")

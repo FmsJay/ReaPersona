@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.4.5
+- Themes > Your themes opens with every theme on your computer (search, Try, Use, Add to style); the theme styles come after.
+
 ## 5.4.4
 - Adding a theme pack (Browse > Add or a dropped zip) gives a short report: what was added, one line for the rest of the pack, and notes when it comes with fonts or its own scripts. It used to list every file.
 - A theme you already have is replaced when the download is different (the older copy is kept), and the report says when it's the same file.
