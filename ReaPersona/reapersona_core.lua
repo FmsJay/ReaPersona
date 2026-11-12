@@ -928,24 +928,73 @@ end
 -- { kind = "feel", id, aspect } (one part of a DAW's feel), { kind = "settings", group, values } (REAPER options: values[i] is 0/1
 -- for a switch or the option's number for a choice, -1 leaves it alone), { kind = "theme", file } or { kind = "colour", hex }.
 -- Where two blocks set the same thing, the lower one wins. The persona keeps its blocks, so the Builder can open it again.
-M.SETTING_GROUPS = { -- (REAPER's own actions, checked against its action list)
+M.SETTING_GROUPS = { -- (REAPER's own actions, checked against its action list; "_SWS..." and "_S&M..." ones need SWS)
   { id = "playback", name = "Playback and scrolling", items = {
-    { 41817, "Continuous scrolling" }, { 40036, "Follow the playhead" }, { 40262, "Follow while recording" }, { 40390, "Smooth seek" },
-    { 1068, "Loop playback" }, { 40621, "Loop follows the time selection" }, { 41818, "Pre-roll on play" }, { 40364, "Metronome" } } },
+    { 41817, "Continuous scrolling", tip = "The arrange view moves under a fixed playhead during playback." },
+    { 40036, "Follow the playhead", tip = "The view scrolls to keep the playhead in sight during playback." },
+    { 40262, "Follow while recording", tip = "The same, while recording." },
+    { 40390, "Smooth seek", tip = "Jumps during playback wait for the end of the bar or region (Preferences > Audio > Seeking)." },
+    { 1068, "Loop playback", tip = "Playback repeats the loop range." },
+    { 40621, "Loop follows the time selection", tip = "Selecting time sets the loop range too." },
+    { 41818, "Pre-roll on play", tip = "Playback starts a little before the cursor." },
+    { 40364, "Metronome", tip = "REAPER's click." },
+    { "_SWS_AWMPLAYTOG", "Metronome during playback", tip = "The click sounds when playing (SWS)." },
+    { "_SWS_AWCOUNTPLAYTOG", "Count-in before playback", tip = "A bar of click before playback starts (SWS)." },
+    { "_SWS_TOGSEEKMODE1", "Playback follows item moves", tip = "Moving or resizing an item during playback seeks to it (SWS)." } } },
   { id = "editing", name = "Editing", items = {
-    { 1157, "Snap" }, { { 40309, 40310, 40311 }, "Ripple editing", { "Off", "Per track", "All tracks" } }, { 40041, "Auto-crossfade" },
-    { 40912, "Crossfade on split" }, { 41117, "Trim content behind items" }, { 40070, "Envelope points move with items" },
-    { 1156, "Item grouping" }, { 1135, "Locking" }, { 40507, "Overlapping items shown in lanes" } } },
+    { 1157, "Snap", tip = "Edits snap to the grid." },
+    { { 40309, 40310, 40311 }, "Ripple editing", { "Off", "Per track", "All tracks" }, tip = "Moving or deleting an item shifts what comes after it." },
+    { 40041, "Auto-crossfade", tip = "Overlapping items crossfade." },
+    { 40912, "Crossfade on split", tip = "A short crossfade where you split." },
+    { 41117, "Trim content behind items", tip = "An item moved over another cuts the one underneath." },
+    { 40070, "Envelope points move with items", tip = "Automation under an item moves with it." },
+    { 1156, "Item grouping", tip = "Grouped items move together." },
+    { 41156, "Clicking a grouped item selects its group" },
+    { 1135, "Locking", tip = "Locked items and envelopes can't be moved (Shift+L sets what)." },
+    { 40507, "Overlapping items shown in lanes", tip = "Items that overlap on a track sit in lanes, one above the other." },
+    { 40276, "Edit cursor jumps to a new time selection", tip = "Selecting time moves the edit cursor to its start." },
+    { "_SWS_AWCLRTIMESELCLKTOG", "Time selection and edit cursor linked", tip = "Clicking clears the time selection and moves the cursor together (SWS)." } } },
   { id = "recording", name = "Recording", items = {
     { { 40252, 40076, 40253 }, "Record mode", { "Normal", "Punch in the time selection", "Punch in selected items" } },
-    { 41819, "Pre-roll on record" }, { 40364, "Metronome" } } },
+    { { 41330, 41186, 42677 }, "Recording over an item", { "Splits it and adds a take", "Replaces it (tape)", "Adds a layer" }, tip = "What happens when you record over an existing item." },
+    { { 43153, 43152, 43151 }, "Lanes", { "No lanes", "New lanes play alone", "Lanes in layers" }, tip = "Whether new recordings get fixed lanes (REAPER 7's comping lanes)." },
+    { 40114, "Loop recording always adds takes", tip = "Each pass of a looped recording is a take." },
+    { 41819, "Pre-roll on record", tip = "Recording starts a little before the cursor." },
+    { 40364, "Metronome" },
+    { "_SWS_AWMRECTOG", "Metronome while recording", tip = "The click sounds when recording (SWS)." },
+    { "_SWS_AWCOUNTRECTOG", "Count-in before recording", tip = "A bar of click before recording starts (SWS)." },
+    { 40300, "Edit cursor to the end of a new recording", tip = "When recording stops, the edit cursor moves to its end." },
+    { "_SWS_AWAUTOGROUPTOG", "Group what's recorded together", tip = "Items recorded in one pass are grouped (SWS)." } } },
   { id = "view", name = "View", items = {
     { { 40366, 40367, 40365, 40370, 40368 }, "Ruler", { "Bars and beats + time", "Bars and beats", "Minutes:seconds", "Timecode", "Seconds" } }, -- (+ time first: it reads "Bars and beats" as on too)
-    { 40651, "Item labels" }, { 40258, "Labels above items" }, { 40145, "Grid lines" }, { 40435, "Show all takes" },
-    { 42073, "Spectral peaks" }, { 43145, "Peaks coloured by loudness" } } },
+    { 40651, "Item labels", tip = "Names on media items." },
+    { 40258, "Labels above items", tip = "Item names sit above the item, not inside it." },
+    { 40145, "Grid lines", tip = "Vertical grid lines in the arrange view." },
+    { 40435, "Show all takes", tip = "Every take of an item stacked, when there's room." },
+    { 42073, "Spectral peaks", tip = "Waveforms coloured by frequency." },
+    { 43145, "Peaks coloured by loudness", tip = "Waveforms coloured by momentary loudness (LUFS-M)." },
+    { 40691, "Media cues in items", tip = "Cue markers from the file show inside items." },
+    { 41344, "Tooltips on items and envelopes" },
+    { 43149, "Peak values in item tooltips" },
+    { 43642, "Item timebase buttons" },
+    { 40302, "FX inserts in the track panel", tip = "FX slots on each track's panel, when it's tall enough." },
+    { 40677, "Sends in the track panel", tip = "Sends on each track's panel, when it's tall enough." },
+    { 42373, "Track panel on the right", tip = "Track controls to the right of the arrange view, as in some DAWs." } } },
+  { id = "colours", name = "Colours and icons (SWS)", items = {
+    { "_SWSAUTOCOLOR_ENABLE", "Auto-colour tracks", tip = "New and renamed tracks take colours from SWS's rules (drums red, say)." },
+    { "_S&MAUTOCOLOR_MKR_ENABLE", "Auto-colour markers" },
+    { "_S&MAUTOCOLOR_RGN_ENABLE", "Auto-colour regions" },
+    { "_S&MAUTOICON_ENABLE", "Auto track icons", tip = "Tracks get icons from SWS's rules." },
+    { "_S&MAUTOLAYOUT_ENABLE", "Auto track layouts", tip = "Tracks get theme layouts from SWS's rules." },
+    { "_SWS_RECREDRULER", "Ruler goes red while recording" } } },
+  { id = "automation", name = "Automation", items = {
+    { 41576, "Envelope points follow the time selection", tip = "Selecting time selects the envelope points in it." },
+    { 42206, "Trim behind automation items", tip = "An automation item moved over another cuts it." },
+    { 42640, "Keep trailing values when recording automation" },
+    { "_SWS_TOGAUTOADDENVS", "Envelopes appear when you move a control in Write mode", tip = "SWS." } } },
   { id = "mixer", name = "Mixer", items = {
     { 40389, "Master on the right" }, { 40549, "FX inserts" }, { 40557, "Sends" }, { 40910, "FX parameters" }, { 40903, "Track icons" },
-    { 40371, "Multiple rows" }, { 40745, "Solo in front" } } },
+    { 40371, "Multiple rows" }, { 40745, "Solo in front", tip = "Soloing dims the rest instead of muting it." } } },
 }
 local function group_by_id(id) for _, g in ipairs(M.SETTING_GROUPS) do if g.id == id then return g end end end
 M.setting_group = group_by_id

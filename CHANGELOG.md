@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.7.0
+- **REAPER tweaks** (Settings > REAPER tweaks): about 60 of REAPER's and SWS's options in groups, switched live: playback and scrolling, editing, recording, view, **colours and icons (SWS auto-colour, auto icons, auto layouts, red ruler while recording)**, automation and mixer. New ones include count-in and metronome for playback and recording, what recording over an item does, fixed lanes, the edit cursor after recording, grouping what's recorded together, media cues, item tooltips, FX inserts and sends in the track panel, the track panel on the right, and automation behaviour. *Colour the tracks now* and *Colour and icon rules...* open SWS's auto-colour. Options that need SWS say so.
+- Each group has **Add to the Builder**: it goes into the Persona Builder as a block, set the way you have it, so a persona (or a project) can carry its own workflow.
+- The same groups are the Builder's REAPER settings blocks; the Settings page's old playback and Customize REAPER lists are now on REAPER tweaks.
+
 ## 5.6.0
 - **Theme versions:** each persona's page shows every version of its theme as a button (Pro Tools has nine: ReaPersona's own, Pro Tools 2020, Pro Tools Gold and more). Click one to make it that persona's theme; the ones you don't have yet are listed with Get it links. Right-click a version you added to take it off the list.
 - Themes > Your themes: **Add to...** adds a theme to any persona's versions, not only the one in use.

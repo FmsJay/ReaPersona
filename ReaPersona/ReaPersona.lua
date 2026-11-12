@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.6.0
+-- @version 5.7.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -728,24 +728,8 @@ local function presets_page(sel, alt)
   detail(pick_in(core.presets, sel), alt)
 end
 
--- Settings: playback and scrolling feel (REAPER's own, and the smooth playhead / smooth scroll extensions when installed), and the look.
-local SETTINGS = {
-  { 41817, "Continuous scrolling", "The arrange view moves under a fixed playhead during playback (REAPER: View > Continuous scrolling)." },
-  { 40036, "Follow the playhead", "The view scrolls to keep the playhead in sight during playback." },
-  { 40262, "Follow while recording", "The same, while recording." },
-  { 40390, "Smooth seek", "Jumps during playback wait for the end of the bar or region (Preferences > Audio > Seeking)." },
-}
+-- Settings: what personas may change, a persona per project, the smooth playhead / scroll extensions, and the look.
 local LOOKS = { "Follow StudioSync", "Dark", "Light", "Midnight", "Warm" }
-local CUSTOM = { -- (REAPER's own toggles, checked against its action list)
-  { 40651, "Item labels", "Names on media items." }, { 40258, "Labels above items (not inside)", "Where item names sit." },
-  { 40145, "Grid lines", "Vertical grid lines in the arrange view." }, { 40435, "Show all takes", "Every take of an item stacked, when there's room." },
-  { 42073, "Spectral peaks", "Waveforms coloured by frequency." }, { 43145, "Colour peaks by loudness (LUFS-M)", "Waveforms coloured by momentary loudness." },
-  { 40041, "Auto-crossfade when editing", "Overlapping items crossfade." }, { 40912, "Crossfade on split", "A short crossfade where you split." },
-  { 1156, "Item grouping", "Grouped items move together." }, { 1135, "Locking", "Locked items and envelopes can't be moved (Shift+L sets what)." },
-  { 40903, "Mixer: track icons", "Track icons in the mixer." }, { 40371, "Mixer: multiple rows", "The mixer wraps to more rows when there's room." },
-  { 40910, "Mixer: FX parameters", "FX parameter knobs on mixer strips, when there's room." },
-}
-local RULER = { { 40367, "Bars and beats" }, { 40366, "Bars and beats + time" }, { 40365, "Minutes:seconds" }, { 40370, "Timecode" }, { 40368, "Seconds" } }
 local function switch(id, on) -- an on/off switch: -> clicked
   local dl = ImGui.GetWindowDrawList(ctx)
   local x, y = ImGui.GetCursorScreenPos(ctx)
@@ -796,13 +780,7 @@ local function settings_page()
     card_end()
   end
   if card("set playback") then
-    heading("Playhead and scrolling")
-    muted("Saved by REAPER as you change them. A persona that sets one of these puts yours back when you switch away.")
-    for i, s in ipairs(SETTINGS) do
-      if setting_row("##set" .. i, s[2], reaper.GetToggleCommandState(s[1]) == 1, s[3]) then reaper.Main_OnCommand(s[1], 0) end
-    end
-    ImGui.Dummy(ctx, 0, 4)
-    heading("Smooth playhead, scrolling and zoom", 15)
+    heading("Smooth playhead, scrolling and zoom")
     muted("Most DAWs glide their playhead and zoom smoothly; REAPER steps. These two extensions add that. The DAW personas that feel that way recommend them.")
     for key, x in pairs(core.EXTENSIONS) do
       local state = core.extension_state(key)
@@ -822,25 +800,6 @@ local function settings_page()
       end
       ImGui.SetItemTooltip(ctx, x.why)
     end
-    card_end()
-  end
-  if card("set custom") then
-    heading("Customize REAPER")
-    muted("Common REAPER options in one place. Each is REAPER's own setting, saved by REAPER.")
-    for i, s in ipairs(CUSTOM) do
-      if setting_row("##cus" .. i, s[2], reaper.GetToggleCommandState(s[1]) == 1, s[3]) then reaper.Main_OnCommand(s[1], 0) end
-    end
-    ImGui.Dummy(ctx, 0, 2)
-    ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Ruler shows")
-    for i, r in ipairs(RULER) do
-      ImGui.SameLine(ctx)
-      if ImGui.RadioButton(ctx, r[2] .. "##ru" .. i, reaper.GetToggleCommandState(r[1]) == 1) then reaper.Main_OnCommand(r[1], 0) end
-    end
-    ImGui.Dummy(ctx, 0, 2)
-    if ImGui.Button(ctx, "Preferences") then reaper.Main_OnCommand(40016, 0) end
-    ImGui.SameLine(ctx); if ImGui.Button(ctx, "Customize toolbars and menus") then reaper.Main_OnCommand(40905, 0) end
-    ImGui.SameLine(ctx); if ImGui.Button(ctx, "Actions and shortcuts") then reaper.Main_OnCommand(40605, 0) end
-    ImGui.SameLine(ctx); if ImGui.Button(ctx, "REAPER's theme adjuster") then reaper.Main_OnCommand(42234, 0) end
     card_end()
   end
   if card("set look") then
@@ -1726,12 +1685,66 @@ local function builder_page()
   end
 end
 
+-- REAPER tweaks: every setting group the Builder offers, live. A group can go into the Builder as a block, as it's set now.
+local function tweaks_page()
+  if card("tw top") then
+    heading("REAPER tweaks")
+    muted("REAPER's own options and SWS's, in groups. Each change happens now and REAPER keeps it. A persona that sets one puts yours back when you switch away; 'Add to the Builder' makes a group, as you've set it here, part of a persona.")
+    if ImGui.Button(ctx, "Preferences") then reaper.Main_OnCommand(40016, 0) end
+    ImGui.SameLine(ctx); if ImGui.Button(ctx, "Toolbars and menus") then reaper.Main_OnCommand(40905, 0) end
+    ImGui.SameLine(ctx); if ImGui.Button(ctx, "Actions and shortcuts") then reaper.Main_OnCommand(40605, 0) end
+    ImGui.SameLine(ctx); if ImGui.Button(ctx, "Mouse modifiers") then reaper.Main_OnCommand(41356, 0) end
+    ImGui.SameLine(ctx); if ImGui.Button(ctx, "Theme adjuster") then reaper.Main_OnCommand(42234, 0) end
+    card_end()
+  end
+  for gi, g in ipairs(core.SETTING_GROUPS) do
+    if card("tw " .. g.id) then
+      heading(g.name, 16)
+      ImGui.SameLine(ctx)
+      if ImGui.SmallButton(ctx, "Add to the Builder##twb" .. gi) then
+        bld.blocks[#bld.blocks + 1] = core.new_block("settings", g.id)
+        say(g.name .. " is in the Persona Builder, set as it is now.")
+        go("Builder")
+      end
+      for n, it in ipairs(g.items) do
+        ImGui.PushID(ctx, gi * 100 + n)
+        if type(it[1]) == "table" then
+          local now = core.setting_now(it)
+          ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, it[2])
+          if it.tip then ImGui.SetItemTooltip(ctx, it.tip) end
+          for k, o in ipairs(it[3]) do
+            ImGui.SameLine(ctx)
+            if ImGui.RadioButton(ctx, o .. "##ch" .. k, now == k) and now ~= k then reaper.Main_OnCommand(core.cmd_id(it[1][k]), 0) end
+          end
+        else
+          local id = core.cmd_id(it[1])
+          if id == 0 then
+            ImGui.BeginDisabled(ctx); setting_row("##tw", it[2] .. "  (needs SWS)", false, it.tip); ImGui.EndDisabled(ctx)
+          elseif setting_row("##tw", it[2], reaper.GetToggleCommandState(id) == 1, it.tip) then
+            reaper.Main_OnCommand(id, 0)
+          end
+        end
+        ImGui.PopID(ctx)
+      end
+      if g.id == "colours" and core.cmd_id("_SWSAUTOCOLOR_APPLY") ~= 0 then
+        ImGui.Dummy(ctx, 0, 2)
+        if ImGui.Button(ctx, "Colour the tracks now") then reaper.Main_OnCommand(core.cmd_id("_SWSAUTOCOLOR_APPLY"), 0); say("Tracks coloured by SWS's rules.") end
+        ImGui.SetItemTooltip(ctx, "Applies SWS's auto-colour rules to every track now.")
+        ImGui.SameLine(ctx)
+        if ImGui.Button(ctx, "Colour and icon rules...") then reaper.Main_OnCommand(core.cmd_id("_SWSAUTOCOLOR_OPEN"), 0) end
+        ImGui.SetItemTooltip(ctx, "SWS's window for the rules: which track names get which colour, icon and layout.")
+      end
+      card_end()
+    end
+  end
+end
+
 local GROUPS = { -- { name, what it's for, its pages (tabs), the tabs' labels }
   { "Home", "Get everything set up, and import from another DAW. Drop files here.", { "Setup" }, { "Setup" } },
   { "Personas", "Make REAPER feel like another DAW, your own personas, and the Persona Builder.", { "DAWs", "Presets", "Builder" }, { "DAWs", "Your personas", "Persona Builder" } },
   { "Shortcuts", "Every key of a persona, with REAPER's action for it.", { "Shortcuts" }, { "Shortcuts" } },
   { "Themes", "Your themes, getting more, adjusting the one in use, building one from others.", { "Themes", "Browse", "Adjust", "Merge" }, { "Your themes", "Get more", "Adjust", "Build one" } },
-  { "Settings", "What personas may change, a persona per project, playback and scrolling, REAPER options, ReaPersona's look.", { "Settings" }, { "Settings" } },
+  { "Settings", "REAPER's and SWS's options in groups, what personas may change, a persona per project, ReaPersona's look.", { "Tweaks", "Settings" }, { "REAPER tweaks", "ReaPersona" } },
   { "Help", "What's installed, checking the personas, repairs.", { "Check" }, { "Check and repair" } },
 }
 local function group_of(pg) for _, g in ipairs(GROUPS) do for _, p in ipairs(g[3]) do if p == pg or (pg == "Styles" and p == "DAWs") then return g end end end return GROUPS[2] end
@@ -1804,11 +1817,13 @@ local function search_page()
       shown = shown + #th
     end
     local sets = {}
-    for _, list in ipairs({ SETTINGS, CUSTOM }) do for _, x in ipairs(list) do if has(x[2], x[3]) then sets[#sets + 1] = x end end end
+    for _, g in ipairs(core.SETTING_GROUPS) do
+      for _, x in ipairs(g.items) do if type(x[1]) ~= "table" and has(x[2], x.tip, g.name) and core.cmd_id(x[1]) ~= 0 then sets[#sets + 1] = x end end
+    end
     if #sets > 0 then
-      section("Settings")
+      section("REAPER tweaks")
       for i, x in ipairs(sets) do
-        if setting_row("##ssx" .. i, x[2], reaper.GetToggleCommandState(x[1]) == 1, x[3]) then reaper.Main_OnCommand(x[1], 0) end
+        if setting_row("##ssx" .. i, x[2], reaper.GetToggleCommandState(core.cmd_id(x[1])) == 1, x.tip) then reaper.Main_OnCommand(core.cmd_id(x[1]), 0) end
       end
       shown = shown + #sets
     end
@@ -1952,6 +1967,7 @@ local function frame()
       elseif page == "Presets" then presets_page(sel, alt)
       elseif page == "Builder" then builder_page()
       elseif page == "Settings" then settings_page()
+      elseif page == "Tweaks" then tweaks_page()
       elseif page == "Shortcuts" then keys_page()
       elseif page == "Adjust" then
         if adjust_out then

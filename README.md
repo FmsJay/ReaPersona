@@ -57,7 +57,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
 - **New project like <DAW>:** each persona's page starts a project with that DAW's usual tracks, buses and sends (REAPER's own plugins).
 
 - **Persona Builder:** drag blocks into a stack and see what each one sets as you go, then *Try it* or *Save*.
-  - Blocks: a DAW's shortcuts, its layout and feel, or just one part of it (Ableton's mouse feel, Pro Tools' mixer layout, Logic's transport position...); REAPER settings groups (playback and scrolling, editing, recording, view, mixer), each set the way you want; any theme; a colour.
+  - Blocks: a DAW's shortcuts, its layout and feel, or just one part of it (Ableton's mouse feel, Pro Tools' mixer layout, Logic's transport position...); REAPER settings groups (playback and scrolling, editing, recording, view, colours and icons, automation, mixer), each set the way you want; any theme; a colour.
   - Where two blocks set the same thing, the lower one wins, and the one that loses shows "replaced by" in its block. Untick any line in a block to leave just that out.
   - One DAW's shortcuts are ready straight away. Shortcuts from several DAWs get a layer of their own, installed with one click (REAPER restarts).
   - *Build on this* on any persona's page starts from it; *Edit in the Builder* reopens one you built.
@@ -68,7 +68,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
   - turns your own Cubase/Nuendo key commands into a persona;
   - makes a ReaPersona theme from an Ableton Live theme (`.ask`).
 - **What a persona may change:** switch off the parts you want to keep as they are, whatever persona you use: mixer docking, mixer layout, transport, Media Explorer, toolbar, mouse, snap/ripple.
-- **Customize REAPER:** item labels, grid lines, takes, spectral peaks, crossfades, grouping, locking, mixer options and what the ruler shows, in one place.
+- **REAPER tweaks** (Settings): about 60 of REAPER's and SWS's options in groups, switched live: playback and scrolling, editing, recording (count-in, recording over items, lanes), view, colours and icons (SWS auto-colour, auto icons and layouts), automation and mixer. *Add to the Builder* turns a group, as you've set it, into a block of a persona.
 - **Theme adjuster:** pops out into its own window; REAPER's own Theme Adjuster is one click away.
 
 - **Save what I'm using:** the persona in use the way you like it, with its theme, layout and settings, saved under a name. You can share it as a file.
@@ -76,7 +76,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
 - **Theme versions:** each persona's page shows all its theme versions as buttons (Pro Tools has nine), with *Get it* links for the ones you don't have yet. Click one to make it that persona's theme.
 - **Adjust:** a theme's own settings, layouts and colours, live.
 - **Build one (themes):** a theme from several (layout, colours and parts from different themes).
-- **Settings:** continuous scrolling, follow-playhead, smooth seek, smooth playhead and scroll/zoom, and ReaPersona's own look.
+- **Settings:** what personas may change, a persona per project, the smooth playhead and scroll/zoom extensions, and ReaPersona's own look.
 - **Cheat sheets:** every key and setting of a persona on one printable page.
 
 ## On a Mac
