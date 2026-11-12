@@ -58,7 +58,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
 
 - **Persona Builder:** drag blocks into a stack and see what each one sets as you go, then *Try it* or *Save*.
   - Blocks: a DAW's shortcuts, its layout and feel, or just one part of it (Ableton's mouse feel, Pro Tools' mixer layout, Logic's transport position...); REAPER settings groups (playback and scrolling, editing, recording, view, mixer), each set the way you want; any theme; a colour.
-  - Where two blocks set the same thing, the lower one wins, and the one that loses shows "replaced by" in its block.
+  - Where two blocks set the same thing, the lower one wins, and the one that loses shows "replaced by" in its block. Untick any line in a block to leave just that out.
   - One DAW's shortcuts are ready straight away. Shortcuts from several DAWs get a layer of their own, installed with one click (REAPER restarts).
   - *Build on this* on any persona's page starts from it; *Edit in the Builder* reopens one you built.
 - **A persona per project:** *Use for this project* on a persona's page saves it in the project. With *Switch persona with the project* on (Settings), opening that project or switching to its tab switches persona, and projects without one can keep the one in use or switch to one you pick. REAPER keeps many options per project (snap, ripple, the metronome, the mixer layout), and a persona's changes are put back in the tab they were made in.

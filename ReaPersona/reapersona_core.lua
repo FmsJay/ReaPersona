@@ -1027,8 +1027,11 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
 end
 function M.build_preview(blocks) -- -> per block its entries, each with .lost_to = the lower block that replaces it
   local per, winner = {}, {}
-  for i, b in ipairs(blocks) do per[i] = block_entries(b); for _, e in ipairs(per[i]) do winner[e.slot] = i end end
-  for i, list in ipairs(per) do for _, e in ipairs(list) do if winner[e.slot] ~= i then e.lost_to = winner[e.slot] end end end
+  for i, b in ipairs(blocks) do -- (b.off[slot]: a line of the block you unticked, left out of the persona)
+    per[i] = block_entries(b)
+    for _, e in ipairs(per[i]) do if type(b.off) == "table" and b.off[e.slot] then e.off = true else winner[e.slot] = i end end
+  end
+  for i, list in ipairs(per) do for _, e in ipairs(list) do if not e.off and winner[e.slot] ~= i then e.lost_to = winner[e.slot] end end end
   return per
 end
 function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true when its shortcuts need installing; or nil + why
@@ -1041,7 +1044,7 @@ function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true
     if b.kind == "daw" and b.keys and src then daws[#daws + 1] = b.id end
     names[#names + 1] = M.block_title(b)
     for _, e in ipairs(per[i]) do
-      if not e.lost_to then
+      if not e.lost_to and not e.off then
         if e.kind == "key" then st.keys[#st.keys + 1] = copy(e.entry)
         elseif e.kind == "midi" then st.midi_keys[#st.midi_keys + 1] = copy(e.entry)
         elseif e.kind == "feel" then st.feel[#st.feel + 1] = copy(e.entry)

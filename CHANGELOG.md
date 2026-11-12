@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.5.2
+- Persona Builder: every line inside a block has a tick box, so you can leave out one part of a block (Pro Tools' undocked mixer, say) and keep the rest.
+- Saving changes to the persona in use applies them straight away.
+- A block's title no longer runs into its Up/Down/Remove buttons in a narrow window, and the DAW list starts on a DAW with shortcuts.
+
 ## 5.5.1
 - The shortcut install never removes its first keymap backup (your keymap from before ReaPersona); it keeps that one and the newest 4.
 

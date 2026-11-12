@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.5.1
+-- @version 5.5.2
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -1465,7 +1465,9 @@ local function bld_palette()
   ImGui.Dummy(ctx, 0, 2)
   ImGui.Text(ctx, "From a DAW")
   local cur = core.by_id(bld.daw or "") or core.by_id(core.current().base or core.current().id) or styles[1]
-  if cur.kind == "built" or cur.kind == "theme" or #(cur.keys or {}) == 0 then cur = styles[1] end -- (My REAPER has nothing to borrow)
+  if cur.kind == "built" or cur.kind == "theme" or #(cur.keys or {}) == 0 then -- (My REAPER has nothing to borrow: the first DAW)
+    for _, st in ipairs(styles) do if #(st.keys or {}) > 0 and st.kind ~= "built" then cur = st; break end end
+  end
   ImGui.SetNextItemWidth(ctx, -1)
   if ImGui.BeginCombo(ctx, "##blddaw", cur.name) then
     for _, st in ipairs(styles) do
@@ -1508,9 +1510,15 @@ local function bld_palette()
   flow_first = false
   chip("This colour", function() return core.new_block("colour", string.format("#%06X", bld.colour)) end)
 end
-local function entry_line(e, blocks)
+local function entry_line(e, blocks, b)
+  local ch, v = ImGui.Checkbox(ctx, "##on" .. e.slot, not e.off)
+  if ch then b.off = type(b.off) == "table" and b.off or {}; b.off[e.slot] = (not v) or nil end
+  ImGui.SetItemTooltip(ctx, e.off and "Tick to put this back in the persona" or "Untick to leave this out of the persona")
+  ImGui.SameLine(ctx)
   local text = (e.key and (keyname(e.key) .. "  ") or "") .. tostring(e.label)
-  if e.lost_to then
+  if e.off then
+    ImGui.TextColored(ctx, C.MUTED, text .. "   (left out)")
+  elseif e.lost_to then
     ImGui.TextColored(ctx, C.MUTED, text .. "   (replaced by " .. core.block_title(blocks[e.lost_to]) .. ")")
   elseif e.kind == "feel" and not core.aspect_on(core.aspect_of(e.entry)) then
     ImGui.TextColored(ctx, C.YELLOW, text .. "   (off in Settings > What a persona may change)")
@@ -1529,7 +1537,8 @@ local function block_card(i, b, list, blocks)
     ImGui.SameLine(ctx); heading(i .. ". " .. core.block_title(b), 15)
     ImGui.SameLine(ctx)
     ImGui.TextColored(ctx, C.MUTED, #list .. " thing" .. (#list == 1 and "" or "s") .. (lost > 0 and (", " .. lost .. " replaced lower down") or ""))
-    ImGui.SameLine(ctx, math.max(ImGui.GetCursorPosX(ctx), ImGui.GetWindowWidth(ctx) - 190 * UI))
+    local right = ImGui.GetWindowWidth(ctx) - 190 * UI -- (no room beside the title: the buttons go on the next line)
+    if ImGui.GetItemRectMax(ctx) - ImGui.GetWindowPos(ctx) + 8 <= right then ImGui.SameLine(ctx, right) end
     ImGui.BeginDisabled(ctx, i == 1); if ImGui.SmallButton(ctx, "Up") then bld_act = { "move", i - 1, i } end; ImGui.EndDisabled(ctx)
     ImGui.SameLine(ctx)
     ImGui.BeginDisabled(ctx, i == #blocks); if ImGui.SmallButton(ctx, "Down") then bld_act = { "move", i + 2, i } end; ImGui.EndDisabled(ctx)
@@ -1566,9 +1575,9 @@ local function block_card(i, b, list, blocks)
       end
     else
       local shown = 0
-      for _, e in ipairs(list) do if e.kind ~= "key" and e.kind ~= "midi" then entry_line(e, blocks); shown = shown + 1 end end
+      for _, e in ipairs(list) do if e.kind ~= "key" and e.kind ~= "midi" then entry_line(e, blocks, b); shown = shown + 1 end end
       if keys > 0 and ImGui.TreeNode(ctx, keys .. " shortcuts##keys") then
-        for _, e in ipairs(list) do if e.kind == "key" or e.kind == "midi" then entry_line(e, blocks) end end
+        for _, e in ipairs(list) do if e.kind == "key" or e.kind == "midi" then entry_line(e, blocks, b) end end
         ImGui.TreePop(ctx)
       end
       if shown == 0 and keys == 0 then muted(b.kind == "feel" and "Nothing of this kind in that DAW." or "Nothing switched on.") end
@@ -1583,7 +1592,7 @@ end
 local function builder_page()
   if card("bld make") then
     heading(bld.id and ("Editing " .. bld.name) or "Persona Builder")
-    muted("Stack blocks into a persona: a DAW's shortcuts, another's mouse feel or mixer layout, REAPER settings, a theme, a colour. Each block shows what it sets. Where two blocks set the same thing, the lower one wins.")
+    muted("Stack blocks into a persona: a DAW's shortcuts, another's mouse feel or mixer layout, REAPER settings, a theme, a colour. Each block shows what it sets; untick a line to leave it out. Where two blocks set the same thing, the lower one wins.")
     local daws = {}
     for _, b in ipairs(bld.blocks) do if b.kind == "daw" and b.keys and core.by_id(b.id) then daws[#daws + 1] = core.by_id(b.id).name end end
     ImGui.TextColored(ctx, #daws > 1 and C.YELLOW or C.MUTED, #daws == 0 and "Shortcuts: your own." or #daws == 1 and ("Shortcuts: " .. daws[1] .. "'s, ready as soon as you save.")
@@ -1597,7 +1606,7 @@ local function builder_page()
       local st, install = core.save_built(bld.blocks, bld.name, bld.id)
       if st then
         bld.id, selected, ensure_new = st.id, st.id, true
-        if bld.back then core.use(st); bld.back = nil end
+        if bld.back or reaper.GetExtState(SECTION, "style") == st.id then core.use(st); bld.back = nil end -- (the persona in use: its changes now)
         bld.msg = st.name .. " is saved: it's with the DAWs on Personas." .. (install and " Install its shortcuts on Home (REAPER restarts) to use its keys." or "")
         say(bld.msg)
       else bld.msg = "Not saved: " .. tostring(install) end
