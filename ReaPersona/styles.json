@@ -929,7 +929,33 @@
         ["Right", 40417, "Select the next event"],
         ["Up", 40286, "Select the track above"],
         ["Down", 40285, "Select the track below"],
-        ["F4", 40251, "Audio connections (routing matrix)"]
+        ["F4", 40251, "Audio connections (routing matrix)"],
+        ["Shift+Space", 1134, "Tap Tempo"],
+        ["Ctrl+Alt+I", 41115, "Invert Selection"],
+        ["Alt+F2", 40696, "Rename First Selected Track"],
+        ["Ctrl+T", 41046, "Open Tempo Track (here: show the tempo envelope)"],
+        ["F8", 50125, "Video Player"],
+        ["F12", 40240, "Audio Performance Monitor"],
+        ["Alt+K", 40377, "On-Screen Keyboard (here: REAPER's virtual MIDI keyboard)"],
+        ["Ctrl+Left", 40120, "Nudge Left"],
+        ["Ctrl+Right", 40119, "Nudge Right"],
+        ["Ctrl+Num-", 40104, "Nudge Cursor Left"],
+        ["Ctrl+Num+", 40105, "Nudge Cursor Right"],
+        ["Alt+N", 40375, "Locate Next Hitpoint"],
+        ["Alt+B", 40376, "Locate Previous Hitpoint"],
+        ["Z", 40113, "Zoom Tracks Exclusive"],
+        ["Alt+M", 40175, "Mute/Unmute Objects"],
+        ["Num3", 40163, "To Marker 3"],
+        ["Num4", 40164, "To Marker 4"],
+        ["Num5", 40165, "To Marker 5"],
+        ["Num6", 40166, "To Marker 6"],
+        ["Num7", 40167, "To Marker 7"],
+        ["Num8", 40168, "To Marker 8"],
+        ["Num9", 40169, "To Marker 9"],
+        ["Alt+Num6", 40459, "Workspace 6"],
+        ["Alt+Num7", 40460, "Workspace 7"],
+        ["Alt+Num8", 40461, "Workspace 8"],
+        ["Alt+Num9", 40462, "Workspace 9"]
       ],
       "midi_keys": [
         ["Up", "Edit: Move notes up one semitone", "Up: move selected event in the Key Editor one semitone up"],
@@ -1730,11 +1756,8 @@
       "theme": "Default_7.0.ReaperThemeZip",
       "themes": ["Default_7.0.ReaperThemeZip"],
       "accent": "#9B7BEA",
-      "description": "Adobe Audition (Windows keys), Multitrack view. Space plays and stops, Home and End go to the start and end, Ctrl+Left/Right jump to the previous or next marker, clip or selection edge, = and - zoom (Alt for vertical), M adds a marker, Alt+, and Alt+. nudge clips. Adobe publishes only a partial list, so this style has just the keys a source documents; Cut, Copy, Paste, Undo and the rest are REAPER's own, which are the same keys.",
-      "docs": [
-        "https://defkey.com/adobe-audition-26-windows-shortcuts",
-        "https://helpx.adobe.com/audition/using/default-keyboard-shortcuts.html"
-      ],
+      "description": "Adobe Audition (Windows keys), Multitrack view. Space plays and stops, Home and End go to the start and end, Ctrl+Left/Right jump to the previous or next marker, clip or selection edge, = and - zoom (Alt for vertical), M adds a marker, Alt+, and Alt+. nudge clips. Keys from Adobe's default shortcut list, which Adobe calls partial; Cut, Copy, Paste, Undo and the rest are REAPER's own, which are the same keys.",
+      "docs": ["https://helpx.adobe.com/audition/using/default-keyboard-shortcuts.html"],
       "keys": [
         ["Space", 40044, "Start and stop playback"],
         ["Home", 40042, "Move the playhead to the beginning"],
@@ -1753,7 +1776,8 @@
         ["Alt+.", 40119, "Nudge the selected clip right"],
         ["Alt+Up", 40117, "Nudge the selected clip up a track"],
         ["Alt+Down", 40118, "Nudge the selected clip down a track"],
-        ["Ctrl+K", "_SWS_SMARTSPLIT2", "Split the clip at the playhead (from Adobe's community forum; check it in Audition)"]
+        ["Ctrl+K", "_SWS_SMARTSPLIT2", "Split the clip at the playhead (Adobe's community forum, not Adobe's list: check it in Audition)"],
+        ["Num*", 40157, "Add marker (* on the keypad)"]
       ],
       "midi_keys": [],
       "feel": [

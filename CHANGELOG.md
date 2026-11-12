@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.4.2
+- **Cubase** checked against Steinberg's official Cubase Pro 14 default key commands: Tap Tempo back on Shift+Space, plus Invert Selection, Rename Track, Tempo Track, Video, Performance Monitor, On-Screen Keyboard, nudges, hitpoints, markers 3-9, Zoom Tracks Exclusive and workspaces 6-9.
+- **Audition** checked against Adobe's default shortcut list: * on the keypad adds a marker too.
+
 ## 5.4.1
 - Settings: ReaPersona's look changes straight away (no reopening), and a **Text size** choice (Small to Larger).
 - **Undo switch** in the top bar goes back to the style you had before the last switch.
