@@ -208,7 +208,7 @@ def reaper_running():
 
 
 def backup_of(path):
-    """A dated copy of path (the newest 5 are kept). -> its name"""
+    """A dated copy of path. The first one (your keymap before ReaPersona) and the newest 4 are kept. -> its name"""
     stamp = path + ".before-reapersona-" + time.strftime("%Y%m%d-%H%M%S")
     name, n = stamp, 1
     while os.path.exists(name):
@@ -217,7 +217,7 @@ def backup_of(path):
     shutil.copy2(path, name)
     folder, base = os.path.split(path)
     old = sorted(f for f in os.listdir(folder) if f.startswith(base + ".before-reapersona-"))
-    for f in old[:-5]:
+    for f in old[1:-4]:  # (the oldest is the one from before ReaPersona ever changed anything: never removed)
         try:
             os.remove(os.path.join(folder, f))
         except OSError:
