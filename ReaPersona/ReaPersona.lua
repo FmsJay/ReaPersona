@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One or Bitwig (or stock REAPER), switch on the fly, save your own presets, tweak and merge themes live
 -- @author James (with Claude)
--- @version 4.0.0
+-- @version 5.2.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each style is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings such
@@ -8,7 +8,7 @@
 --   toolbar and MIDI editor keys. Keys a style doesn't define fall through to your own shortcuts; whatever a style changes is put back
 --   when you switch, so My REAPER is always your own setup. Base REAPER is REAPER as it ships. Presets keep a style with your theme and
 --   settings under a name. Every style key is the DAW's default from its maker's documentation (styles.json). Adjust changes the theme
---   in use live; Merge builds a theme from several, or a style from two styles' shortcuts. Needs ReaImGui, SWS and js_ReaScriptAPI.
+--   in use live; Merge builds a theme from several; Combine blends several DAWs' shortcuts. Needs ReaImGui, SWS and js_ReaScriptAPI.
 --   The look follows StudioSync's when it's installed (Settings picks one otherwise).
 if not reaper.ImGui_GetBuiltinPath then return reaper.MB("This needs ReaImGui: Extensions > ReaPack > Browse packages > ReaImGui.", "ReaPersona", 0) end
 if not reaper.CF_EnumerateActions then return reaper.MB("This needs the SWS extension (sws-extension.org).", "ReaPersona", 0) end
@@ -86,14 +86,19 @@ local function accent_of(st) return hex(st.accent, P.accent) end
 local function t(x) return solid(mix(P.bg, P.text, x)) end
 local function a(x) return solid(mix(P.bg, P.accent, x)) end
 
-local ctx = ImGui.CreateContext("ReaPersona")
+local function new_ctx() -- (keyboard navigation on: Tab, arrows, Enter, Esc)
+  local c = ImGui.CreateContext("ReaPersona")
+  ImGui.SetConfigVar(c, ImGui.ConfigVar_Flags, ImGui.GetConfigVar(c, ImGui.ConfigVar_Flags) | ImGui.ConfigFlags_NavEnableKeyboard)
+  return c
+end
+local ctx = new_ctx()
 local font = ImGui.CreateFont("sans-serif"); ImGui.Attach(ctx, font)
 local bold = ImGui.CreateFont("sans-serif", ImGui.FontFlags_Bold); ImGui.Attach(ctx, bold)
 local COLS = {
   { ImGui.Col_WindowBg, C.BG }, { ImGui.Col_ChildBg, 0 }, { ImGui.Col_PopupBg, solid(mix(P.card, P.text, 0.03)) },
-  { ImGui.Col_Text, C.TEXT }, { ImGui.Col_TextDisabled, C.MUTED }, { ImGui.Col_Border, t(0.12) },
+  { ImGui.Col_Text, C.TEXT }, { ImGui.Col_TextDisabled, C.MUTED }, { ImGui.Col_Border, t(0.28) }, -- (fields and buttons get a visible edge: 3:1 against the cards)
   { ImGui.Col_FrameBg, C.FRAME }, { ImGui.Col_FrameBgHovered, t(0.21) }, { ImGui.Col_FrameBgActive, t(0.26) },
-  { ImGui.Col_Button, t(0.12) }, { ImGui.Col_ButtonHovered, t(0.18) }, { ImGui.Col_ButtonActive, C.ACCENT },
+  { ImGui.Col_Button, t(0.16) }, { ImGui.Col_ButtonHovered, t(0.24) }, { ImGui.Col_ButtonActive, C.ACCENT },
   { ImGui.Col_Header, a(0.2) }, { ImGui.Col_HeaderHovered, a(0.28) }, { ImGui.Col_HeaderActive, a(0.38) },
   { ImGui.Col_CheckMark, C.ACCENT }, { ImGui.Col_SliderGrab, C.ACCENT }, { ImGui.Col_SliderGrabActive, C.ACCENT },
   { ImGui.Col_Separator, t(0.12) }, { ImGui.Col_TitleBg, C.NAV }, { ImGui.Col_TitleBgActive, solid(mix(P.nav, P.text, 0.03)) },
@@ -104,9 +109,14 @@ local VARS = {
   { ImGui.StyleVar_WindowPadding, 0, 0 }, { ImGui.StyleVar_FramePadding, 10, 6 }, { ImGui.StyleVar_ItemSpacing, 8, 8 },
   { ImGui.StyleVar_FrameRounding, 6 }, { ImGui.StyleVar_ChildRounding, 10 }, { ImGui.StyleVar_WindowRounding, 8 },
   { ImGui.StyleVar_GrabRounding, 6 }, { ImGui.StyleVar_PopupRounding, 6 }, { ImGui.StyleVar_ScrollbarRounding, 8 },
-  { ImGui.StyleVar_ChildBorderSize, 0 }, { ImGui.StyleVar_FrameBorderSize, 0 }, { ImGui.StyleVar_CellPadding, 8, 5 },
+  { ImGui.StyleVar_ChildBorderSize, 0 }, { ImGui.StyleVar_FrameBorderSize, 1 }, { ImGui.StyleVar_CellPadding, 8, 5 },
 }
 
+local function on_colour(col) -- dark or white text, whichever reads better on col (WCAG contrast ratio)
+  local function lin(c) c = c / 255; return c <= 0.03928 and c / 12.92 or ((c + 0.055) / 1.055) ^ 2.4 end
+  local L = 0.2126 * lin(col >> 16 & 255) + 0.7152 * lin(col >> 8 & 255) + 0.0722 * lin(col & 255)
+  return (L + 0.05) / 0.0545 >= 1.05 / (L + 0.05) and 0x15171AFF or 0xFFFFFFFF -- (0x15171A's luminance is about 0.0045)
+end
 -- A rounded label: status at a glance.
 local function pill(text, bg, fg)
   local dl = ImGui.GetWindowDrawList(ctx)
@@ -114,7 +124,7 @@ local function pill(text, bg, fg)
   local w, h = ImGui.CalcTextSize(ctx, text)
   ImGui.Dummy(ctx, w + 16, h + 6)
   ImGui.DrawList_AddRectFilled(dl, x, y, x + w + 16, y + h + 6, bg, (h + 6) / 2)
-  ImGui.DrawList_AddText(dl, x + 8, y + 3, fg or 0x15171AFF, text)
+  ImGui.DrawList_AddText(dl, x + 8, y + 3, fg or on_colour(bg >> 8), text)
 end
 local IS_MAC = core.IS_MAC
 local keyname = core.keyname -- (on a Mac REAPER's Ctrl is Cmd, Alt is Option and Win is Control: styles store Windows names)
@@ -150,7 +160,7 @@ local function primary(label, col)
   ImGui.PushStyleColor(ctx, ImGui.Col_Button, solid(col))
   ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered, solid(mix(col, 0xFFFFFF, 0.15)))
   ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive, solid(mix(col, 0x000000, 0.15)))
-  ImGui.PushStyleColor(ctx, ImGui.Col_Text, (((col >> 16 & 255) * 299 + (col >> 8 & 255) * 587 + (col & 255) * 114) / 1000 > 150) and 0x15171AFF or 0xFFFFFFFF)
+  ImGui.PushStyleColor(ctx, ImGui.Col_Text, on_colour(col))
   ImGui.PushFont(ctx, bold, 15)
   local clicked = ImGui.Button(ctx, label)
   ImGui.PopFont(ctx)
@@ -225,7 +235,7 @@ local merge = { base = "Default_7.0.ReaperThemeZip", colours = "", graphics = ""
 local PARTS = { "faders", "knobs", "meters", "transport", "buttons", "toolbar", "backgrounds" }
 local ensure_new = false -- (a merged style needs its one-key action registered)
 local check_msg, toast, toast_until = "", "", 0
-local function say(text) toast, toast_until = text, reaper.time_precise() + 4 end
+local function say(text) toast, toast_until = tostring(text), reaper.time_precise() + 6 + 0.06 * #tostring(text) end
 
 local function open_extra(x)
   local id = 0
@@ -283,7 +293,7 @@ local function style_card(st, w, sel, alt)
     ImGui.DrawList_AddRectFilled(dl, x + 8, y + 8, x + 8 + iw, y + 8 + ih, solid(mix(P.card, col, 0.35)), 6)
   end
   ImGui.DrawList_AddCircleFilled(dl, x + 16, y + 8 + ih + 17, 4.5, solid(col))
-  ImGui.DrawList_AddTextEx(dl, bold, 15, x + 26, y + 8 + ih + 8, C.TEXT, st.name)
+  ImGui.DrawList_AddTextEx(dl, bold, 15, x + 26, y + 8 + ih + 8, C.TEXT, st.short or st.name)
   local sub = st.preset and ("preset of " .. (core.by_id(st.base) or { name = "" }).name) or st.kind == "theme" and "theme, with your keys"
     or st.id == "my_reaper" and "your own setup" or st.id == "base_reaper" and "REAPER as it ships" or st.user and "your merged style"
     or "keys, theme and layout"
@@ -292,7 +302,7 @@ local function style_card(st, w, sel, alt)
     local tw, th = ImGui.CalcTextSize(ctx, "In use")
     local px, py = x + w - 8 - tw - 16, y + 14
     ImGui.DrawList_AddRectFilled(dl, px, py, px + tw + 16, py + th + 6, solid(col), (th + 6) / 2)
-    ImGui.DrawList_AddText(dl, px + 8, py + 3, 0x15171AFF, "In use")
+    ImGui.DrawList_AddText(dl, px + 8, py + 3, on_colour(col), "In use")
   end
 end
 
@@ -423,9 +433,6 @@ local function detail(sel, alt)
     ImGui.BeginDisabled(ctx, on)
     if primary(on and "In use" or ("Use " .. sel.name), col) then use(sel) end
     ImGui.EndDisabled(ctx)
-    ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "Save preset...") then save_preset_prompt() end
-    ImGui.SetItemTooltip(ctx, "Keep what's in use now under a name: the style's keys and toolbar, the theme, the transport and mixer layout, snap and ripple, where the Media Explorer sits, and the mouse behaviours, as they are set right now. It joins your Presets.")
     ImGui.SameLine(ctx)
     if ImGui.Button(ctx, "Cheat sheet") then local p, why = core.cheat_sheet(sel); if p then core.open_url(p) else say(why) end end
     ImGui.SetItemTooltip(ctx, "Every key, setting and feature of this style on one page, laid out for printing.")
@@ -949,7 +956,10 @@ local function adjust_page(sel)
     end
     ImGui.EndDisabled(ctx)
     ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "Every colour...") then run_script("X-Raym Scripts/Theme/X-Raym_Theme color tweaker_ReaImGui.lua") end
+    if ImGui.Button(ctx, "Every colour...") and not run_script("X-Raym Scripts/Theme/X-Raym_Theme color tweaker_ReaImGui.lua") then
+      say("That needs X-Raym's Theme color tweaker: ReaPack, X-Raym Scripts.")
+      if reaper.ReaPack_BrowsePackages then reaper.ReaPack_BrowsePackages("Theme color tweaker") end
+    end
     ImGui.SetItemTooltip(ctx, "All of the theme's colours, in X-Raym's colour tweaker.")
     card_end()
   end
@@ -1006,12 +1016,6 @@ local function merge_page(sel)
     muted("Most Stash themes carry no licence: share a merged theme only with its authors' permission.")
     card_end()
   end
-  if card("merge keys") then
-    heading("Merge shortcuts")
-    muted("Combining styles' keys (and their layout and feel) now has its own page, for two or more styles, with every clash shown so you can pick.")
-    if ImGui.Button(ctx, "Open Combine") then page = "Combine"; reaper.SetExtState(SECTION, "page", page, false) end
-    card_end()
-  end
 end
 
 local function key_table(id, keys, title)
@@ -1030,18 +1034,28 @@ local function key_table(id, keys, title)
     ImGui.EndTable(ctx)
   end
 end
-local function keys_page(sel)
+local keys_for -- (the style the Shortcuts page shows: its own pick, else the one in use)
+local function keys_page()
+  local sel = core.by_id(keys_for or "") or core.current()
+  if sel.preset then sel = core.by_id(sel.base) or sel end
   if card("keys") then
-    heading(sel.name .. " shortcuts")
+    ImGui.SetNextItemWidth(ctx, 260)
+    if ImGui.BeginCombo(ctx, "##keysfor", sel.name) then
+      for _, st in ipairs(styles) do
+        if ImGui.Selectable(ctx, st.name .. "##kf" .. st.id, st.id == sel.id) then keys_for = st.id end
+      end
+      ImGui.EndCombo(ctx)
+    end
+    ImGui.SameLine(ctx); heading("shortcuts")
     if #(sel.keys or {}) == 0 then
-      muted("My REAPER uses your own shortcuts.")
+      muted(sel.id == "my_reaper" and "My REAPER uses your own shortcuts." or (sel.name .. " has no shortcuts of its own: your own keys stay as they are."))
     else
       ImGui.SetNextItemWidth(ctx, 260)
       local _, f = ImGui.InputTextWithHint(ctx, "##kf", "search keys or actions", filter)
       filter = f
       ImGui.SameLine(ctx)
       if ImGui.Button(ctx, "Change them") then reaper.Main_OnCommand(40605, 0) end
-      ImGui.SetItemTooltip(ctx, "REAPER's Actions window: pick the section 'Main (alt-" .. sel.alt .. ")' at the top to see and change " .. sel.name .. "'s keys. Changes are live and kept.")
+      ImGui.SetItemTooltip(ctx, "REAPER's Actions window: pick the section 'Main (alt-" .. tostring(sel.alt) .. ")' at the top to see and change " .. sel.name .. "'s keys. Changes are live and kept.")
       if sel.docs then
         ImGui.SameLine(ctx)
         if ImGui.Button(ctx, "Official list") then core.open_url(sel.docs[1]) end
@@ -1172,6 +1186,10 @@ local function shortcuts_state()
   for _, st in ipairs(styles) do if (st.alt or 0) > 0 then want = want + 1; if installed[st.alt] then have = have + 1 end end end
   return have, want
 end
+local function setup_todo() -- (anything on Home still to do: the nav shows a dot, and the first run opens there)
+  local have, want = shortcuts_state()
+  return have < want or not core.startup_on()
+end
 local function build_themes()
   say("Building ReaPersona's themes...")
   local made, why = core.build_own_themes()
@@ -1179,15 +1197,23 @@ local function build_themes()
   reaper.MB(made and (#made .. " themes built in ColorThemes, from your REAPER's own Default 7:\n\n" .. table.concat(made, "\n") ..
     "\n\nEach DAW style uses its ReaPersona theme unless you've picked another.") or ("Not built: " .. tostring(why)), "ReaPersona", 0)
 end
+local function keymap_route() -- (no Python: a keymap file to import by hand)
+  local path, n = core.make_keymap()
+  reaper.MB(n .. " shortcuts are in this file:\n" .. path .. "\n\nThe Actions window opens next. In it:\n1. Key Map > Import...\n2. Pick that file.\n" ..
+    "3. Choose MERGE. (Replace would remove your own shortcuts.)\n\nToolbars need the Python install.", "ReaPersona: shortcuts", 0)
+  reaper.Main_OnCommand(40605, 0)
+end
+-- REAPER reads its keymap only when it starts: install_shortcuts.py waits for REAPER to close, installs, and starts it again.
 local function install_shortcuts()
-  local choice = reaper.MB("REAPER reads its keymap when it starts, so this is done with REAPER closed or by importing a file.\n\n" ..
-    "Yes: make the keymap file now (then Actions window > Key Map > Import..., choose merge).\n" ..
-    "No: show the folder with install_shortcuts.py (close REAPER, run it with Python, start REAPER; it also installs toolbars).", "ReaPersona: shortcuts", 3)
-  if choice == 6 then
-    local path, n = core.make_keymap()
-    reaper.MB(n .. " shortcuts written to\n" .. path .. "\n\nNext: Actions window > Key Map > Import..., pick that file, choose merge.", "ReaPersona", 0)
-    reaper.Main_OnCommand(40605, 0)
-  elseif choice == 7 then core.open_url(core.here) end
+  if not core.python() then return keymap_route() end
+  if reaper.MB("REAPER closes (it asks first if anything is unsaved), the shortcuts install, and REAPER opens again: about 10 seconds.\n\n" ..
+    "A backup of your keymap is made first.", "ReaPersona: install shortcuts", 1) ~= 1 then return end
+  if core.scripts_missing() > 0 then core.ensure_scripts() end -- (the scripts the keys run have to be registered first)
+  if not reaper.file_exists(here .. "/midi_defaults.json") then core.midi_defaults() end
+  local exe = reaper.GetExePath():gsub("\\", "/")
+  exe = IS_MAC and exe:match("^(.-%.app)") or (exe .. "/reaper.exe")
+  reaper.ExecProcess(core.py .. ' "' .. here .. '/install_shortcuts.py" --after-reaper-quits --relaunch "' .. exe .. '"', -1) -- (-1: don't wait)
+  reaper.Main_OnCommand(40004, 0) -- (File: Quit, with REAPER's own save prompts)
 end
 local function setup_all()
   if reaper.MB("Set up everything ReaPersona can do from here?\n\n" ..
@@ -1207,6 +1233,23 @@ local function setup_all()
   install_shortcuts()
 end
 local function setup_page()
+  if reaper.GetExtState(SECTION, "welcomed") == "" and card("welcome") then -- (the first run: pick your DAW, it's in use straight away)
+    heading("Which DAW are you coming from?", 20)
+    muted("Pick it and REAPER takes on its shortcuts, look and layout. You can switch any time, and Back to My REAPER puts everything back.")
+    local n = 0
+    for _, st in ipairs(styles) do
+      if st.kind ~= "theme" and (st.alt or 0) > 0 and not st.user and not st.preset and st.id ~= "base_reaper" then
+        if n % 5 ~= 0 then ImGui.SameLine(ctx) end
+        n = n + 1
+        if primary(st.name .. "##welcome", accent_of(st)) then
+          selected = st.id; use(st); reaper.SetExtState(SECTION, "welcomed", "1", true)
+          if setup_todo() then say(st.name .. " in use. Next: install its shortcuts below.") end
+        end
+      end
+    end
+    if ImGui.SmallButton(ctx, "I'll pick later") then reaper.SetExtState(SECTION, "welcomed", "1", true) end
+    card_end()
+  end
   if card("setup top") then
     heading("Set up ReaPersona")
     muted("What ReaPersona can use, whether it's there, and one click to get each. Drag files onto this window any time to add them: themes (.ReaperThemeZip, .ReaperTheme or the theme pack .zip as downloaded), toolbars (.ReaperMenu), keymaps (.ReaperKeyMap, become a style of their own), and shared styles and presets.")
@@ -1239,7 +1282,7 @@ local function setup_page()
       setup_row("own", n == total, "ReaPersona's own themes: " .. n .. " of " .. total .. " built", "A theme per DAW in its colours, made from your REAPER's own Default 7. They're approximations: the themes by other people below can look closer to the real DAWs.",
         py and core.python_libs() and (n == total and "Rebuild" or "Build") or nil, build_themes)
       local have, want = shortcuts_state()
-      setup_row("keys", have == want, "Shortcut layers: " .. have .. " of " .. want .. " styles installed", "Each style's keys. Needs REAPER closed, or a keymap file to import.", "Install...", install_shortcuts)
+      setup_row("keys", have == want, "Shortcut layers: " .. have .. " of " .. want .. " styles installed", "Each style's keys. REAPER restarts to load them (about 10 seconds).", have < want and "Install and restart" or "Reinstall", install_shortcuts)
       setup_row("start", core.startup_on(), "Brings your style back when REAPER starts", "One block in Scripts/__startup.lua.", not core.startup_on() and "Add it" or nil,
         function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end)
       for key, x in pairs(core.EXTENSIONS) do
@@ -1394,6 +1437,17 @@ local function browse_page()
   end
 end
 
+local GROUPS = { -- { name, what it's for, its pages (tabs), the tabs' labels }
+  { "Home", "Get everything set up, and import from another DAW. Drop files here.", { "Setup" }, { "Setup" } },
+  { "Styles", "Make REAPER feel like another DAW; your own styles; several DAWs in one.", { "DAWs", "Presets", "Combine" }, { "DAWs", "Your styles", "Combine DAWs" } },
+  { "Shortcuts", "Every key of a style, with REAPER's action for it.", { "Shortcuts" }, { "Shortcuts" } },
+  { "Themes", "Your themes, getting more, adjusting the one in use, building one from others.", { "Themes", "Browse", "Adjust", "Merge" }, { "Your themes", "Get more", "Adjust", "Build one" } },
+  { "Settings", "What styles may change, playback and scrolling, REAPER options, ReaPersona's look.", { "Settings" }, { "Settings" } },
+  { "Help", "What's installed, checking the styles, repairs.", { "Check" }, { "Check and repair" } },
+}
+local function group_of(pg) for _, g in ipairs(GROUPS) do for _, p in ipairs(g[3]) do if p == pg or (pg == "Styles" and p == "DAWs") then return g end end end return GROUPS[2] end
+local last_tab = {} -- (each group reopens on the tab you left it on)
+local function go(pg) page = pg; reaper.SetExtState(SECTION, "page", pg, false) end
 local PAGES = {
   { "Setup", "Get everything installed: ReaPersona's themes, shortcuts, extensions, the startup line, other people's themes. Drop files here." },
   { "DAWs", "Make REAPER feel like another DAW, or stock REAPER, or your own setup." },
@@ -1403,7 +1457,7 @@ local PAGES = {
   { "Combine", "Several DAWs in one style (Pro Tools + Ableton, say): their keys and feel, clashes picked by you." },
   { "Shortcuts", "Every key of the style picked, with REAPER's action for it." },
   { "Adjust", "Change the theme in use, live, and keep your version." },
-  { "Merge", "Build a theme from parts of others, or a style from two styles' shortcuts." },
+  { "Merge", "Build a theme from parts of others." },
   { "Settings", "Smooth playhead, smooth scrolling and zoom, continuous scrolling, and ReaPersona's look." },
   { "Check", "What's installed, and checking the styles against this REAPER." },
 }
@@ -1418,16 +1472,21 @@ local function top_bar(alt)
   pill(cur.name .. (in_use(cur, alt) and "" or "  (keys off)"), solid(col))
   if not in_use(cur, alt) then ImGui.SetItemTooltip(ctx, "Its shortcut layer isn't on (REAPER restarted?): Use it again, or run 'ReaPersona - restore last style'.") end
   local w = ImGui.GetWindowWidth(ctx)
-  ImGui.SameLine(ctx, math.max(ImGui.GetCursorPosX(ctx), w - 230))
+  ImGui.SameLine(ctx, math.max(ImGui.GetCursorPosX(ctx), w - 300))
   ImGui.SetCursorPosY(ctx, y0 + 8)
-  if ImGui.Button(ctx, "Save preset...##top") then save_preset_prompt() end
+  if ImGui.Button(ctx, "Save as my style...##top") then save_preset_prompt() end
+  ImGui.SetItemTooltip(ctx, "Keep what's in use now, under a name: the style's keys and toolbar, the theme, the layout, snap and the mouse behaviours as they are right now.")
   ImGui.SameLine(ctx)
-  if ImGui.Button(ctx, "Next style") then core.next_style(); selected = core.current().id; say(core.current().name .. " in use.") end
+  ImGui.BeginDisabled(ctx, cur.id == "my_reaper")
+  if ImGui.Button(ctx, "Back to My REAPER") then use(core.by_id("my_reaper")) end
+  ImGui.EndDisabled(ctx)
+  ImGui.SetItemTooltip(ctx, "Your own shortcuts, theme and settings, exactly as you had them.")
   ImGui.SetCursorPosY(ctx, y0 + 48)
   ImGui.Separator(ctx)
 end
 
 local last_error, last_logged
+local first_frame = true
 local function frame()
   ImGui.SetNextWindowSize(ctx, 980, 760, ImGui.Cond_FirstUseEver)
   for _, c in ipairs(COLS) do ImGui.PushStyleColor(ctx, c[1], c[2]) end
@@ -1436,6 +1495,12 @@ local function frame()
   local visible, open = ImGui.Begin(ctx, "ReaPersona", true)
   if visible then
     if ensure_new or core.stubs_stale then core.ensure_scripts(); ensure_new = false end
+    if first_frame then
+      first_frame = false
+      if reaper.GetExtState(SECTION, "page") == "" and setup_todo() then go("Setup") end
+      local note = core.read(here .. "/last_install.txt")
+      if note then os.remove(here .. "/last_install.txt"); say((note:match("installed %d+ shortcut%(s%)") and "Shortcuts installed: " or "") .. note:gsub("%s+$", ""):match("[^\n]*$")) end
+    end
     local alt = core.active_alt()
     local sel = core.by_id(selected) or styles[1]
     local want = reaper.GetExtState(SECTION, "page")
@@ -1447,25 +1512,47 @@ local function frame()
       ImGui.SameLine(ctx)
       if ImGui.SmallButton(ctx, "OK##err") then last_error = nil end
     end
+    local narrow = ImGui.GetWindowWidth(ctx) < 600 -- (docked at the side or a small window: the sidebar becomes a drop-down)
+    if narrow then
+      ImGui.SetCursorPosX(ctx, 16)
+      ImGui.SetNextItemWidth(ctx, -16)
+      if ImGui.BeginCombo(ctx, "##navc", group_of(page)[1] .. (setup_todo() and "  (Home: something to do)" or "")) then
+        for _, g in ipairs(GROUPS) do if ImGui.Selectable(ctx, g[1] .. "##navc", g == group_of(page)) then go(last_tab[g[1]] or g[3][1]) end end
+        ImGui.EndCombo(ctx)
+      end
+    end
     ImGui.PushStyleColor(ctx, ImGui.Col_ChildBg, C.NAV)
     ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowPadding, 8, 10)
     ImGui.PushStyleVar(ctx, ImGui.StyleVar_SelectableTextAlign, 0, 0.5)
-    if ImGui.BeginChild(ctx, "nav", 150, 0, ImGui.ChildFlags_AlwaysUseWindowPadding) then
+    if not narrow and ImGui.BeginChild(ctx, "nav", 150, 0, ImGui.ChildFlags_AlwaysUseWindowPadding) then
       ImGui.PushFont(ctx, nil, 16)
-      for _, p in ipairs(PAGES) do
+      local cur_g = group_of(page)
+      for _, g in ipairs(GROUPS) do
         local x, y = ImGui.GetCursorScreenPos(ctx)
-        if ImGui.Selectable(ctx, "  " .. p[1] .. "##nav", p[1] == page, ImGui.SelectableFlags_None, 0, 36) then page = p[1]; reaper.SetExtState(SECTION, "page", page, false) end
-        ImGui.SetItemTooltip(ctx, p[2])
-        if p[1] == page then ImGui.DrawList_AddRectFilled(ImGui.GetWindowDrawList(ctx), x - 8, y + 6, x - 4, y + 30, C.ACCENT, 2) end
+        if ImGui.Selectable(ctx, "  " .. g[1] .. "##nav", g == cur_g, ImGui.SelectableFlags_None, 0, 36) then go(last_tab[g[1]] or g[3][1]) end
+        ImGui.SetItemTooltip(ctx, g[2])
+        if g == cur_g then ImGui.DrawList_AddRectFilled(ImGui.GetWindowDrawList(ctx), x - 8, y + 6, x - 4, y + 30, C.ACCENT, 2) end
+        if g[1] == "Home" and setup_todo() then ImGui.DrawList_AddCircleFilled(ImGui.GetWindowDrawList(ctx), x + 112, y + 18, 4, C.YELLOW) end -- (something to do)
       end
       ImGui.PopFont(ctx)
       ImGui.EndChild(ctx)
     end
     ImGui.PopStyleVar(ctx, 2)
     ImGui.PopStyleColor(ctx)
-    ImGui.SameLine(ctx, 0, 0)
+    if not narrow then ImGui.SameLine(ctx, 0, 0) end
     ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowPadding, 16, 12)
     if ImGui.BeginChild(ctx, "page", 0, 0, ImGui.ChildFlags_AlwaysUseWindowPadding) then
+      local g = group_of(page)
+      last_tab[g[1]] = page
+      if #g[3] > 1 then -- (the group's pages as tabs)
+        for i, pg in ipairs(g[3]) do
+          if i > 1 then ImGui.SameLine(ctx) end
+          local tw = ImGui.CalcTextSize(ctx, g[4][i]) + 24
+          if ImGui.Selectable(ctx, g[4][i] .. "##tab", page == pg or (page == "Styles" and pg == "DAWs"), ImGui.SelectableFlags_None, tw, 28) then go(pg) end
+        end
+        ImGui.Separator(ctx)
+        ImGui.Dummy(ctx, 0, 2)
+      end
       if page == "Setup" then setup_page()
       elseif page == "DAWs" or page == "Styles" then daws_page(sel, alt)
       elseif page == "Themes" then themes_page(sel, alt)
@@ -1473,7 +1560,7 @@ local function frame()
       elseif page == "Presets" then presets_page(sel, alt)
       elseif page == "Combine" then combine_page(sel)
       elseif page == "Settings" then settings_page()
-      elseif page == "Shortcuts" then keys_page(sel)
+      elseif page == "Shortcuts" then keys_page()
       elseif page == "Adjust" then
         if adjust_out then
           if card("adj out") then heading("Adjust is in its own window"); if ImGui.Button(ctx, "Bring it back here") then adjust_out = false end; card_end() end
@@ -1501,7 +1588,7 @@ local function frame()
       local tw, th = ImGui.CalcTextSize(ctx, toast)
       local fl = ImGui.GetForegroundDrawList(ctx)
       ImGui.DrawList_AddRectFilled(fl, wx + ww - tw - 40, wy + wh - th - 34, wx + ww - 16, wy + wh - 16, solid(mix(P.text, P.accent, 0.4)), 8)
-      ImGui.DrawList_AddText(fl, wx + ww - tw - 28, wy + wh - th - 25, 0x15171AFF, toast)
+      ImGui.DrawList_AddText(fl, wx + ww - tw - 28, wy + wh - th - 25, on_colour(mix(P.text, P.accent, 0.4)), toast)
     end
     ImGui.End(ctx)
   end
@@ -1531,7 +1618,7 @@ local function loop()
       page, selected = "DAWs", core.current().id
       reaper.SetExtState(SECTION, "page", page, false)
     end
-    ctx = ImGui.CreateContext("ReaPersona")
+    ctx = new_ctx()
     font = ImGui.CreateFont("sans-serif"); ImGui.Attach(ctx, font)
     bold = ImGui.CreateFont("sans-serif", ImGui.FontFlags_Bold); ImGui.Attach(ctx, bold)
     for k in pairs(images) do images[k] = nil end

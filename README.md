@@ -29,11 +29,13 @@ Switching away puts back everything a style changed, so **My REAPER** is always 
 
 ## Setup, in one place
 
-The **Setup** page lists everything ReaPersona can use, whether you have it, and a button for each:
+The first time, ReaPersona asks which DAW you're coming from and uses its style straight away. The window has six pages: **Home** (setup), **Styles** (DAWs, your styles, combining DAWs), **Shortcuts**, **Themes** (yours, get more, adjust, build one), **Settings** and **Help**. It also fits a narrow docker.
+
+**Home** lists everything ReaPersona can use, whether you have it, and a button for each:
 
 - **ReaPersona's own themes:** one per DAW, an approximation of its colours,, built in seconds from the Default 7 theme your REAPER already has, in that DAW's colours. Panels, buttons, mute/solo/arm and transport colours, track-colour strength and text all change, with all of Default 7's layout and Theme Adjuster settings kept. Nothing of Default 7 ships with ReaPersona: only the recipes do, and the theme is made from your own copy.
   - This needs Python 3 with Pillow and numpy. Setup has a button that installs those two.
-- **Shortcut layers:** with Python, close REAPER and run `install_shortcuts.py`. Or make a keymap file and import it in the Actions window (Key Map > Import, choose merge).
+- **Shortcut layers:** one button. REAPER closes (asking about anything unsaved), the shortcuts install with a backup of your keymap, and REAPER opens again. Without Python, ReaPersona makes a keymap file and walks you through importing it (Key Map > Import, choose **merge**).
 - **The startup line:** brings your style back when REAPER starts.
 - **Smooth playhead and smooth scrolling:** ReaSmoothPlayhead installs through ReaPack; Smooth Wheel Scroll comes with ReaPersona on Windows.
 - **Themes by other people:** each one the styles can use, with a *Get it* button to its author's page.

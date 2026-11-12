@@ -321,4 +321,27 @@ if __name__ == "__main__":
     assert encode("Num3") == (1, 99) and encode("F12") == (1, 123) and encode("+") == (0, 43) and encode("Ctrl+-") == (9, 189)
     assert encode("Shift+\\") == (5, 220) and encode("Shift+Num*") == (5, 106)
     assert encode("NumEnter") == (1, EXT + 13) and encode("Win+M") == (33, 77) and for_os("mac:Win+M") in (None, "Win+M")
+    if "--after-reaper-quits" in sys.argv:
+        # (the picker's one-button install: REAPER starts this, then quits; we wait, install, note the result and start REAPER again)
+        exe = sys.argv[sys.argv.index("--relaunch") + 1] if "--relaunch" in sys.argv else None
+        status = os.path.join(HERE, "last_install.txt")
+        for _ in range(360):  # (up to 3 minutes: REAPER may be asking whether to save)
+            if not reaper_running():
+                break
+            time.sleep(0.5)
+        if reaper_running():
+            open(status, "w", encoding="utf-8").write("REAPER didn't close, so the shortcuts weren't installed.\n")
+            sys.exit(1)
+        import contextlib, io as _io
+        out = _io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out):
+                run(no_midi="--no-midi" in sys.argv)
+        except BaseException as e:  # (SystemExit included: whatever happened is written down for the picker)
+            out.write("not installed: %s\n" % e)
+        open(status, "w", encoding="utf-8").write(out.getvalue())
+        if exe:
+            subprocess.Popen(["open", exe] if exe.endswith(".app") else [exe], close_fds=True,
+                             creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+        sys.exit(0)
     run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)
