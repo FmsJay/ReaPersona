@@ -24,12 +24,12 @@ TAG = "# ReaPersona"
 OLD_TAG = "# DAW Styles"  # (lines the old name wrote, before REAPER rewrote their comments)
 MIDI = 32060
 
-VIRT, SHIFT, CTRL, ALT = 1, 4, 8, 16
+VIRT, SHIFT, CTRL, ALT, WIN = 1, 4, 8, 16, 32  # (WIN: the Windows key; Control on a Mac)
 EXT = 32768  # (extended keys: arrows, Home/End, PgUp/PgDn, Insert/Delete)
 NAMED = {"Space": 32, "Enter": 13, "Backspace": 8, "Tab": 9, "Esc": 27,
          "Left": EXT + 37, "Up": EXT + 38, "Right": EXT + 39, "Down": EXT + 40,
          "Home": EXT + 36, "End": EXT + 35, "PgUp": EXT + 33, "PgDn": EXT + 34, "Insert": EXT + 45, "Delete": EXT + 46,
-         "Num*": 106, "Num+": 107, "Num-": 109, "Num.": 110, "Num/": 111}
+         "Num*": 106, "Num+": 107, "Num-": 109, "Num.": 110, "Num/": 111, "NumEnter": EXT + 13}
 NAMED.update({"F%d" % i: 111 + i for i in range(1, 13)})
 NAMED.update({"Num%d" % i: 96 + i for i in range(10)})
 OEM = {"?": 191, ";": 186, "=": 187, "+": 187, ",": 188, "-": 189, ".": 190, "/": 191, "`": 192, "[": 219, "\\": 220, "]": 221, "'": 222}
@@ -51,7 +51,7 @@ def encode(spec):
         key, mods = parts[-1], [p for p in parts[:-1] if p]
     flags = 0
     for m in mods:
-        flags |= {"Shift": SHIFT, "Ctrl": CTRL, "Alt": ALT}[m]
+        flags |= {"Shift": SHIFT, "Ctrl": CTRL, "Alt": ALT, "Win": WIN}[m]
     if key in NAMED:
         return VIRT | flags, NAMED[key]
     if len(key) == 1 and key.isalpha():
@@ -63,6 +63,18 @@ def encode(spec):
             return 0, ord(key)  # (unmodified punctuation goes in as the character, as REAPER itself writes '-' and '=')
         return VIRT | flags, OEM[key]
     raise ValueError("unknown key: " + spec)
+
+
+MAC = sys.platform == "darwin"
+
+
+def for_os(spec):
+    """A key for one system only is written "mac:Alt+Enter" / "win:Ctrl+Enter". -> the key for this system, or None."""
+    if spec.startswith("mac:"):
+        return spec[4:] if MAC else None
+    if spec.startswith("win:"):
+        return None if MAC else spec[4:]
+    return spec
 
 
 def main_command(lines, spec, fallback):
@@ -190,6 +202,9 @@ def run(remove=False, no_midi=False):
         for entry in st.get("keys", []) if 1 <= alt <= 16 else []:
             try:
                 spec, cmd, what = entry
+                spec = for_os(spec)
+                if spec is None:
+                    continue
                 if isinstance(cmd, str) and cmd.startswith("script:"):
                     cmd = scripts.get("main", {}).get(cmd[7:])
                     if not cmd:
@@ -233,7 +248,8 @@ def run(remove=False, no_midi=False):
         alt = int(st.get("alt") or 0)
         for x in st.get("keys", []) if 1 <= alt <= 16 else []:
             try:
-                style_keys.add("%d %d %d" % (encode(x[0]) + (alt,)))
+                if for_os(x[0]):
+                    style_keys.add("%d %d %d" % (encode(for_os(x[0])) + (alt,)))
             except (ValueError, KeyError, TypeError, IndexError):
                 pass
     midi_cmds = set(scripts.get("midi", {}).values())
@@ -304,4 +320,5 @@ if __name__ == "__main__":
     assert encode("-") == (0, 45) and encode("Alt+'") == (17, 222) and encode("Left") == (1, EXT + 37) and encode("Shift+4") == (5, 52)
     assert encode("Num3") == (1, 99) and encode("F12") == (1, 123) and encode("+") == (0, 43) and encode("Ctrl+-") == (9, 189)
     assert encode("Shift+\\") == (5, 220) and encode("Shift+Num*") == (5, 106)
+    assert encode("NumEnter") == (1, EXT + 13) and encode("Win+M") == (33, 77) and for_os("mac:Win+M") in (None, "Win+M")
     run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)

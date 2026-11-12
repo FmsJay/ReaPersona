@@ -30,13 +30,17 @@ problems = 0
 for st in load_styles():
     seen = {}
     for spec, cmd, what in st.get("keys", []):
+        plain = spec[4:] if spec[:4] in ("mac:", "win:") else spec  # (a key for one system only)
         try:
-            encode(spec)
+            encode(plain)
         except Exception as e:
             print("%s: %s" % (st["name"], e)); problems += 1
-        if spec in seen:
-            print("%s: %s twice (%s / %s)" % (st["name"], spec, seen[spec], what)); problems += 1
-        seen[spec] = what
+        for system in ("win", "mac"):
+            if spec[:4] in ("mac:", "win:") and spec[:3] != system:
+                continue
+            if (system, plain) in seen:
+                print("%s: %s twice on %s (%s / %s)" % (st["name"], plain, system, seen[(system, plain)], what)); problems += 1
+            seen[(system, plain)] = what
         name = "?"
         if isinstance(cmd, int):
             if main is not None:

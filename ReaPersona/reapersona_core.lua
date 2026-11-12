@@ -205,7 +205,9 @@ local function orig_list() local t = {}; for l in reaper.GetExtState(M.SECTION, 
 
 -- Docked windows. REAPER has no API to dock its own windows, but the Media Explorer has "Dock Media Explorer in Docker" (its own section,
 -- sent to its window) and Dock_UpdateDockID picks the docker it goes into. Each step needs REAPER's message loop between, so it runs deferred.
-local WINDOWS = { explorer = { show = 50124, title = "Media Explorer", dock = 40008, ident = "explorer", name = "Media Explorer" } }
+local WINDOWS = { explorer = { show = 50124, title = "Media Explorer", dock = 40008, ident = "explorer", name = "Media Explorer" },
+  -- (the mixer docks with a main action, and reaper.ini keeps its docked state as mixwnd_dock in [REAPER])
+  mixer = { show = 40078, title = "Mixer", main_dock = 40083, ident = "mixer", name = "Mixer", ini = "mixwnd_dock" } }
 M.WINDOWS = WINDOWS
 local SIDES = { bottom = 0, left = 1, top = 2, right = 3 }
 local function docker_at(side) -- the first docker REAPER keeps on that side of the main window, or nil
@@ -223,7 +225,8 @@ end
 local function ini_window(w) -- what reaper.ini last saved: docked?, and its docker preference
   local t = M.read(res .. "/reaper.ini") or ""
   local pref = tonumber((M.ini_section(t, "REAPERdockpref") or ""):match("\n" .. WINDOWS[w].ident .. "=%S+ (%d+)") or "") or 0
-  local docked = (M.ini_section(t, "reaper_" .. w) or ""):match("\ndocked=(%d)") == "1"
+  local docked = WINDOWS[w].ini and (M.ini_section(t, "REAPER") or ""):match("\n" .. WINDOWS[w].ini .. "%s*=%s*(%d)") == "1"
+    or (M.ini_section(t, "reaper_" .. w) or ""):match("\ndocked=(%d)") == "1"
   return docked, pref
 end
 local jobs, busy, pending = {}, false, {}
@@ -251,11 +254,12 @@ local function move_window(w, want)
     local h = reaper.JS_Window_Find(W.title, true)
     if not h then return true end
     local d = reaper.DockIsChildOfDock(h)
+    local function toggle_dock() if W.main_dock then reaper.Main_OnCommand(W.main_dock, 0) else reaper.JS_Window_OnCommand(h, W.dock) end end
     if want.docker and d ~= want.docker then
       if d < 0 then reaper.Dock_UpdateDockID(W.ident, want.docker) end
-      reaper.JS_Window_OnCommand(h, W.dock) -- (in the wrong docker: out first, then in)
+      toggle_dock() -- (in the wrong docker: out first, then in)
       return true
-    elseif not want.docker and d >= 0 then reaper.JS_Window_OnCommand(h, W.dock); return true end
+    elseif not want.docker and d >= 0 then toggle_dock(); return true end
     if want.pref then reaper.Dock_UpdateDockID(W.ident, want.pref) end
     if not want.shown then reaper.Main_OnCommand(W.show, 0) end
   end, function() if pending[w] and pending[w].token == token then pending[w] = nil end end)
@@ -312,7 +316,7 @@ M.ASPECTS = {
   { "browser", "Where the Media Explorer docks", true },
   { "toolbar", "The DAW's toolbar in place of your main toolbar", true },
   { "mouse", "Mouse behaviours (Smart Tool and so on)", true },
-  { "settings", "Snap, ripple and follow-playhead", true },
+  { "settings", "Snap, ripple, follow-playhead, the loop range and overlapping clips", true },
 }
 function M.aspect_on(a)
   local v = reaper.GetExtState(M.SECTION, "aspect " .. a)
@@ -321,7 +325,7 @@ function M.aspect_on(a)
   return true
 end
 function M.aspect_of(f)
-  if f[1] == "dock" then return "browser" elseif f[1] == "radio" then return "transport" elseif f[1] == "switch" then return "toolbar"
+  if f[1] == "dock" then return f[2] == "mixer" and "mixer_dock" or "browser" elseif f[1] == "radio" then return "transport" elseif f[1] == "switch" then return "toolbar"
   elseif f[1] == "mouse" then return "mouse"
   elseif f[1] == "toggle" then
     if f[2] == 40083 or f[2] == 40078 then return "mixer_dock" end
@@ -364,9 +368,10 @@ local function apply_feel(st, windows_left)
       list[#list + 1] = was or ("r|none|" .. reaper.GetToggleCommandState(40260) .. "|" .. reaper.GetToggleCommandState(40259))
       local id = cmd_id(f[3])
       if id ~= 0 and reaper.GetToggleCommandState(id) ~= 1 then reaper.Main_OnCommand(id, 0) end
-    elseif f[1] == "mouse" and reaper.SetMouseModifier then
-      list[#list + 1] = "m|" .. f[2] .. "|" .. f[3] .. "|" .. reaper.GetMouseModifier(f[2], f[3], "")
-      reaper.SetMouseModifier(f[2], f[3], f[4])
+    elseif f[1] == "mouse" and reaper.SetMouseModifier and M.for_os(f[2]) then -- ("mac:MM_CTX_ITEM": only on a Mac)
+      local ctx = M.for_os(f[2])
+      list[#list + 1] = "m|" .. ctx .. "|" .. f[3] .. "|" .. reaper.GetMouseModifier(ctx, f[3], "")
+      reaper.SetMouseModifier(ctx, f[3], f[4])
     end
     end)
     if not ok then M.log("apply " .. tostring(st.id) .. " " .. tostring(f[1]) .. " " .. tostring(f[2]) .. ": " .. tostring(err)) end
@@ -820,7 +825,7 @@ function M.combine_clashes(ids) -- -> { {kind = "key"|"midi"|"feel", what, optio
   local out, keys, midi, feel, order = {}, {}, {}, {}, {}
   for _, id in ipairs(ids) do
     local st = M.by_id(id)
-    for _, k in ipairs(st and st.keys or {}) do
+    for _, k in ipairs(M.keys_here(st and st.keys)) do
       local c = M.canon(k[1]); keys[c] = keys[c] or {}; if not keys[c][1] then order[#order + 1] = "key " .. c end
       keys[c][#keys[c] + 1] = { id, tostring(k[2]), k[3], k[1] }
     end
@@ -866,7 +871,7 @@ function M.combine(ids, choice, name, theme) -- -> the new style, or nil + why
   for _, field in ipairs({ "keys", "midi_keys" }) do
     local by, order = {}, {}
     for _, s in ipairs(styles) do
-      for _, k in ipairs(s[field] or {}) do
+      for _, k in ipairs(field == "keys" and M.keys_here(s.keys) or s[field] or {}) do
         local c = M.canon(k[1])
         if not by[c] then by[c] = {}; order[#order + 1] = c end
         by[c][#by[c] + 1] = { s.id, k }
@@ -916,10 +921,25 @@ end
 -- ---------------------------------------------------------------- shortcuts without Python: a .ReaperKeyMap to import
 -- (Actions > Key Map > Import, merge.) The same lines install_shortcuts.py writes; it also moves your own MIDI editor lines for the
 -- styles' MIDI keys into midi_fallback.json so My REAPER keeps them. Toolbars still need install_shortcuts.py (REAPER closed).
-local VIRT, SHIFT, CTRL, ALT, EXT = 1, 4, 8, 16, 32768
+local VIRT, SHIFT, CTRL, ALT, WIN, EXT = 1, 4, 8, 16, 32, 32768 -- (WIN: the Windows key; Control on a Mac)
+M.IS_MAC = tostring(reaper.GetOS()):find("^OSX") ~= nil or tostring(reaper.GetOS()):find("^macOS") ~= nil
+function M.for_os(spec) -- a key or mouse context for one system only is written "mac:..." / "win:...": -> it for this system, or nil
+  if type(spec) ~= "string" then return spec end
+  local os_, rest = spec:match("^(%a%a%a):(.+)$")
+  if os_ == "mac" then return M.IS_MAC and rest or nil elseif os_ == "win" then return (not M.IS_MAC) and rest or nil end
+  return spec
+end
+function M.keys_here(list) -- a style's keys for this system, with the "mac:"/"win:" mark taken off
+  local out = {}
+  for _, k in ipairs(list or {}) do
+    local s = M.for_os(k[1])
+    if s then if s == k[1] then out[#out + 1] = k else local c = { table.unpack(k) }; c[1] = s; out[#out + 1] = c end end
+  end
+  return out
+end
 local NAMED = { Space = 32, Enter = 13, Backspace = 8, Tab = 9, Esc = 27, Left = EXT + 37, Up = EXT + 38, Right = EXT + 39, Down = EXT + 40,
   Home = EXT + 36, End = EXT + 35, PgUp = EXT + 33, PgDn = EXT + 34, Insert = EXT + 45, Delete = EXT + 46,
-  ["Num*"] = 106, ["Num+"] = 107, ["Num-"] = 109, ["Num."] = 110, ["Num/"] = 111 }
+  ["Num*"] = 106, ["Num+"] = 107, ["Num-"] = 109, ["Num."] = 110, ["Num/"] = 111, NumEnter = EXT + 13 }
 for i = 1, 12 do NAMED["F" .. i] = 111 + i end
 for i = 0, 9 do NAMED["Num" .. i] = 96 + i end
 local OEM = { ["?"] = 191, [";"] = 186, ["="] = 187, ["+"] = 187, [","] = 188, ["-"] = 189, ["."] = 190, ["/"] = 191, ["`"] = 192,
@@ -930,7 +950,7 @@ function M.encode(spec) -- "Ctrl+Shift+L" -> flags, key as reaper-kb.ini writes 
   local mods, key = M.split_spec(spec)
   local flags = 0
   for m in mods:gmatch("[^+]+") do
-    local f = ({ Shift = SHIFT, Ctrl = CTRL, Alt = ALT })[m]
+    local f = ({ Shift = SHIFT, Ctrl = CTRL, Alt = ALT, Win = WIN })[m]
     if not f then return nil end
     flags = flags | f
   end
@@ -958,7 +978,7 @@ function M.make_keymap() -- -> path of the .ReaperKeyMap, how many lines, what w
   for _, st in ipairs(M.styles) do
     local alt = st.alt or 0
     if alt >= 1 and alt <= 16 then
-      for _, k in ipairs(st.keys or {}) do
+      for _, k in ipairs(M.keys_here(st.keys)) do
         local f, key = M.encode(k[1])
         local cmd = k[2]
         if type(cmd) == "string" and cmd:match("^MAIN:") then
@@ -1287,6 +1307,7 @@ local function decode(f, k) -- reaper-kb.ini flags, key -> "Ctrl+Shift+L" (the r
   if f & CTRL ~= 0 then mods[#mods + 1] = "Ctrl" end
   if f & ALT ~= 0 then mods[#mods + 1] = "Alt" end
   if f & SHIFT ~= 0 then mods[#mods + 1] = "Shift" end
+  if f & WIN ~= 0 then mods[#mods + 1] = "Win" end
   local key
   if f & VIRT == 0 then key = k <= 0x10FFFF and utf8.char(k) or nil
   elseif KEYNAME[k] then key = KEYNAME[k]
@@ -1414,6 +1435,10 @@ function M.import(path) -- -> the style, or nil + why. Shortcuts need install_sh
   if st.theme ~= nil then st.theme = type(st.theme) == "string" and st.theme:match("[^/\\]+$") or nil end
   return save_user_style(st)
 end
+function M.keyname(s) -- styles store Windows key names; on a Mac REAPER's Ctrl is Cmd, Alt is Option and Win is Control
+  if M.IS_MAC then s = s:gsub("Ctrl", "Cmd"):gsub("Alt", "Opt"):gsub("Win", "Control") end
+  return s
+end
 local function esc(s) return (tostring(s):gsub("[&<>]", { ["&"] = "&amp;", ["<"] = "&lt;", [">"] = "&gt;" })) end
 function M.cheat_sheet(st) -- -> path of an HTML page laid out for printing
   local h = { "<!doctype html><meta charset='utf-8'><title>" .. esc(st.name) .. " in REAPER</title><style>",
@@ -1428,10 +1453,10 @@ function M.cheat_sheet(st) -- -> path of an HTML page laid out for printing
     h[#h + 1] = "</table></div>"
   end
   local rows = {}
-  for _, k in ipairs(st.keys or {}) do rows[#rows + 1] = { k[1], k[3] } end
+  for _, k in ipairs(M.keys_here(st.keys)) do rows[#rows + 1] = { M.keyname(k[1]), k[3] } end
   tbl("Arrange", rows)
   rows = {}
-  for _, k in ipairs(st.midi_keys or {}) do rows[#rows + 1] = { k[1], k[3] } end
+  for _, k in ipairs(st.midi_keys or {}) do rows[#rows + 1] = { M.keyname(k[1]), k[3] } end
   tbl("MIDI editor", rows)
   rows = {}
   for _, f in ipairs(st.feel or {}) do rows[#rows + 1] = { f[1] == "mouse" and "Mouse" or "Setting", f[#f] } end

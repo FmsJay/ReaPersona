@@ -116,11 +116,8 @@ local function pill(text, bg, fg)
   ImGui.DrawList_AddRectFilled(dl, x, y, x + w + 16, y + h + 6, bg, (h + 6) / 2)
   ImGui.DrawList_AddText(dl, x + 8, y + 3, fg or 0x15171AFF, text)
 end
-local IS_MAC = reaper.GetOS():find("OSX") ~= nil or reaper.GetOS():find("macOS") ~= nil
-local function keyname(s) -- (on a Mac REAPER's Ctrl is Cmd and Alt is Option: styles store Windows names, show the Mac ones)
-  if IS_MAC then s = s:gsub("Ctrl", "Cmd"):gsub("Alt", "Opt") end
-  return s
-end
+local IS_MAC = core.IS_MAC
+local keyname = core.keyname -- (on a Mac REAPER's Ctrl is Cmd, Alt is Option and Win is Control: styles store Windows names)
 local function keycap(text) -- a key, drawn like one
   text = keyname(text)
   local dl = ImGui.GetWindowDrawList(ctx)
@@ -1011,7 +1008,7 @@ local function key_table(id, keys, title)
     ImGui.TableSetupColumn(ctx, title)
     ImGui.TableHeadersRow(ctx)
     local q = filter:lower()
-    for _, k in ipairs(keys) do
+    for _, k in ipairs(core.keys_here(keys)) do -- (keys marked for the other system left out)
       if q == "" or k[1]:lower():find(q, 1, true) or k[3]:lower():find(q, 1, true) then
         ImGui.TableNextRow(ctx)
         ImGui.TableNextColumn(ctx); keycap(k[1])
