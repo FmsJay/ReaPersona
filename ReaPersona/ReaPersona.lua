@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One or Bitwig (or stock REAPER), switch on the fly, save your own presets, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.4.0
+-- @version 5.4.1
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each style is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings such
@@ -76,12 +76,15 @@ local function mix(a, b, t) -- a towards b, each channel; no alpha
 end
 local function solid(c) return c << 8 | 0xFF end
 local function hex(s, fallback) local n = tonumber((s or ""):match("^#?(%x%x%x%x%x%x)$") or "", 16); return n or fallback end
-local P = PALETTES[reaper.GetExtState(SECTION, "look")] or PALETTES[reaper.GetExtState("BandSync", "theme")] or PALETTES.Dark -- (Settings > look; else StudioSync's)
-local C = {
-  BG = solid(P.bg), CARD = solid(P.card), CARD_HOVER = solid(mix(P.card, P.text, 0.05)), NAV = solid(P.nav), TEXT = solid(P.text),
-  MUTED = solid(P.muted), ACCENT = solid(P.accent), GREEN = solid(P.green), YELLOW = solid(P.yellow), RED = solid(P.red),
-  FRAME = solid(mix(P.bg, P.text, 0.16)), KEYCAP = solid(mix(P.card, P.text, 0.12)), BANNER = solid(mix(P.card, P.yellow, 0.16)),
-}
+local P, C = nil, {}
+local COLS -- (filled by apply_look below)
+local function apply_look() -- the palette from Settings > look (else StudioSync's), into P, C and the ImGui colours; live
+  P = PALETTES[reaper.GetExtState(SECTION, "look")] or PALETTES[reaper.GetExtState("BandSync", "theme")] or PALETTES.Dark
+  C.BG, C.CARD, C.CARD_HOVER, C.NAV, C.TEXT = solid(P.bg), solid(P.card), solid(mix(P.card, P.text, 0.05)), solid(P.nav), solid(P.text)
+  C.MUTED, C.ACCENT, C.GREEN, C.YELLOW, C.RED = solid(P.muted), solid(P.accent), solid(P.green), solid(P.yellow), solid(P.red)
+  C.FRAME, C.KEYCAP, C.BANNER = solid(mix(P.bg, P.text, 0.16)), solid(mix(P.card, P.text, 0.12)), solid(mix(P.card, P.yellow, 0.16))
+  if COLS then COLS.fill() end
+end
 local function accent_of(st) return hex(st.accent, P.accent) end
 local function t(x) return solid(mix(P.bg, P.text, x)) end
 local function a(x) return solid(mix(P.bg, P.accent, x)) end
@@ -94,7 +97,9 @@ end
 local ctx = new_ctx()
 local font = ImGui.CreateFont("sans-serif"); ImGui.Attach(ctx, font)
 local bold = ImGui.CreateFont("sans-serif", ImGui.FontFlags_Bold); ImGui.Attach(ctx, bold)
-local COLS = {
+COLS = { fill = function()
+  for k = #COLS, 1, -1 do COLS[k] = nil end
+  for _, c in ipairs({
   { ImGui.Col_WindowBg, C.BG }, { ImGui.Col_ChildBg, 0 }, { ImGui.Col_PopupBg, solid(mix(P.card, P.text, 0.03)) },
   { ImGui.Col_Text, C.TEXT }, { ImGui.Col_TextDisabled, C.MUTED }, { ImGui.Col_Border, t(0.28) }, -- (fields and buttons get a visible edge: 3:1 against the cards)
   { ImGui.Col_FrameBg, C.FRAME }, { ImGui.Col_FrameBgHovered, t(0.21) }, { ImGui.Col_FrameBgActive, t(0.26) },
@@ -104,7 +109,9 @@ local COLS = {
   { ImGui.Col_Separator, t(0.12) }, { ImGui.Col_TitleBg, C.NAV }, { ImGui.Col_TitleBgActive, solid(mix(P.nav, P.text, 0.03)) },
   { ImGui.Col_TableHeaderBg, t(0.08) }, { ImGui.Col_TableRowBgAlt, solid(mix(P.card, P.text, 0.03)) }, { ImGui.Col_TableBorderLight, t(0.1) },
   { ImGui.Col_ScrollbarBg, 0 },
-}
+}) do COLS[#COLS + 1] = c end
+end }
+apply_look()
 local VARS = {
   { ImGui.StyleVar_WindowPadding, 0, 0 }, { ImGui.StyleVar_FramePadding, 10, 6 }, { ImGui.StyleVar_ItemSpacing, 8, 8 },
   { ImGui.StyleVar_FrameRounding, 6 }, { ImGui.StyleVar_ChildRounding, 10 }, { ImGui.StyleVar_WindowRounding, 8 },
@@ -137,8 +144,9 @@ local function keycap(text) -- a key, drawn like one
   ImGui.DrawList_AddRectFilled(dl, x, y, x + w + 12, y + h + 4, C.KEYCAP, 4)
   ImGui.DrawList_AddText(dl, x + 6, y + 2, C.TEXT, text)
 end
+local UI = (tonumber(reaper.GetExtState(SECTION, "text size")) or 15) / 15 -- (Settings > text size)
 local function heading(text, size)
-  ImGui.PushFont(ctx, bold, size or 17)
+  ImGui.PushFont(ctx, bold, (size or 17) * UI)
   ImGui.Text(ctx, text)
   ImGui.PopFont(ctx)
 end
@@ -259,7 +267,10 @@ local function install_ext(key)
   reaper.MB(ok and (x.name .. " is installed. Restart REAPER to load it (REAPER loads extensions when it starts).")
     or ("Couldn't install " .. x.name .. ": " .. tostring(why)), "ReaPersona", 0)
 end
+local last_style -- (the style before the last switch: Undo switch goes back to it)
 local function use(st)
+  local was = core.current()
+  if was and was.id ~= st.id then last_style = was.id end
   core.use(st); say(st.name .. " in use.")
   for _, key in ipairs(st.recommends or {}) do -- (offered once: no is remembered)
     local x = core.EXTENSIONS[key]
@@ -887,7 +898,12 @@ local function settings_page()
     if look == "" then look = "Follow StudioSync" end
     for i, l in ipairs(LOOKS) do
       if i > 1 then ImGui.SameLine(ctx) end
-      if ImGui.RadioButton(ctx, l, look == l) then reaper.SetExtState(SECTION, "look", l, true); say("The new look shows next time you open ReaPersona.") end
+      if ImGui.RadioButton(ctx, l, look == l) then reaper.SetExtState(SECTION, "look", l, true); apply_look() end
+    end
+    ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Text size"); ImGui.SameLine(ctx)
+    for _, z in ipairs({ { 13, "Small" }, { 15, "Normal" }, { 17, "Large" }, { 19, "Larger" } }) do
+      ImGui.SameLine(ctx)
+      if ImGui.RadioButton(ctx, z[2] .. "##ts", math.floor(UI * 15 + 0.5) == z[1]) then UI = z[1] / 15; reaper.SetExtState(SECTION, "text size", tostring(z[1]), true) end
     end
     muted("Follow StudioSync uses StudioSync's colour choice when it's installed (Dark otherwise).")
     card_end()
@@ -1610,7 +1626,7 @@ local function top_bar(alt)
   local cur = core.current()
   local y0 = ImGui.GetCursorPosY(ctx) -- (below the title bar)
   ImGui.SetCursorPos(ctx, 16, y0 + 10)
-  ImGui.PushFont(ctx, bold, 20); ImGui.Text(ctx, "ReaPersona"); ImGui.PopFont(ctx)
+  ImGui.PushFont(ctx, bold, 20 * UI); ImGui.Text(ctx, "ReaPersona"); ImGui.PopFont(ctx)
   ImGui.SameLine(ctx, 0, 14)
   ImGui.SetCursorPosY(ctx, y0 + 13)
   local col = accent_of(cur)
@@ -1626,8 +1642,14 @@ local function top_bar(alt)
     search_q = q
     if search_q ~= "" and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then search_q = "" end
   end
-  ImGui.SameLine(ctx, math.max(ImGui.GetCursorPosX(ctx), w - 300))
+  local undo = last_style and last_style ~= cur.id and core.by_id(last_style)
+  ImGui.SameLine(ctx, math.max(ImGui.GetCursorPosX(ctx), w - (undo and 410 or 300)))
   ImGui.SetCursorPosY(ctx, y0 + 8)
+  if undo then
+    if ImGui.Button(ctx, "Undo switch") then use(undo) end
+    ImGui.SetItemTooltip(ctx, "Back to " .. undo.name .. ", as it was before you switched.")
+    ImGui.SameLine(ctx)
+  end
   if ImGui.Button(ctx, "Save as my style...##top") then save_preset_prompt() end
   ImGui.SetItemTooltip(ctx, "Keep what's in use now, under a name: the style's keys and toolbar, the theme, the layout, snap and the mouse behaviours as they are right now.")
   ImGui.SameLine(ctx)
@@ -1645,7 +1667,7 @@ local function frame()
   ImGui.SetNextWindowSize(ctx, 980, 760, ImGui.Cond_FirstUseEver)
   for _, c in ipairs(COLS) do ImGui.PushStyleColor(ctx, c[1], c[2]) end
   for _, v in ipairs(VARS) do ImGui.PushStyleVar(ctx, v[1], v[2], v[3]) end
-  ImGui.PushFont(ctx, font, 15)
+  ImGui.PushFont(ctx, font, 15 * UI)
   local visible, open = ImGui.Begin(ctx, "ReaPersona", true)
   if visible then
     if ensure_new or core.stubs_stale then core.ensure_scripts(); ensure_new = false end
@@ -1687,7 +1709,7 @@ local function frame()
     ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowPadding, 8, 10)
     ImGui.PushStyleVar(ctx, ImGui.StyleVar_SelectableTextAlign, 0, 0.5)
     if not narrow and ImGui.BeginChild(ctx, "nav", 150, 0, ImGui.ChildFlags_AlwaysUseWindowPadding) then
-      ImGui.PushFont(ctx, nil, 16)
+      ImGui.PushFont(ctx, nil, 16 * UI)
       local cur_g = group_of(page)
       for _, g in ipairs(GROUPS) do
         local x, y = ImGui.GetCursorScreenPos(ctx)

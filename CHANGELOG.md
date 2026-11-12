@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.4.1
+- Settings: ReaPersona's look changes straight away (no reopening), and a **Text size** choice (Small to Larger).
+- **Undo switch** in the top bar goes back to the style you had before the last switch.
+
 ## 5.4.0
 - **Docks made for you:** a style that wants a window on a side your REAPER has no docker on (Reason's mixer at the top, say) sets up a spare docker there; switching back puts the window where it was.
 - **Search everything** from the top bar (Ctrl+K): styles, shortcuts in every style ("split" finds each DAW's key), where a DAW's feature is in REAPER, themes, settings and pages.
