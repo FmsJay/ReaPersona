@@ -118,6 +118,9 @@ def main():
     if not os.path.exists(os.path.join(colorthemes, "Default_7.0.ReaperThemeZip")):
         print("1\nREAPER's Default_7.0.ReaperThemeZip isn't in " + colorthemes); return
     recipes = json.load(open(os.path.join(HERE, "styles.json"), encoding="utf-8")).get("own_themes", {})
+    user = os.path.join(HERE, "user_themes.json")  # (recipes you imported, e.g. from an Ableton Live theme)
+    if os.path.exists(user):
+        recipes.update(json.load(open(user, encoding="utf-8")))
     want = sys.argv[2:] or list(recipes)
     made = [build(colorthemes, n, recipes[n]) for n in want if n in recipes]
     print("0\n" + "\n".join(made))

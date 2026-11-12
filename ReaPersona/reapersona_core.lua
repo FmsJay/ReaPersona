@@ -205,6 +205,7 @@ local function restore_feel(windows_left) -- (windows_left: a window's original 
   local list = orig_list()
   for n = #list, 1, -1 do
     local kind, a, b, c = list[n]:match("^(%a)|([^|]*)|([^|]*)|?(.*)$")
+    local ok, err = pcall(function()
     if kind == "d" then
       if windows_left then windows_left[a] = list[n] else window_back(list[n]) end
     elseif kind == "t" then
@@ -219,13 +220,44 @@ local function restore_feel(windows_left) -- (windows_left: a window's original 
       local id = cmd_id(tonumber(a) or a)
       if id ~= 0 and reaper.GetToggleCommandState(id) ~= 1 then reaper.Main_OnCommand(id, 0) end
     end
+    end)
+    if not ok then M.log("put back " .. list[n] .. ": " .. tostring(err)) end
   end
   reaper.SetExtState(M.SECTION, "orig", "", true)
+end
+-- Which parts of a style's feel you let styles change (Settings): the mixer's docking is off unless you turn it on, because a mixer
+-- that leaves its docker every time you switch to Pro Tools, FL Studio or Cubase gets in the way.
+M.ASPECTS = {
+  { "mixer_dock", "Dock or undock the mixer (Pro Tools, FL and Cubase keep theirs in its own window)", false },
+  { "mixer_layout", "Mixer layout: master on the left or right, insert and send slots", true },
+  { "transport", "Where the transport sits", true },
+  { "browser", "Where the Media Explorer docks", true },
+  { "toolbar", "The DAW's toolbar in place of your main toolbar", true },
+  { "mouse", "Mouse behaviours (Smart Tool and so on)", true },
+  { "settings", "Snap, ripple and follow-playhead", true },
+}
+function M.aspect_on(a)
+  local v = reaper.GetExtState(M.SECTION, "aspect " .. a)
+  if v ~= "" then return v == "1" end
+  for _, x in ipairs(M.ASPECTS) do if x[1] == a then return x[3] end end
+  return true
+end
+function M.aspect_of(f)
+  if f[1] == "dock" then return "browser" elseif f[1] == "radio" then return "transport" elseif f[1] == "switch" then return "toolbar"
+  elseif f[1] == "mouse" then return "mouse"
+  elseif f[1] == "toggle" then
+    if f[2] == 40083 or f[2] == 40078 then return "mixer_dock" end
+    if f[2] == 40389 or f[2] == 40549 or f[2] == 40557 then return "mixer_layout" end
+  end
+  return "settings"
 end
 local function apply_feel(st, windows_left)
   local list = {}
   windows_left = windows_left or {}
+  local function save() reaper.SetExtState(M.SECTION, "orig", table.concat(list, "\n"), true) end -- (after every entry: a switch cut short can still be put back)
   for _, f in ipairs(st.feel or {}) do
+    local ok, err = pcall(function()
+    if not M.aspect_on(M.aspect_of(f)) then return end
     if f[1] == "dock" and WINDOWS[f[2]] and reaper.JS_Window_OnCommand then
       list[#list + 1] = windows_left[f[2]] or window_now(f[2]) -- (the original from before any style, if the last style moved it)
       windows_left[f[2]] = nil
@@ -255,9 +287,16 @@ local function apply_feel(st, windows_left)
       list[#list + 1] = "m|" .. f[2] .. "|" .. f[3] .. "|" .. reaper.GetMouseModifier(f[2], f[3], "")
       reaper.SetMouseModifier(f[2], f[3], f[4])
     end
+    end)
+    if not ok then M.log("apply " .. tostring(st.id) .. " " .. tostring(f[1]) .. " " .. tostring(f[2]) .. ": " .. tostring(err)) end
+    save()
   end
   for _, line in pairs(windows_left) do window_back(line) end -- (windows the last style moved and this one doesn't: put back)
-  reaper.SetExtState(M.SECTION, "orig", table.concat(list, "\n"), true)
+  save()
+end
+function M.log(msg) -- ReaPersona/errors.log: what went wrong, for fixing it
+  local f = io.open(M.here .. "/errors.log", "a")
+  if f then f:write(os.date("%Y-%m-%d %H:%M:%S ") .. tostring(msg) .. "\n"); f:close() end
 end
 -- what a mouse entry is set to now matches the style? (for the picker's "not applied" warnings)
 function M.mouse_ok(f) return reaper.GetMouseModifier and reaper.GetMouseModifier(f[2], f[3], "") ~= "" end
@@ -622,6 +661,105 @@ function M.merge_keys(base_id, from_id, only_gaps, name)
   M.styles[#M.styles + 1] = st
   return st
 end
+-- ---------------------------------------------------------------- combining styles: several DAWs' keys and feel in one style
+-- Styles are taken in priority order (first wins); `choice` overrides that per clash: choice["key " .. spec], choice["midi " .. spec]
+-- or choice[feel slot] = the style id whose version you want.
+local function feel_slot(f)
+  if f[1] == "toggle" then return "toggle " .. tostring(f[2])
+  elseif f[1] == "radio" then return "radio " .. table.concat(f[2], ",")
+  elseif f[1] == "dock" then return "dock " .. f[2]
+  elseif f[1] == "mouse" then return "mouse " .. f[2] .. " " .. f[3]
+  elseif f[1] == "switch" then local c = tonumber(f[2]) or 0; return (c >= 41956 and c <= 41959) and "switch midi" or "switch main" end
+end
+local function feel_value(f)
+  if f[1] == "dock" then return f[3] .. "/" .. tostring(f[4]) elseif f[1] == "mouse" then return tostring(f[4])
+  elseif f[1] == "switch" then return tostring(f[2]) else return tostring(f[3]) end
+end
+function M.combine_clashes(ids) -- -> { {kind = "key"|"midi"|"feel", what, options = { {id, label} }} } where the styles disagree
+  local out, keys, midi, feel, order = {}, {}, {}, {}, {}
+  for _, id in ipairs(ids) do
+    local st = M.by_id(id)
+    for _, k in ipairs(st and st.keys or {}) do
+      local c = M.canon(k[1]); keys[c] = keys[c] or {}; if not keys[c][1] then order[#order + 1] = "key " .. c end
+      keys[c][#keys[c] + 1] = { id, tostring(k[2]), k[3], k[1] }
+    end
+    for _, k in ipairs(st and st.midi_keys or {}) do
+      local c = M.canon(k[1]); midi[c] = midi[c] or {}; if not midi[c][1] then order[#order + 1] = "midi " .. c end
+      midi[c][#midi[c] + 1] = { id, type(k[2]) == "table" and table.concat(k[2], "+") or tostring(k[2]), k[3], k[1] }
+    end
+    for _, f in ipairs(st and st.feel or {}) do
+      local s = feel_slot(f)
+      if s then feel[s] = feel[s] or {}; if not feel[s][1] then order[#order + 1] = s end; feel[s][#feel[s] + 1] = { id, feel_value(f), f[#f] } end
+    end
+  end
+  for _, slot in ipairs(order) do
+    local kind, rest = slot:match("^(%S+) (.+)$")
+    local list = kind == "key" and keys[rest] or kind == "midi" and midi[rest] or feel[slot]
+    local distinct = {}
+    for _, o in ipairs(list) do distinct[o[2]] = true end
+    local n = 0
+    for _ in pairs(distinct) do n = n + 1 end
+    if n > 1 then
+      local opts = {}
+      for _, o in ipairs(list) do opts[#opts + 1] = { o[1], o[3] } end
+      out[#out + 1] = { slot = (kind == "key" or kind == "midi") and slot or slot, kind = (kind == "key" or kind == "midi") and kind or "feel",
+        what = (kind == "key" or kind == "midi") and list[1][4] or list[1][3], options = opts }
+    end
+  end
+  return out
+end
+function M.combine(ids, choice, name, theme) -- -> the new style, or nil + why
+  if #ids < 2 then return nil, "pick at least two styles" end
+  local alt = free_alt()
+  if not alt then return nil, "all 16 shortcut layers are in use" end
+  choice = choice or {}
+  local styles = {}
+  for _, id in ipairs(ids) do styles[#styles + 1] = M.by_id(id) end
+  local function pick(slot, candidates) -- candidates: { {id, entry} } in priority order
+    local want = choice[slot]
+    if want then for _, c in ipairs(candidates) do if c[1] == want then return c[2] end end end
+    return candidates[1] and candidates[1][2]
+  end
+  local st = { id = "combo_" .. os.time(), name = name, alt = alt, kind = "daw", keys = {}, midi_keys = {}, feel = {}, extras = {}, docs = {},
+    recommends = {}, combined = ids }
+  for _, field in ipairs({ "keys", "midi_keys" }) do
+    local by, order = {}, {}
+    for _, s in ipairs(styles) do
+      for _, k in ipairs(s[field] or {}) do
+        local c = M.canon(k[1])
+        if not by[c] then by[c] = {}; order[#order + 1] = c end
+        by[c][#by[c] + 1] = { s.id, k }
+      end
+    end
+    for _, c in ipairs(order) do st[field][#st[field] + 1] = copy(pick((field == "keys" and "key " or "midi ") .. c, by[c])) end
+  end
+  local by, order = {}, {}
+  for _, s in ipairs(styles) do
+    for _, f in ipairs(s.feel or {}) do
+      local slot = feel_slot(f)
+      if slot then if not by[slot] then by[slot] = {}; order[#order + 1] = slot end; by[slot][#by[slot] + 1] = { s.id, f } end
+    end
+  end
+  for _, slot in ipairs(order) do st.feel[#st.feel + 1] = copy(pick(slot, by[slot])) end
+  local seen = {}
+  for _, s in ipairs(styles) do
+    for _, x in ipairs(s.extras or {}) do st.extras[#st.extras + 1] = { s.name .. ": " .. x[1], x[2], x[3] } end
+    for _, d in ipairs(s.docs or {}) do st.docs[#st.docs + 1] = d end
+    for _, r in ipairs(s.recommends or {}) do if not seen[r] then seen[r] = true; st.recommends[#st.recommends + 1] = r end end
+  end
+  local names = {}
+  for _, s in ipairs(styles) do names[#names + 1] = s.name end
+  st.theme = theme or M.theme_for(styles[1])
+  st.themes = { st.theme }
+  st.accent = styles[1].accent
+  st.description = name .. ": " .. table.concat(names, " + ") .. " combined. Keys and feel come from them in that order, except where you picked otherwise; shortcut layer alt-" .. alt .. "."
+  local users = load(M.here .. "/user_styles.json")
+  users[#users + 1] = st
+  M.write(M.here .. "/user_styles.json", M.json_encode({ styles = users }) .. "\n")
+  st.user = true
+  M.styles[#M.styles + 1] = st
+  return st
+end
 function M.delete_user_style(id)
   local users = load(M.here .. "/user_styles.json")
   for n = #users, 1, -1 do if users[n].id == id then table.remove(users, n) end end
@@ -739,6 +877,10 @@ function M.install_python_libs() -- pip install --user pillow numpy (REAPER wait
   return nil, (text or ""):sub(-400)
 end
 M.OWN = (function() local t = M.read(M.here .. "/styles.json"); local ok, d = pcall(M.json_decode, t or "{}"); return ok and d and d.own_themes or {} end)()
+do -- (theme recipes you imported, e.g. from an Ableton Live theme)
+  local ok, d = pcall(M.json_decode, M.read(M.here .. "/user_themes.json") or "{}")
+  for k, v in pairs(ok and d or {}) do M.OWN[k] = v end
+end
 M.CATALOG = (function() local t = M.read(M.here .. "/styles.json"); local ok, d = pcall(M.json_decode, t or "{}"); return ok and d and d.themes or {} end)()
 function M.own_theme_file(name) return "ReaPersona - " .. name .. ".ReaperThemeZip" end
 function M.own_themes_built()
@@ -799,6 +941,182 @@ function M.add_startup() -- one block in Scripts/__startup.lua that brings back 
   if not f then return nil, "couldn't write " .. M.startup_path() end
   f:write(block); f:close()
   return true
+end
+
+-- ---------------------------------------------------------------- helper tools some styles' features use (offered when missing)
+M.TOOLS = {
+  { match = "^_HB_", name = "Helgobox (Playtime clip launcher)", how = "ReaPack, repository Helgoboss Projects", filter = "Helgobox" },
+  { match = "^_RSa31e94c408150d20aad669ba609f01c4083975ae$", name = "MPL's RS5k step sequencer", how = "ReaPack, MPL Scripts", filter = "step sequencer" },
+  { match = "^_FNG_", name = "SWS", how = "sws-extension.org", url = "https://www.sws-extension.org/" },
+  { match = "^_SWS", name = "SWS", how = "sws-extension.org", url = "https://www.sws-extension.org/" },
+  { match = "^_BR_", name = "SWS", how = "sws-extension.org", url = "https://www.sws-extension.org/" },
+}
+function M.tool_for(named) for _, t in ipairs(M.TOOLS) do if named:match(t.match) then return t end end end
+function M.get_tool(t) -- ReaPack's package browser, filtered to it, or its web page (installing stays the user's click)
+  if t.filter and reaper.ReaPack_BrowsePackages then reaper.ReaPack_BrowsePackages(t.filter) else M.open_url(t.url or "https://reapack.com/") end
+end
+
+-- ---------------------------------------------------------------- importing from another DAW on this computer
+-- What can be read: Cubase/Nuendo's Key Commands.xml (your own key assignments) and an Ableton Live theme (.ask colours). The others
+-- keep their settings in binary files, or don't let you change keys at all: for those, their style and its tools are the import.
+local function env(k) return os.getenv(k) or "" end
+local function first_dir(pattern_parent, prefix) -- newest folder under pattern_parent whose name starts with prefix
+  local best
+  for i = 0, 200 do
+    local d = reaper.EnumerateSubdirectories(pattern_parent, i)
+    if not d then break end
+    if d:find(prefix, 1, true) == 1 and (not best or d > best) then best = d end
+  end
+  return best and (pattern_parent .. "/" .. best) or nil
+end
+function M.detect_daws() -- -> { {style, name, found = path or nil, can = {...}} }
+  local win = reaper.GetOS():find("^Win")
+  local appdata, pf, home = env("APPDATA"):gsub("\\", "/"), "C:/Program Files", env("HOME")
+  local out = {}
+  local function add(style, name, paths, can)
+    local found
+    for _, p in ipairs(paths) do
+      if p and (reaper.file_exists(p) or reaper.EnumerateFiles(p, 0) or reaper.EnumerateSubdirectories(p, 0)) then found = p; break end
+    end
+    out[#out + 1] = { style = style, name = name, found = found, can = can or {} }
+  end
+  if win then
+    local cub = first_dir(appdata .. "/Steinberg", "Cubase") or first_dir(appdata .. "/Steinberg", "Nuendo")
+    add("cubase", "Cubase / Nuendo", { cub and (cub .. "/Key Commands.xml"), pf .. "/Steinberg/Cubase 14", pf .. "/Steinberg/Cubase 13" }, { keys = cub and (cub .. "/Key Commands.xml") })
+    add("ableton", "Ableton Live", { first_dir("C:/ProgramData/Ableton", "Live"), appdata .. "/Ableton" }, { theme = first_dir("C:/ProgramData/Ableton", "Live") })
+    add("pro_tools", "Pro Tools", { pf .. "/Avid/Pro Tools" })
+    add("fl_studio", "FL Studio", { first_dir(pf .. "/Image-Line", "FL Studio"), pf .. "/Image-Line" })
+    add("studio_one", "Studio One / Fender Studio Pro", { first_dir(pf .. "/PreSonus", "Studio One"), pf .. "/Fender Studio Pro", appdata .. "/PreSonus" })
+    add("bitwig", "Bitwig Studio", { pf .. "/Bitwig Studio" })
+    add("reason", "Reason", { first_dir(pf .. "/Reason Studios", "Reason") })
+    add("cakewalk", "Cakewalk / Sonar", { pf .. "/Cakewalk", pf .. "/BandLab/Cakewalk", pf .. "/BandLab/Sonar" })
+  else
+    local lib = home .. "/Library"
+    local cub = first_dir(lib .. "/Preferences", "Cubase") or first_dir(lib .. "/Preferences", "Nuendo")
+    add("cubase", "Cubase / Nuendo", { cub and (cub .. "/Key Commands.xml"), "/Applications/Cubase 14.app" }, { keys = cub and (cub .. "/Key Commands.xml") })
+    add("ableton", "Ableton Live", { first_dir("/Applications", "Ableton Live") }, {})
+    add("logic", "Logic Pro", { "/Applications/Logic Pro.app", "/Applications/Logic Pro X.app" })
+    add("pro_tools", "Pro Tools", { "/Applications/Pro Tools.app" })
+    add("fl_studio", "FL Studio", { first_dir("/Applications", "FL Studio") })
+    add("studio_one", "Studio One / Fender Studio Pro", { first_dir("/Applications", "Studio One"), "/Applications/Fender Studio Pro.app" })
+    add("bitwig", "Bitwig Studio", { "/Applications/Bitwig Studio.app" })
+    add("reason", "Reason", { first_dir("/Applications", "Reason") })
+  end
+  return out
+end
+local CUBASE_KEYS = { Return = "Enter", Del = "Delete", Escape = "Esc", ["Page Up"] = "PgUp", ["Page Down"] = "PgDn", PageUp = "PgUp", PageDown = "PgDn",
+  ["Left Arrow"] = "Left", ["Right Arrow"] = "Right", ["Up Arrow"] = "Up", ["Down Arrow"] = "Down", ["Space"] = "Space" }
+local function cubase_spec(k) -- "Ctrl+Shift+Pad 1" -> "Ctrl+Shift+Num1"
+  local mods, key = k:match("^(.-)([^+]+)$")
+  if k:sub(-1) == "+" then mods, key = k:sub(1, -2):match("^(.-)%+?$"), "+" end
+  key = (key or ""):gsub("^Pad ?", "Num"):gsub("^Num (.)", "Num%1")
+  key = CUBASE_KEYS[key] or key
+  return M.canon((mods or "") .. key)
+end
+-- Your Cubase key assignments as a style: Cubase's own style with your keys on the commands it knows. -> the style, list not matched; or nil + why
+function M.import_cubase_keys(path)
+  local xml = M.read(path)
+  if not xml then return nil, "couldn't read " .. tostring(path) end
+  local base = M.by_id("cubase")
+  local by_name = {}
+  for _, k in ipairs(base.keys) do by_name[k[3]:lower()] = k[2] end
+  local keys, seen, missed = {}, {}, {}
+  local found = {} -- (a Key belongs to the Name just before it: categories nest their commands, so items can't be read one by one)
+  local name_now
+  for kind, val in xml:gmatch('<string name="(%a+)" value="([^"]*)"') do
+    if kind == "Name" then name_now = val elseif kind == "Key" and name_now then found[#found + 1] = { name_now, val } end
+  end
+  for _, nk in ipairs(found) do
+    local name, key = nk[1], nk[2]
+    if key ~= "" then
+      local cmd = by_name[name:lower()]
+      local spec = cubase_spec(key)
+      if cmd and M.encode(spec) and not seen[spec] then seen[spec] = true; keys[#keys + 1] = { spec, cmd, name .. " (yours)" }
+      elseif not cmd then missed[#missed + 1] = name .. " = " .. key end
+    end
+  end
+  if #keys == 0 then return nil, "none of its key assignments match a Cubase command ReaPersona knows (" .. #missed .. " others)" end
+  for _, k in ipairs(base.keys) do if not seen[M.canon(k[1])] then keys[#keys + 1] = copy(k); seen[M.canon(k[1])] = true end end
+  local alt = free_alt()
+  if not alt then return nil, "all 16 shortcut layers are in use" end
+  local st = copy(base)
+  st.id, st.name, st.alt, st.keys, st.user = "cubase_mine_" .. os.time(), "Cubase (your keys)", alt, keys, nil
+  st.description = "Cubase with your own key assignments from " .. path:gsub("\\", "/"):match("[^/]+$") .. " on top of its defaults; shortcut layer alt-" .. alt .. "."
+  local users = load(M.here .. "/user_styles.json")
+  users[#users + 1] = st
+  M.write(M.here .. "/user_styles.json", M.json_encode({ styles = users }) .. "\n")
+  st.user = true
+  M.styles[#M.styles + 1] = st
+  return st, missed
+end
+-- An Ableton Live theme (.ask) as a ReaPersona theme recipe (user_themes.json), built like the others. -> recipe name, or nil + why
+function M.import_live_theme(path)
+  local xml = M.read(path)
+  if not xml then return nil, "couldn't read " .. tostring(path) end
+  local function col(...)
+    for _, n in ipairs({ ... }) do local v = xml:match("<" .. n .. '%s+Value="(#%x%x%x%x%x%x)') ; if v then return v:upper() end end
+  end
+  local base = M.OWN["Ableton Live"] and copy(M.OWN["Ableton Live"]) or { palette = {} }
+  local p = base.palette
+  local bg, surf, text, sel, accent = col("Desktop", "SurfaceBackground"), col("SurfaceBackground", "SurfaceArea"), col("ControlForeground", "TextDisabled"),
+    col("SelectionBackground", "SelectionFrame"), col("ChosenDefault", "ChosenAlert")
+  if not (bg or surf) then return nil, "no colours found: is it a Live theme (.ask)?" end
+  p[1], p[2], p[3], p[5] = surf or p[1], surf or p[2], surf or p[3], bg or p[5]
+  if sel then p[4] = sel end
+  if text then p[6] = text; p[8] = text end
+  if accent then p[10], p[13], p[15] = accent, accent, accent end
+  base.tint = surf or base.tint
+  local name = "Ableton Live - " .. (path:gsub("\\", "/"):match("([^/]+)%.ask$") or "imported")
+  local ok, d = pcall(M.json_decode, M.read(M.here .. "/user_themes.json") or "{}")
+  d = ok and d or {}
+  d[name] = base
+  M.write(M.here .. "/user_themes.json", M.json_encode(d) .. "\n")
+  M.OWN[name] = base
+  return name
+end
+
+-- ---------------------------------------------------------------- browsing the REAPER Stash (curl comes with Windows 10+ and macOS)
+M.STASH_CATS = { { "Themes", "Themes" }, { "Key-Maps", "Key maps" }, { "Custom-Actions", "Custom actions" }, { "Classic-Themes", "Classic themes" },
+  { "Scripts", "Scripts" }, { "Project-and-Track-Templates", "Templates" } }
+M.STASH_SORTS = { { "nd", "Newest" }, { "ha", "Most popular" }, { "hr", "Top rated" } }
+local function unhtml(s) return (s:gsub("&amp;", "&"):gsub("&#039;", "'"):gsub("&quot;", '"'):gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("^%s+", ""):gsub("%s+$", "")) end
+local function urldecode(s) return (s:gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end)) end
+-- One page of the Stash: -> { {title, page, file, date, views} }, or nil + why
+function M.stash_list(cat, sort, query, pageno)
+  reaper.RecursiveCreateDirectory(M.here .. "/_downloads", 0)
+  local out_file = M.here .. "/_downloads/stash.html"
+  local url = "https://stash.reaper.fm/browse.php?q=" .. (query or ""):gsub("[^%w%-_%.~]", function(c) return string.format("%%%02X", c:byte()) end) ..
+    "&cat=" .. cat .. "&v=th&o=" .. sort .. "&pp=48&p=" .. (pageno or 1)
+  local code = sh('curl -s -L --max-time 25 -o "' .. out_file .. '" "' .. url .. '"', 30000)
+  local html = M.read(out_file)
+  os.remove(out_file)
+  if code ~= "0" or not html then return nil, "couldn't reach stash.reaper.fm" end
+  local items = {}
+  for chunk in (html .. 'class="file '):gmatch('class="file (.-)class="file ') do
+    local page = chunk:match('href="(/[tv][a-z]*/%d+/[^"]+)"')
+    local title = chunk:match('<div class="title">.-<a[^>]*>%s*(.-)%s*</a>')
+    local file = chunk:match('report_file%.php%?url=([^"]+)"')
+    if page and title then
+      items[#items + 1] = { title = unhtml(title), page = "https://stash.reaper.fm" .. page, file = file and urldecode(file),
+        date = (chunk:match('<div class="date">%s*(.-)%s*</div>') or ""), views = tonumber(chunk:match("<span>(%d+)</span> Views") or "") }
+    end
+  end
+  return items
+end
+-- Fetch one Stash file and take it in like a dropped file. A web page coming back instead (sign-in, a human check) isn't worked around:
+-- -> import results, or nil + "page" (open item.page in the browser instead)
+function M.stash_get(item)
+  if not item.file then return nil, "page" end
+  local name = item.file:match("[^/]+$") or "download"
+  local dir = M.here .. "/_downloads"
+  reaper.RecursiveCreateDirectory(dir, 0)
+  local path = dir .. "/" .. name
+  local code = sh('curl -s -L --max-time 60 -o "' .. path .. '" "' .. item.file .. '"', 70000)
+  local head = (M.read(path) or ""):sub(1, 200):lower()
+  if code ~= "0" or head == "" or head:find("<!doctype", 1, true) or head:find("<html", 1, true) then os.remove(path); return nil, "page" end
+  local res = M.import_file(path)
+  os.remove(path)
+  return res
 end
 
 -- ---------------------------------------------------------------- dropping files in: themes, theme packs, toolbars, keymaps, styles, presets

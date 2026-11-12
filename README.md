@@ -28,7 +28,7 @@ Switching away puts back everything a style changed, so **My REAPER** is always 
 
 The **Setup** page lists everything ReaPersona can use, whether you have it, and a button for each:
 
-- **ReaPersona's own themes:** one per DAW, built in seconds from the Default 7 theme your REAPER already has, in that DAW's colours. Panels, buttons, mute/solo/arm and transport colours, track-colour strength and text all change, with all of Default 7's layout and Theme Adjuster settings kept. Nothing of Default 7 ships with ReaPersona: only the recipes do, and the theme is made from your own copy.
+- **ReaPersona's own themes:** one per DAW, an approximation of its colours,, built in seconds from the Default 7 theme your REAPER already has, in that DAW's colours. Panels, buttons, mute/solo/arm and transport colours, track-colour strength and text all change, with all of Default 7's layout and Theme Adjuster settings kept. Nothing of Default 7 ships with ReaPersona: only the recipes do, and the theme is made from your own copy.
   - This needs Python 3 with Pillow and numpy. Setup has a button that installs those two.
 - **Shortcut layers:** with Python, close REAPER and run `install_shortcuts.py`. Or make a keymap file and import it in the Actions window (Key Map > Import, choose merge).
 - **The startup line:** brings your style back when REAPER starts.
@@ -42,6 +42,19 @@ The **Setup** page lists everything ReaPersona can use, whether you have it, and
 - Shared styles and presets.
 
 ## Also in the window
+
+- **Combine:** tick two or more DAWs (Pro Tools + Ableton, say). Their keys, MIDI keys, toolbar, layout and mouse feel come together into one style.
+  - Every clash is listed: a key bound differently, or a layout setting.
+  - Pick whose version you want per clash, or make one DAW always win. Your order decides the rest.
+- **Browse:** the REAPER Stash's newest, most popular and top-rated themes, key maps, custom actions and templates. *Add* downloads one and takes it in like a dropped file; anything behind a sign-in opens its page instead.
+- **Import from another DAW:**
+  - finds the DAWs installed on your computer;
+  - turns your own Cubase/Nuendo key commands into a style;
+  - makes a ReaPersona theme from an Ableton Live theme (`.ask`).
+- **What a style may change:** switch off the parts you want to keep as they are, whatever style you use: mixer docking (off by default), mixer layout, transport, Media Explorer, toolbar, mouse, snap/ripple.
+- **Customize REAPER:** item labels, grid lines, takes, spectral peaks, crossfades, grouping, locking, mixer options and what the ruler shows, in one place.
+- **Theme adjuster:** pops out into its own window; REAPER's own Theme Adjuster is one click away.
+- **Mac:** keys show as Cmd and Option. REAPER maps Ctrl to Cmd on macOS, so every style works there unchanged.
 
 - **Presets:** a style the way you like it, with its theme, layout and settings, saved under a name. You can share them as a file.
 - **Mix and match:** one style's keys, another's layout and feel, and any theme, saved as a profile.

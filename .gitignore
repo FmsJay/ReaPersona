@@ -14,3 +14,4 @@ ReaPersona/toolbars/
 *.ReaperTheme
 __pycache__/
 ReaPersona/_incoming/
+ReaPersona/user_themes.json
