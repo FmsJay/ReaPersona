@@ -120,7 +120,9 @@
       "theme": "ProTools2020.ReaperThemeZip",
       "themes": [
         "ReaPersona - Pro Tools.ReaperThemeZip",
+        "Rea Tools ULTIMATE.ReaperThemeZip",
         "ProTools2020.ReaperThemeZip",
+        "ProTools 12.5_F_edit_V5-mawi dark mod.ReaperThemeZip",
         "PRO TOOLS GOLD 2026.ReaperThemeZip",
         "ProTools 12.5_MC-edit.ReaperThemeZip",
         "Default_7.0 + ProTools2020 colours + ProTools2020 faders+knobs+transport.ReaperThemeZip",
@@ -263,7 +265,26 @@
         [40153, "MIDI Editor", "toolbar_midi_mode_piano_roll.png"]
       ],
       "accent": "#8B7CF6",
-      "recommends": ["playhead"]
+      "recommends": ["playhead"],
+      "tools": [
+        {
+          "name": "Pro Tools marker jump",
+          "for": "type a memory location number and go there",
+          "repos": [["ReaTeam Scripts", "https://github.com/ReaTeam/ReaScripts/raw/master/index.xml"]],
+          "find": "protoolsmarkerjump"
+        },
+        {
+          "name": "Reapertips Project Launcher",
+          "for": "a start page with recent projects and templates",
+          "repos": [["Reapertips", "https://github.com/Reapertips/ReaScripts/raw/master/index.xml"]],
+          "find": "Project Launcher"
+        }
+      ],
+      "keymaps": [
+        ["Robert Millord: Pro Tools keys in REAPER (2021)", "https://stash.reaper.fm/v/41131/Robert%20Millord_Pro%20Tools%20keys%20in%20REAPER.ReaperKeyMap"],
+        ["Pro Tools style mouse and keymaps (2016)", "https://stash.reaper.fm/v/29106/ReaperPTstylemouse%26keymaps_07-12-2016.zip"],
+        ["ps-reaper-config: Pro Tools, Ableton and Cubase style (2025)", "https://ps-reaper-config.netlify.app/"]
+      ]
     },
     {
       "id": "logic",
@@ -272,6 +293,7 @@
       "theme": "I Logic V2 Public.ReaperThemeZip",
       "themes": [
         "ReaPersona - Logic Pro.ReaperThemeZip",
+        "iLogic 3.9.ReaperThemeZip",
         "I Logic V2 Public.ReaperThemeZip",
         "FLogic.ReaperThemeZip",
         "CLogic.ReaperThemeZip",
@@ -414,7 +436,36 @@
       "toolbar_slot": 21,
       "toolbar_file": "CFLogic_Toolbar1.ReaperMenu",
       "accent": "#C9CED6",
-      "recommends": ["playhead", "smoothscroll"]
+      "recommends": ["playhead", "smoothscroll"],
+      "tools": [
+        {
+          "name": "Reaticulate",
+          "for": "articulation maps (Expression Maps, Sound Variations)",
+          "repos": [["Reaticulate", "https://reaticulate.com/release.xml"]],
+          "find": "Reaticulate"
+        },
+        {
+          "name": "Lil Chordbox",
+          "for": "a chord track: chord names over the arrangement and in the MIDI editor",
+          "repos": [["FTC Tools", "https://raw.githubusercontent.com/iliaspoulakis/Reaper-Tools/master/index.xml"]],
+          "find": "Chordbox"
+        },
+        {
+          "name": "MappingPanel",
+          "for": "macro knobs, like Smart Controls",
+          "repos": [["MPL Scripts", "https://github.com/MichaelPilyavskiy/ReaScripts/raw/master/index.xml"]],
+          "find": "MappingPanel"
+        },
+        {
+          "name": "Playtime (Helgobox)",
+          "for": "a clip launcher, like Session View",
+          "repos": [["Helgoboss Projects", "https://github.com/helgoboss/reaper-packages/raw/master/index.xml"]],
+          "find": "Helgobox"
+        }
+      ],
+      "keymaps": [
+        ["Logic Pro X key commands (2021)", "https://stash.reaper.fm/v/41033/Logic%20Pro%20X%20key%20commands.ReaperKeyMap"]
+      ]
     },
     {
       "id": "ableton",
@@ -423,9 +474,9 @@
       "theme": "ReAbleton.ReaperThemeZip",
       "themes": [
         "ReaPersona - Ableton Live.ReaperThemeZip",
+        "RLive.ReaperThemeZip",
         "ReAbleton.ReaperThemeZip",
-        "Live.ReaperThemeZip",
-        "Reaper4Live.ReaperThemeZip"
+        "Live.ReaperThemeZip"
       ],
       "description": "Ableton Live 12 (Windows keys), Arrangement view. Space plays from the start marker and stops, Shift+Space continues, F9 records, Ctrl+E splits, Ctrl+J consolidates, O is the metronome, Ctrl+Alt+M the mixer, C arms, Ctrl+T adds a track, Ctrl+Shift+C captures MIDI. Session View is Helgobox's Playtime; racks are REAPER's FX containers.",
       "docs": ["https://www.ableton.com/en/manual/live-keyboard-shortcuts/"],
@@ -565,14 +616,60 @@
         [40078, "Mixer", "toolbar_visible_mixer.png"]
       ],
       "accent": "#FFB000",
-      "recommends": ["playhead", "smoothscroll"]
+      "recommends": ["playhead", "smoothscroll"],
+      "tools": [
+        {
+          "name": "Playtime (Helgobox)",
+          "for": "a clip launcher, like Session View",
+          "repos": [["Helgoboss Projects", "https://github.com/helgoboss/reaper-packages/raw/master/index.xml"]],
+          "find": "Helgobox"
+        },
+        {
+          "name": "SideFX",
+          "for": "device chains, racks and modulators",
+          "repos": [
+            ["ReaWrap", "https://github.com/Conceptual-Machines/ReaWrap/raw/main/index.xml"],
+            ["SideFX", "https://github.com/Conceptual-Machines/SideFX/raw/main/index.xml"]
+          ],
+          "find": "SideFX"
+        },
+        {
+          "name": "ReaDrum Machine",
+          "for": "a drum rack: pads of samples, each with its own FX",
+          "repos": [["Suzuki Scripts", "https://github.com/Suzuki-Re/Suzuki-Scripts/raw/master/index.xml"]],
+          "find": "ReaDrum Machine"
+        },
+        {
+          "name": "ReAbleton scripts",
+          "for": "Ableton habits: adaptive grid, pitch tool, clip header and body",
+          "repos": [["ReAbleton", "https://raw.githubusercontent.com/edkashinsky/reaper-reableton-scripts/master/index.xml"]],
+          "find": "ek_"
+        },
+        {
+          "name": "ReaBlink",
+          "for": "Ableton Link",
+          "repos": [["ReaTeam Extensions", "https://github.com/ReaTeam/Extensions/raw/master/index.xml"]],
+          "find": "ReaBlink"
+        },
+        {
+          "name": "DrivenByMoss4Reaper",
+          "for": "Push, Maschine and Launchpad support",
+          "url": "https://www.mossgrabers.de/Software/Reaper/Reaper.html"
+        }
+      ],
+      "keymaps": [["ps-reaper-config: Pro Tools, Ableton and Cubase style (2025)", "https://ps-reaper-config.netlify.app/"]]
     },
     {
       "id": "fl_studio",
       "name": "FL Studio",
       "alt": 4,
       "theme": "FruityCocktail.ReaperThemeZip",
-      "themes": ["ReaPersona - FL Studio.ReaperThemeZip", "FruityCocktail.ReaperThemeZip"],
+      "themes": [
+        "ReaPersona - FL Studio.ReaperThemeZip",
+        "FL Studio Theme.ReaperThemeZip",
+        "INQUASAR DARK MATTER v.FL.ReaperThemeZip",
+        "FruityCocktail.ReaperThemeZip"
+      ],
       "description": "Image-Line FL Studio (Windows keys). Space starts and stops, Ctrl+Space pauses, R records, F6 channel rack (step sequencer), F7 piano roll, F8 plug-in picker, F9 mixer, Alt+F8 browser, Ctrl+B duplicates, Insert slices, Backspace toggles snap, Ctrl+M the metronome. In the piano roll right-click deletes notes. Patterns are pooled MIDI items.",
       "docs": ["https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/basics_shortcuts.htm"],
       "keys": [
@@ -689,7 +786,27 @@
         [41613, "Make unique"]
       ],
       "accent": "#8BC34A",
-      "recommends": ["playhead", "smoothscroll"]
+      "recommends": ["playhead", "smoothscroll"],
+      "tools": [
+        {
+          "name": "ChordGun",
+          "for": "scale-locked chords, like FL's chord stamp",
+          "repos": [["ReaTeam Scripts", "https://github.com/ReaTeam/ReaScripts/raw/master/index.xml"]],
+          "find": "ChordGun"
+        },
+        {
+          "name": "ReaDrum Machine",
+          "for": "a drum rack: pads of samples, each with its own FX",
+          "repos": [["Suzuki Scripts", "https://github.com/Suzuki-Re/Suzuki-Scripts/raw/master/index.xml"]],
+          "find": "ReaDrum Machine"
+        },
+        {
+          "name": "SMB Simple Media Browser",
+          "for": "a sample browser like FL's",
+          "repos": [["SMB", "https://raw.githubusercontent.com/Sakhnovkrg/ReaperSMBReapack/main/index.xml"]],
+          "find": "SMB"
+        }
+      ]
     },
     {
       "id": "cubase",
@@ -706,6 +823,7 @@
         "Cube6R.ReaperThemeZip",
         "Cube6D.ReaperThemeZip",
         "Cube6RD.ReaperThemeZip",
+        "Vex Cubase 5 Remix.ReaperThemeZip",
         "Reaper Cubase 2.ReaperThemeZip"
       ],
       "description": "Steinberg Cubase Pro 14 (Windows keys). Space starts and stops, Enter starts, keypad 0 stops, keypad * records, keypad / cycles, keypad 1/2 go to the locators, P sets the locators to the selection, Alt+X splits, Ctrl+D duplicates, J snaps, H/G zoom, F3 MixConsole, F5 MediaBay, Alt+Num1..9 workspaces (REAPER's screensets). Alt+drag copies.",
@@ -857,17 +975,55 @@
       "toolbar_slot": 24,
       "toolbar_file": "CubeX_Toolbar1.ReaperMenu",
       "accent": "#E5484D",
-      "recommends": ["playhead", "smoothscroll"]
+      "recommends": ["playhead", "smoothscroll"],
+      "tools": [
+        {
+          "name": "Reaticulate",
+          "for": "articulation maps (Expression Maps, Sound Variations)",
+          "repos": [["Reaticulate", "https://reaticulate.com/release.xml"]],
+          "find": "Reaticulate"
+        },
+        {
+          "name": "InteractiveToolbar",
+          "for": "Cubase's info line: edit what's selected",
+          "repos": [["MPL Scripts", "https://github.com/MichaelPilyavskiy/ReaScripts/raw/master/index.xml"]],
+          "find": "InteractiveToolbar"
+        },
+        {
+          "name": "Lil Chordbox",
+          "for": "a chord track: chord names over the arrangement and in the MIDI editor",
+          "repos": [["FTC Tools", "https://raw.githubusercontent.com/iliaspoulakis/Reaper-Tools/master/index.xml"]],
+          "find": "Chordbox"
+        },
+        {
+          "name": "SendBox",
+          "for": "type to add a send, as in Cubase",
+          "repos": [["ReaTeam Scripts", "https://github.com/ReaTeam/ReaScripts/raw/master/index.xml"]],
+          "find": "SendBox"
+        },
+        {
+          "name": "Reapertips Project Launcher",
+          "for": "a start page with recent projects and templates",
+          "repos": [["Reapertips", "https://github.com/Reapertips/ReaScripts/raw/master/index.xml"]],
+          "find": "Project Launcher"
+        }
+      ],
+      "keymaps": [
+        ["cubase.ReaperKeyMap and mouse map (2018)", "https://stash.reaper.fm/v/34843/cubase.ReaperKeyMap"],
+        ["Cubase / Nuendo keymap (2021)", "https://stash.reaper.fm/v/42237/keymap%20cubase%20nuendo%20%40rolysonidoenvivo.ReaperKeyMap"]
+      ]
     },
     {
       "id": "studio_one",
-      "name": "Studio One",
+      "name": "Studio One / Fender Studio Pro",
       "alt": 6,
       "theme": "HYDRA.ReaperThemeZip",
       "themes": [
         "ReaPersona - Studio One.ReaperThemeZip",
         "HYDRA.ReaperThemeZip",
+        "ReaSonus One ALPHA.ReaperThemeZip",
         "CSIX-BASIC.ReaperThemeZip",
+        "CONCEPT SIX - BASIC SX.ReaperThemeZip",
         "ReaSonus One.ReaperThemeZip"
       ],
       "description": "PreSonus Studio One, now Fender Studio Pro (Windows keys). Space plays and stops, comma returns to zero, Alt+X splits, D duplicates, G merges, Q quantizes, N snaps, E/W zoom, F2 editor, F3 mix, F5 browser, T adds a track, Y adds a marker, Tab goes to the next transient. Smart Tool: the bottom half of an event selects a range.",
@@ -1009,7 +1165,34 @@
         [40326, "Arranger (regions)", "toolbar_marker_list.png"]
       ],
       "accent": "#2F80ED",
-      "recommends": ["playhead", "smoothscroll"]
+      "recommends": ["playhead", "smoothscroll"],
+      "short": "Studio One",
+      "tools": [
+        {
+          "name": "ReaSonus Native",
+          "for": "PreSonus FaderPort support",
+          "repos": [["ReaTeam Extensions", "https://github.com/ReaTeam/Extensions/raw/master/index.xml"]],
+          "find": "ReaSonus"
+        },
+        {
+          "name": "Reapertips Project Launcher",
+          "for": "a start page with recent projects and templates",
+          "repos": [["Reapertips", "https://github.com/Reapertips/ReaScripts/raw/master/index.xml"]],
+          "find": "Project Launcher"
+        },
+        {
+          "name": "Reaticulate",
+          "for": "articulation maps (Expression Maps, Sound Variations)",
+          "repos": [["Reaticulate", "https://reaticulate.com/release.xml"]],
+          "find": "Reaticulate"
+        },
+        {
+          "name": "Lil Chordbox",
+          "for": "a chord track: chord names over the arrangement and in the MIDI editor",
+          "repos": [["FTC Tools", "https://raw.githubusercontent.com/iliaspoulakis/Reaper-Tools/master/index.xml"]],
+          "find": "Chordbox"
+        }
+      ]
     },
     {
       "id": "bitwig",
@@ -1018,12 +1201,13 @@
       "theme": "Reapertips Theme – Purple.ReaperThemeZip",
       "themes": [
         "ReaPersona - Bitwig Studio.ReaperThemeZip",
+        "Beatwing v2.5.ReaperThemeZip",
         "Reapertips Theme – Purple.ReaperThemeZip",
         "Reapertips Theme - Purple.ReaperThemeZip",
         "INQUASAR DARK MATTER v.1.0.ReaperThemeZip",
         "CSIX-BASIC.ReaperThemeZip"
       ],
-      "description": "Bitwig Studio (Windows keys). Space or P plays and stops, Alt+Space plays from the beginning, Ctrl+E splits, Ctrl+J consolidates, Ctrl+D duplicates, Ctrl+G groups tracks, +/- zoom, M the mixer, E the detail editor, D the devices, Alt+B the browser, Caps Lock the computer keyboard. No Stash theme imitates Bitwig: a dark purple theme stands in.",
+      "description": "Bitwig Studio (Windows keys). Space or P plays and stops, Alt+Space plays from the beginning, Ctrl+E splits, Ctrl+J consolidates, Ctrl+D duplicates, Ctrl+G groups tracks, +/- zoom, M the mixer, E the detail editor, D the devices, Alt+B the browser, Caps Lock the computer keyboard. Beatwing (spinlud) is the Stash theme inspired by Bitwig: a dark purple theme stands in.",
       "docs": [
         "https://downloads.bitwig.com/documentation/Bitwig%20Studio%20User%20Guide%20English.pdf",
         "https://downloads.bitwig.com/6.0/Release-Notes-6.0.pdf"
@@ -1127,7 +1311,35 @@
         [40377, "Computer keyboard", "toolbar_misc_keyboard.png"]
       ],
       "accent": "#FF6A1F",
-      "recommends": ["playhead", "smoothscroll"]
+      "recommends": ["playhead", "smoothscroll"],
+      "tools": [
+        {
+          "name": "SideFX",
+          "for": "device chains, racks and modulators",
+          "repos": [
+            ["ReaWrap", "https://github.com/Conceptual-Machines/ReaWrap/raw/main/index.xml"],
+            ["SideFX", "https://github.com/Conceptual-Machines/SideFX/raw/main/index.xml"]
+          ],
+          "find": "SideFX"
+        },
+        {
+          "name": "Playtime (Helgobox)",
+          "for": "a clip launcher, like Session View",
+          "repos": [["Helgoboss Projects", "https://github.com/helgoboss/reaper-packages/raw/master/index.xml"]],
+          "find": "Helgobox"
+        },
+        {
+          "name": "ReaBlink",
+          "for": "Ableton Link",
+          "repos": [["ReaTeam Extensions", "https://github.com/ReaTeam/Extensions/raw/master/index.xml"]],
+          "find": "ReaBlink"
+        },
+        {
+          "name": "DrivenByMoss4Reaper",
+          "for": "Push, Maschine and Launchpad support",
+          "url": "https://www.mossgrabers.de/Software/Reaper/Reaper.html"
+        }
+      ]
     },
     {
       "id": "cakewalk",
@@ -1254,7 +1466,14 @@
         [42430, "Take lanes", "toolbar_item_explode_lane_take.png"],
         [40326, "Arranger (regions)", "toolbar_marker_list.png"]
       ],
-      "recommends": ["playhead", "smoothscroll"]
+      "recommends": ["playhead", "smoothscroll"],
+      "tools": [
+        {
+          "name": "SONAR to REAPER guide",
+          "for": "Cockos' own guide for SONAR users",
+          "url": "https://www.reaper.fm/guides/SONARtoREAPER.pdf"
+        }
+      ]
     },
     {
       "id": "reason",
@@ -1386,7 +1605,29 @@
         [1068, "Loop"],
         [40377, "Piano Keys", "toolbar_misc_keyboard.png"]
       ],
-      "recommends": ["playhead", "smoothscroll"]
+      "recommends": ["playhead", "smoothscroll"],
+      "tools": [
+        {
+          "name": "Reason Rack Plugin",
+          "for": "the real Reason rack, inside REAPER (Reason Studios, paid)",
+          "url": "https://www.reasonstudios.com/rack"
+        },
+        {
+          "name": "ReaDrum Machine",
+          "for": "a drum rack: pads of samples, each with its own FX",
+          "repos": [["Suzuki Scripts", "https://github.com/Suzuki-Re/Suzuki-Scripts/raw/master/index.xml"]],
+          "find": "ReaDrum Machine"
+        },
+        {
+          "name": "SideFX",
+          "for": "device chains, racks and modulators",
+          "repos": [
+            ["ReaWrap", "https://github.com/Conceptual-Machines/ReaWrap/raw/main/index.xml"],
+            ["SideFX", "https://github.com/Conceptual-Machines/SideFX/raw/main/index.xml"]
+          ],
+          "find": "SideFX"
+        }
+      ]
     }
   ],
   "themes": {
@@ -1402,38 +1643,43 @@
     },
     "Reapertips Theme (base).ReaperThemeZip": {
       "by": "Reapertips (Alejandro)",
-      "url": "https://www.reapertips.com/",
-      "from": "Reapertips Theme.ReaperThemeZip"
+      "url": "https://www.reapertips.com/products/reapertips-theme",
+      "from": "Reapertips Theme.ReaperThemeZip",
+      "note": "v1.95, pay what you want (from $0)"
     },
     "Reapertips Theme.ReaperThemeZip": {
       "by": "Reapertips (Alejandro)",
-      "url": "https://www.reapertips.com/"
+      "url": "https://www.reapertips.com/products/reapertips-theme",
+      "note": "v1.95, pay what you want (from $0)"
     },
     "Reapertips Theme – Purple.ReaperThemeZip": {
       "by": "Reapertips (Alejandro)",
-      "url": "https://www.reapertips.com/"
+      "url": "https://www.reapertips.com/products/reapertips-theme",
+      "note": "v1.95, pay what you want (from $0)"
     },
     "ProTools2020.ReaperThemeZip": {
       "by": "revsfmc",
       "url": "https://stash.reaper.fm/theme/2572/Pro%20Tools%202020"
     },
     "PRO TOOLS GOLD 2026.ReaperThemeZip": {
-      "url": "https://stash.reaper.fm/theme/3293/PRO%20TOOLS%20GOLD%202026.ReaperThemeZIP"
+      "url": "https://stash.reaper.fm/theme/3293/PRO%20TOOLS%20GOLD%202026.ReaperThemeZIP",
+      "note": "uploader: Circuito Ativo Brasil; base theme not credited"
     },
     "ProTools 12.5_MC-edit.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/2270/ProTools%2012.5_MC-edit.ReaperThemeZip"
     },
     "Pro_Tools_Utimate.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/3115/Pro_Tools_Utimate.ReaperThemezip",
-      "note": "8,000+ downloads"
+      "note": "8,000+ downloads; uploader: Circuito Ativo Brasil; base theme not credited"
     },
     "ProTools Clone 2.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/3096/ProTools%20Clone%202%20%281%29.ReaperThemeZIP",
-      "note": "10,000+ downloads"
+      "note": "10,000+ downloads; uploader: Circuito Ativo Brasil; base theme not credited"
     },
     "I Logic V2 Public.ReaperThemeZip": {
       "by": "Blankfiles",
-      "url": "https://stash.reaper.fm/theme/1964/I%20Logic%20V2%20Public.ReaperThemeZip"
+      "url": "https://stash.reaper.fm/theme/1964/I%20Logic%20V2%20Public.ReaperThemeZip",
+      "note": "2017; iLogic 3.9 is newer"
     },
     "FLogic.ReaperThemeZip": {
       "by": "Cubic13",
@@ -1456,10 +1702,6 @@
     },
     "Live.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/1920/Live.ReaperThemeZip"
-    },
-    "Reaper4Live.ReaperThemeZip": {
-      "url": "https://stash.reaper.fm/theme/3203/Reaper4Live.zip",
-      "zip": true
     },
     "FruityCocktail.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/2218/FruityCocktail.ReaperThemeZip"
@@ -1514,15 +1756,18 @@
       "pack": "CubicPack3 dark"
     },
     "Reaper Cubase 2.ReaperThemeZip": {
-      "url": "https://stash.reaper.fm/theme/3176/Reaper%20Cubase%202.ReaperThemeZip"
+      "url": "https://stash.reaper.fm/theme/3176/Reaper%20Cubase%202.ReaperThemeZip",
+      "note": "uploader: Circuito Ativo Brasil; base theme not credited"
     },
     "HYDRA.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/2085/HYDRA.ReaperThemeZip",
-      "note": "49,000+ downloads"
+      "note": "49,000+ downloads",
+      "by": "Blankfiles"
     },
     "ReaSonus One.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/3046/ReaSonus%20One.ReaperThemeZip",
-      "note": "a Studio One look"
+      "note": "a Studio One look; its uploader calls it glitchy",
+      "by": "donrainahhh (mod of ReaSonus by Amberience)"
     },
     "CSIX-BASIC.ReaperThemeZip": {
       "by": "CONCEPT SIX",
@@ -1535,7 +1780,9 @@
     },
     "Reaper Echolot Bandlab.ReaperThemeZip": {
       "url": "https://stash.reaper.fm/theme/3377/Reaper%20Echolot%20Bandlab.reaperthemezip",
-      "note": "Echolot in BandLab colours"
+      "note": "Echolot in BandLab colours; Echolot itself: https://stash.reaper.fm/theme/2864/Echolot_1.12.ReaperThemeZip",
+      "by": "Circuito Ativo Brasil (recolour of Echolot by mawi)",
+      "licence": "CC BY-NC-SA 4.0 (Echolot's): non-commercial, share alike"
     },
     "ReaPersona - Pro Tools.ReaperThemeZip": {
       "by": "ReaPersona",
@@ -1581,6 +1828,57 @@
       "by": "ReaPersona",
       "url": "reapersona",
       "note": "ours: built on your computer from REAPER's own Default 7, in this DAW's colours"
+    },
+    "Rea Tools ULTIMATE.ReaperThemeZip": {
+      "by": "soundkajiya (Sound Kajiya)",
+      "url": "https://sound-kajiya.itch.io/reatools",
+      "note": "made for Pro Tools users in REAPER 7; paid (the Classic skin is a free demo)"
+    },
+    "ProTools 12.5_F_edit_V5-mawi dark mod.ReaperThemeZip": {
+      "by": "mawi",
+      "url": "https://stash.reaper.fm/theme/2662/ProTools%2012.5_F_edit_V5-mawi%20dark%20mod",
+      "note": "26,000+ downloads"
+    },
+    "iLogic 3.9.ReaperThemeZip": {
+      "by": "Blankfiles",
+      "url": "https://forum.cockos.com/showthread.php?t=214879",
+      "note": "the newest I Logic; reported free and working in REAPER 7"
+    },
+    "RLive.ReaperThemeZip": {
+      "by": "Odis",
+      "url": "https://forum.cockos.com/showthread.php?t=230905",
+      "note": "the most recommended Ableton look (beta, on the forum)"
+    },
+    "FL Studio Theme.ReaperThemeZip": {
+      "by": "Mordi",
+      "url": "https://forum.cockos.com/showthread.php?t=229919",
+      "note": "classic FL colours (beta, on the forum)"
+    },
+    "INQUASAR DARK MATTER v.FL.ReaperThemeZip": {
+      "by": "georgedayren",
+      "url": "https://stash.reaper.fm/theme/2383/INQUASAR%20DARK%20MATTER%20v.FL.ReaperThemeZip",
+      "note": "FL-style piano roll"
+    },
+    "Vex Cubase 5 Remix.ReaperThemeZip": {
+      "by": "vex_cro (remix of EricM's Shoelace Cubase 5)",
+      "url": "https://stash.reaper.fm/theme/2259/Vex%20Cubase%205%20Remix%20%282nd%20try%29",
+      "note": "12,000+ downloads"
+    },
+    "ReaSonus One ALPHA.ReaperThemeZip": {
+      "by": "Amberience",
+      "url": "https://stash.reaper.fm/theme/2793/ReaSonus%20One%20ALPHA.ReaperThemeZip",
+      "note": "the original ReaSonus One, 6,700+ downloads"
+    },
+    "CONCEPT SIX - BASIC SX.ReaperThemeZip": {
+      "by": "CONCEPT SIX",
+      "url": "https://stash.reaper.fm/theme/3365/CONCEPT%20SIX%20-%20BASIC%20SX",
+      "note": "2026, needs the latest REAPER 7, HiDPI"
+    },
+    "Beatwing v2.5.ReaperThemeZip": {
+      "by": "spinlud",
+      "url": "https://stash.reaper.fm/theme/1459/Beatwing%20v2.5.zip",
+      "zip": true,
+      "note": "inspired by Bitwig Studio; REAPER 4/5 era, check it in REAPER 7"
     }
   },
   "own_themes": {

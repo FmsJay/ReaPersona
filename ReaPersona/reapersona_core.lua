@@ -693,7 +693,7 @@ function M.ensure_scripts()
   local todo = {}
   for name, call in pairs(main) do
     local st = name:match("^use ") and M.by_id(name:sub(5))
-    local label = st and ("use " .. st.name .. (names[st.name] > 1 and (" (" .. st.id .. ")") or "")) or name -- (two styles of one name: two files)
+    local label = st and ("use " .. (st.short or st.name) .. (names[st.name] > 1 and (" (" .. st.id .. ")") or "")) or name -- (two styles of one name: two files)
     local p = M.here .. "/actions/ReaPersona - " .. M.file_name(label) .. ".lua"
     stub(p, call[1], call[2]); todo[#todo + 1] = { 0, p, "main", name }
   end
@@ -742,7 +742,9 @@ M.EXTENSIONS = {
     repo = { "ReaSmoothPlayhead", "https://raw.githubusercontent.com/Sakhnovkrg/ReaSmoothPlayheadReapack/main/index.xml" },
     why = "the playhead glides smoothly instead of stepping", feel = "moves its playhead smoothly" },
   smoothscroll = { name = "Smooth Wheel Scroll", settings = "_SWS_SCROLL_TUNE", dll = "reaper_smoothwheelscroll",
-    file = "extensions/reaper_smoothwheelscroll-x64.dll", where = "not on ReaPack: ReaPersona installs it only when it carries a copy",
+    file = "extensions/reaper_smoothwheelscroll-x64.dll", win_only = true, by = "bobo198504 (MIT licence)",
+    url = "https://github.com/bobo198504/SmoothWheelScroll/releases",
+    where = "not on ReaPack: ReaPersona carries a copy for Windows (MIT, by bobo198504); for macOS see github.com/bobo198504/SmoothWheelScroll",
     why = "scrolling and zooming with the mouse wheel glide instead of jumping", feel = "scrolls and zooms smoothly" },
 }
 local function dll_present(prefix)
@@ -765,7 +767,7 @@ function M.extension_state_now(key) -- -> "on", "off", "restart" (installed, not
 end
 function M.can_install(key)
   local x = M.EXTENSIONS[key]
-  return (x.repo and reaper.ReaPack_AddSetRepository ~= nil) or (x.file ~= nil and reaper.file_exists(M.here .. "/" .. x.file))
+  return (x.repo and reaper.ReaPack_AddSetRepository ~= nil) or (x.file ~= nil and not (x.win_only and M.IS_MAC) and reaper.file_exists(M.here .. "/" .. x.file))
 end
 function M.install_extension(key) -- -> true, or nil + why. REAPER loads it at its next start.
   local x = M.EXTENSIONS[key]
@@ -776,7 +778,7 @@ function M.install_extension(key) -- -> true, or nil + why. REAPER loads it at i
     reaper.ReaPack_ProcessQueue(true)
     M.forget()
     return true
-  elseif x.file and reaper.file_exists(M.here .. "/" .. x.file) then
+  elseif x.file and not (x.win_only and M.IS_MAC) and reaper.file_exists(M.here .. "/" .. x.file) then
     local data = M.read(M.here .. "/" .. x.file)
     if not (data and M.write(res .. "/UserPlugins/" .. x.file:match("[^/]+$"), data)) then return nil, "couldn't copy it into UserPlugins" end
     M.forget()
@@ -1123,8 +1125,18 @@ M.TOOLS = {
   { match = "^_BR_", name = "SWS", how = "sws-extension.org", url = "https://www.sws-extension.org/" },
 }
 function M.tool_for(named) for _, t in ipairs(M.TOOLS) do if named:match(t.match) then return t end end end
-function M.get_tool(t) -- ReaPack's package browser, filtered to it, or its web page (installing stays the user's click)
-  if t.filter and reaper.ReaPack_BrowsePackages then reaper.ReaPack_BrowsePackages(t.filter) else M.open_url(t.url or "https://reapack.com/") end
+function M.get_tool(t) -- ReaPack's package browser, filtered to it, or its web page (installing stays the user's click). -> nil, or why not
+  local find = t.filter or t.find
+  if find and reaper.ReaPack_BrowsePackages then
+    if t.repos and reaper.ReaPack_AddSetRepository then -- (its repository first, enabled; nothing installs until you pick it)
+      for _, r in ipairs(t.repos) do
+        local ok, err = reaper.ReaPack_AddSetRepository(r[1], r[2], true, 0, "")
+        if not ok then return "couldn't add " .. r[1] .. ": " .. tostring(err) end
+      end
+      reaper.ReaPack_ProcessQueue(true) -- (fetches the new lists, so the browser can show the package)
+    end
+    reaper.ReaPack_BrowsePackages(find)
+  else M.open_url(t.url or "https://reapack.com/") end
 end
 
 -- ---------------------------------------------------------------- importing from another DAW on this computer

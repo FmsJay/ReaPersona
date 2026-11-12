@@ -1,6 +1,6 @@
 # ReaPersona
 
-Make REAPER feel like the DAW you know: **Pro Tools, Logic Pro, Ableton Live, FL Studio, Cubase, Studio One, Bitwig Studio, Cakewalk / Sonar or Reason**. You can also set it back to **stock REAPER**, use **your own setup**, or mix them into **your own profiles**. Everything switches on the fly from one window.
+Make REAPER feel like the DAW you know: **Pro Tools, Logic Pro, Ableton Live, FL Studio, Cubase, Studio One / Fender Studio Pro, Bitwig Studio, Cakewalk / Sonar or Reason**. You can also set it back to **stock REAPER**, use **your own setup**, or mix them into **your own profiles**. Everything switches on the fly from one window.
 
 ![All the styles](docs/styles.png)
 
@@ -10,6 +10,7 @@ Make REAPER feel like the DAW you know: **Pro Tools, Logic Pro, Ableton Live, FL
   - They live on one of REAPER's shortcut layers (Main alt-1 to alt-16), so switching is instant.
   - Keys a style doesn't define fall through to your own shortcuts.
   - In the MIDI editor, a small script per key does the same job.
+  - Keys that differ on a Mac (Pro Tools' Option+Return, Logic's Control-key commands) are stored per system.
 - **Theme.** A ReaPersona theme in that DAW's colours, built on your computer (see below). Third-party themes in its likeness work too, if you have them.
 - **Layout.**
   - Where the transport sits.
@@ -17,10 +18,12 @@ Make REAPER feel like the DAW you know: **Pro Tools, Logic Pro, Ableton Live, FL
   - The Media Explorer docked where that DAW keeps its browser: left for Live, FL and Reason; right for Logic, Cubase, Studio One, Bitwig and Cakewalk; its own window for Pro Tools.
 - **Feel.**
   - Snap, ripple and follow-playhead.
-  - Mouse behaviours such as Pro Tools' Smart Tool and FL Studio's right-click delete.
+  - Mouse behaviours such as Pro Tools' Smart Tool (top half selects, bottom half moves) and FL Studio's right-click delete.
+  - Loop range and overlapping clips the way each DAW does them.
   - The smooth playhead and smooth scroll/zoom extensions, which DAW styles recommend and offer to install.
 - **Toolbar.** The DAW's own toolbar takes the main toolbar's place.
 - **Where things are.** Each style lists the DAW's features with the REAPER equivalent and an Open button: Pro Tools playlists, Logic Track Stacks, Live's Session View, FL patterns, Cubase's Pool, Reason's Rack, and so on.
+- **More of that DAW.** Each style suggests other people's tools that bring more of it (Playtime, SideFX, ReaDrum Machine, Reaticulate, Lil Chordbox, the Reason Rack Plugin...) with a *Get it* button that opens ReaPack at the package, and links to keymaps others have made.
 
 Switching away puts back everything a style changed, so **My REAPER** is always exactly your setup. **Base REAPER** is REAPER 7.85's factory keys and settings, with tips.
 
@@ -32,7 +35,7 @@ The **Setup** page lists everything ReaPersona can use, whether you have it, and
   - This needs Python 3 with Pillow and numpy. Setup has a button that installs those two.
 - **Shortcut layers:** with Python, close REAPER and run `install_shortcuts.py`. Or make a keymap file and import it in the Actions window (Key Map > Import, choose merge).
 - **The startup line:** brings your style back when REAPER starts.
-- **Smooth playhead and smooth scrolling:** ReaSmoothPlayhead installs through ReaPack.
+- **Smooth playhead and smooth scrolling:** ReaSmoothPlayhead installs through ReaPack; Smooth Wheel Scroll comes with ReaPersona on Windows.
 - **Themes by other people:** each one the styles can use, with a *Get it* button to its author's page.
 
 **Drag and drop:** drop files onto ReaPersona's window to add them.
@@ -78,10 +81,12 @@ The **Setup** page lists everything ReaPersona can use, whether you have it, and
 
 ReaPersona's own themes are built on your computer from REAPER's Default 7 (© Cockos), which every REAPER install includes.
 
-Themes by other authors aren't redistributed: no licence means their authors keep the rights. [THEMES.md](THEMES.md) credits each one and links to its page, and the Setup page does the same with a button. Download a theme, then drop it onto the window.
+Themes by other authors aren't redistributed: no licence means their authors keep the rights. The Cakewalk style's BandLab recolour is built on mawi's Echolot (CC BY-NC-SA 4.0). [THEMES.md](THEMES.md) credits each one and links to its page, and the Setup page does the same with a button. Download a theme, then drop it onto the window.
 
 Thanks also to:
-- the authors of the extensions ReaPersona works with: SWS, ReaImGui, js_ReaScriptAPI, ReaPack, ReaSmoothPlayhead, Helgobox/Playtime;
+- the authors of the extensions ReaPersona works with: SWS, ReaImGui, js_ReaScriptAPI, ReaPack, ReaSmoothPlayhead (DsgDnB), Helgobox/Playtime;
+- **Smooth Wheel Scroll** by bobo198504, MIT licence: ReaPersona carries its Windows build unchanged (`extensions/`, with the licence) so Setup can install it in one click. Source: https://github.com/bobo198504/SmoothWheelScroll;
+- the tools each style suggests, by their authors: Suzuki (ReaDrum Machine), Conceptual Machines (SideFX), Jason Tackaberry (Reaticulate), FTC (Lil Chordbox), MPL, edkashinsky (ReAbleton), Reapertips, smandrap, pandabot (ChordGun), Navelpluisje (ReaSonus Native), git-moss (DrivenByMoss4Reaper);
 - MPL's RS5k step sequencer.
 
 ## Adding a style

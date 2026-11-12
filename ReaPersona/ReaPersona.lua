@@ -407,6 +407,18 @@ local function detail(sel, alt)
         if state == "missing" then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Install##rec" .. key) then install_ext(key) end end
       end
     end
+    local tools, kms = sel.tools or {}, sel.keymaps or {}
+    if (#tools > 0 or #kms > 0) and ImGui.CollapsingHeader(ctx, "More of " .. (sel.short or sel.name) .. " in REAPER##more") then
+      for i, t in ipairs(tools) do -- (other people's tools: "Get it" adds their ReaPack repository and opens the browser at it)
+        if ImGui.SmallButton(ctx, "Get it##tool" .. i) then local why = core.get_tool(t); if why then say(why) end end
+        ImGui.SetItemTooltip(ctx, t.repos and ("Adds " .. t.repos[1][1] .. " to ReaPack and shows the package; installing is your click.") or ("Opens " .. tostring(t.url)))
+        ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, t.name .. ": " .. t["for"])
+      end
+      for i, k in ipairs(kms) do
+        if ImGui.SmallButton(ctx, "Open##km" .. i) then core.open_url(k[2]) end
+        ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, "Keymap: " .. k[1] .. " (drop the file on this window to make it a style)")
+      end
+    end
     ImGui.Dummy(ctx, 0, 2)
     ImGui.BeginDisabled(ctx, on)
     if primary(on and "In use" or ("Use " .. sel.name), col) then use(sel) end
