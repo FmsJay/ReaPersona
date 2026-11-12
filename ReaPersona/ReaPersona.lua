@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One or Bitwig (or stock REAPER), switch on the fly, save your own presets, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.4.3
+-- @version 5.4.4
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each style is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings such
@@ -51,7 +51,8 @@ local function theme_files()
     i = i + 1
   end
   for n = #t, 1, -1 do if have[t[n] .. "Zip"] then table.remove(t, n) end end -- (X.ReaperTheme next to X.ReaperThemeZip is REAPER's note of it)
-  table.sort(t, function(a, b) return a:lower() < b:lower() end)
+  local new = core.recent_themes or {} -- (themes added this session first)
+  table.sort(t, function(a, b) if (new[a] or false) ~= (new[b] or false) then return new[a] or false end return a:lower() < b:lower() end)
   return t
 end
 
@@ -602,6 +603,7 @@ local function themes_page(sel, alt)
           ImGui.TableNextRow(ctx)
           ImGui.TableNextColumn(ctx); ImGui.AlignTextToFramePadding(ctx)
           local nice = th:gsub("%.ReaperThemeZip$", ""):gsub("%.ReaperTheme$", "") -- (theme names, not file names)
+          if (core.recent_themes or {})[th] then nice = nice .. "  (new)" end
           if th == current then ImGui.TextColored(ctx, C.GREEN, nice .. "  (in use)") else ImGui.Text(ctx, nice) end
           ImGui.TableNextColumn(ctx)
           if ImGui.SmallButton(ctx, "Try##t" .. i) then try_theme(th) end
@@ -1200,15 +1202,19 @@ end
 -- ---------------------------------------------------------------- the window: a bar on top, pages down the side
 -- ---------------------------------------------------------------- Setup: everything ReaPersona can use, what's there, and one click for each
 local daws_found -- (other DAWs on this computer, looked for once)
-local function drop_report(list)
-  local lines, n = {}, 0
+local function drop_report(list) -- what came in, in a few lines (a pack's leftover files are one line, not one each)
+  local lines, n, themes = {}, 0, {}
   for _, r in ipairs(list) do
-    if r[1] ~= "skipped" then n = n + 1 end
-    lines[#lines + 1] = (r[1] == "skipped" and "Skipped " or ("Added " .. r[1] .. ": ")) .. r[2] .. (r[3] and ("  (" .. r[3] .. ")") or "")
+    if r[1] ~= "skipped" and r[1] ~= "note" then n = n + 1 end
+    if r[1] == "theme" then themes[#themes + 1] = r[2]:gsub("%.ReaperTheme.*$", "") end
+    local head = r[1] == "skipped" and "Left out: " or r[1] == "note" and "Note: " or ("Added " .. r[1] .. ": ")
+    if #lines < 12 then lines[#lines + 1] = head .. r[2] .. (r[3] and ("  (" .. r[3] .. ")") or "") end
   end
+  if #list > 12 then lines[#lines + 1] = "...and " .. (#list - 12) .. " more" end
   theme_list = nil
-  say(n .. " added" .. (#list > n and (", " .. (#list - n) .. " skipped") or ""))
-  if #list > 0 then reaper.MB(table.concat(lines, "\n"), "ReaPersona: dropped in", 0) end
+  if #themes > 0 then lines[#lines + 1] = "\nThemes are under Themes > Your themes, at the top (marked new)." end
+  say(n .. " added" .. (#themes > 0 and (": " .. table.concat(themes, ", ")) or ""))
+  if #list > 0 then reaper.MB(table.concat(lines, "\n"), "ReaPersona: added", 0) end
 end
 local function setup_row(id, done, what, why, button, fn, tip)
   ImGui.TableNextRow(ctx)

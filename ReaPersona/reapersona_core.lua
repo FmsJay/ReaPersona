@@ -836,12 +836,21 @@ end
 function M.import_theme(path) -- copy a downloaded theme into ColorThemes -> its file name, or nil + why
   local name = path:gsub("\\", "/"):match("[^/]+$") or ""
   if not (name:match("%.ReaperThemeZip$") or name:match("%.ReaperTheme$")) then return nil, "not a .ReaperThemeZip or .ReaperTheme" end
-  if reaper.file_exists(M.themes_dir .. name) then return name end
   local data = M.read(path)
   if not data then return nil, "couldn't read it" end
+  M.recent_themes[name] = true
+  local old = M.read(M.themes_dir .. name)
+  if old == data then return name, "you already had this one" end
+  local note
+  if old then -- (a newer download of a theme you have: the older copy is kept next to it, out of the theme lists)
+    local keep = name .. ".before-" .. os.date("%Y%m%d-%H%M%S")
+    if not M.write(M.themes_dir .. keep, old) then return nil, "couldn't keep a copy of the one you had" end
+    note = "replaced the copy you had (kept as " .. keep .. ")"
+  end
   if not M.write(M.themes_dir .. name, data) then return nil, "couldn't write into ColorThemes" end
-  return name
+  return name, note
 end
+M.recent_themes = {} -- (themes added this session: the theme list shows them first, marked new)
 local function copy(v) if type(v) ~= "table" then return v end local t = {}; for k, x in pairs(v) do t[k] = copy(x) end return t end
 local function free_alt() -- a shortcut layer no style uses and that holds none of your own keys
   local used, mine = {}, {}
@@ -1359,6 +1368,7 @@ function M.stash_get(item)
   if code ~= "0" or head == "" or head:find("<!doctype", 1, true) or head:find("<html", 1, true) then os.remove(path); return nil, "page" end
   local got = M.import_file(path)
   os.remove(path)
+  for _, r in ipairs(got) do if r[1] == "theme" and item.title then r[3] = "from \"" .. item.title .. "\"" .. (r[3] and ("; " .. r[3]) or "") end end
   return got
 end
 
@@ -1456,8 +1466,15 @@ function M.import_file(path, out, in_zip)
     end
     walk(dir)
     M.remove_tree(dir) -- (the unpacked copy was ours, made just above: gone again)
+    if out.left then out[#out + 1] = { "skipped", out.left .. " other files", "readmes, images and the like: not themes or toolbars" }; out.left = nil end
+    if out.fonts then out[#out + 1] = { "note", "fonts", "the pack comes with fonts: unzip it and install them (double-click each) so the theme looks right" }; out.fonts = nil end
+    if out.scripts then out[#out + 1] = { "note", "scripts", "the pack has its own scripts (a theme adjuster, say): unzip it and load them in the Actions list if you want them" }; out.scripts = nil end
     if code ~= "0" and #out == n0 then out[#out + 1] = { "skipped", base, "couldn't unpack it: " .. (text or ""):sub(1, 200) }
     elseif #out == n0 then out[#out + 1] = { "skipped", base, "nothing ReaPersona can use inside" } end
+  elseif in_zip then -- (a pack's readmes, images, fonts and scripts: counted, not listed one by one)
+    out.left = (out.left or 0) + 1
+    if low:match("%.ttf$") or low:match("%.otf$") then out.fonts = true end
+    if low:match("%.lua$") or low:match("%.eel$") then out.scripts = true end
   else out[#out + 1] = { "skipped", base, "not a theme, toolbar, keymap, style or preset" } end
   return out
 end

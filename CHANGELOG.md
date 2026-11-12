@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.4.4
+- Adding a theme pack (Browse > Add or a dropped zip) gives a short report: what was added, one line for the rest of the pack, and notes when it comes with fonts or its own scripts. It used to list every file.
+- A theme you already have is replaced when the download is different (the older copy is kept), and the report says when it's the same file.
+- New themes show at the top of Themes > Your themes, marked new, and the report names them with their Stash title.
+
 ## 5.4.3
 - **Studio One / Fender Studio Pro** checked against Fender's Studio Pro key shortcuts sheet: Redo on Ctrl+Y, Enter starts, NumPad , returns to zero; nudges, Goto Time, Find Command (Actions list), browser tabs (F6-F10), Channel Editor, export and import, Show Envelopes, next/previous event and bar, normalize, event volume, channel navigation, Insert Instrument Part, Undo Zoom. Keys from older lists that aren't on Fender's sheet (comma, Tab/Shift+Tab, Shift+NumPad *) are gone.
 
