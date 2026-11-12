@@ -1,6 +1,6 @@
 # ReaPersona
 
-Make REAPER feel like the DAW you know: **Pro Tools, Logic Pro, Ableton Live, FL Studio, Cubase, Studio One / Fender Studio Pro, Bitwig Studio, Cakewalk / Sonar or Reason**. You can also set it back to **stock REAPER**, use **your own setup**, or mix them into **your own profiles**. Everything switches on the fly from one window.
+Make REAPER feel like the DAW you know: **Pro Tools, Logic Pro, Ableton Live, FL Studio, Cubase, Studio One / Fender Studio Pro, Bitwig Studio, Cakewalk / Sonar or Reason**, or the audio editor **Audacity**. You can also set it back to **stock REAPER**, use **your own setup**, or mix them into **your own profiles**. Everything switches on the fly from one window.
 
 ![All the styles](docs/styles.png)
 
@@ -20,6 +20,7 @@ Make REAPER feel like the DAW you know: **Pro Tools, Logic Pro, Ableton Live, FL
   - Snap, ripple and follow-playhead.
   - Mouse behaviours such as Pro Tools' Smart Tool (top half selects, bottom half moves) and FL Studio's right-click delete.
   - Loop range and overlapping clips the way each DAW does them.
+  - The MIDI editor docked or floating, as in that DAW (applied the next time a MIDI editor is open).
   - The smooth playhead and smooth scroll/zoom extensions, which DAW styles recommend and offer to install.
 - **Toolbar.** The DAW's own toolbar takes the main toolbar's place.
 - **Where things are.** Each style lists the DAW's features with the REAPER equivalent and an Open button: Pro Tools playlists, Logic Track Stacks, Live's Session View, FL patterns, Cubase's Pool, Reason's Rack, and so on.
@@ -63,7 +64,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its style 
 
 - **Presets:** a style the way you like it, with its theme, layout and settings, saved under a name. You can share them as a file.
 - **Mix and match:** one style's keys, another's layout and feel, and any theme, saved as a profile.
-- **Themes:** every theme on your computer. *Use* applies one on its own; *Add to* puts it in a style's Theme list.
+- **Themes:** every theme on your computer. *Try* wears one for 20 seconds (keep it or it goes back), *Use* applies one on its own, *Add to* puts it in a style's Theme list.
 - **Adjust:** a theme's own settings, layouts and colours, live.
 - **Merge:** build a theme from several (layout, colours and parts from different themes), or a new style from two styles' shortcuts.
 - **Settings:** continuous scrolling, follow-playhead, smooth seek, smooth playhead and scroll/zoom, and ReaPersona's own look.
