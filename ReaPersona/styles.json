@@ -228,7 +228,8 @@
         ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
         ["mouse", "MM_CTX_ITEM", 0, "Select time", "Smart Tool: dragging the top half of a clip selects a range"],
         ["mouse", "MM_CTX_ITEMLOWER", 0, "Move item ignoring time selection", "Smart Tool: dragging the bottom half moves the clip"],
-        ["mouse", "MM_CTX_ITEMLOWER", 4, "Copy item", "Alt+drag on the bottom half copies the clip"]
+        ["mouse", "MM_CTX_ITEMLOWER", 4, "Copy item", "Alt+drag on the bottom half copies the clip"],
+        ["midi_dock", 0, "The MIDI Editor opens in its own window (applied when a MIDI editor is open)"]
       ],
       "extras": [
         ["Edit modes: Shuffle is REAPER's ripple editing per track (F1), Slip is ripple off (F2), Grid is snap (F4). Spot has no equivalent.", 41990, "F1"],
@@ -420,7 +421,8 @@
         ["mouse", "MM_CTX_ITEM", 4, "Copy item", "Option(Alt)+drag copies a region"],
         ["toggle", 40036, 1, "Catch: the view follows the playhead"],
         ["toggle", 40621, 0, "The loop range is its own, separate from the time selection"],
-        ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"]
+        ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
+        ["midi_dock", 1, "The editors open in the main window's lower area (E, P) (applied when a MIDI editor is open)"]
       ],
       "extras": [
         ["Smart Controls: the track's plug-in chain (B).", 40291, "B"],
@@ -585,7 +587,8 @@
         ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
         ["mouse", "win:MM_CTX_ITEM", 2, "Copy item", "Ctrl+drag a clip copies it"],
         ["mouse", "mac:MM_CTX_ITEM", 4, "Copy item", "Option+drag a clip copies it"],
-        ["toggle", 40036, 1, "Follow on: the view follows the playhead"]
+        ["toggle", 40036, 1, "Follow on: the view follows the playhead"],
+        ["midi_dock", 1, "Clip View sits at the bottom of the window (applied when a MIDI editor is open)"]
       ],
       "extras": [
         ["Session View: Helgobox's Playtime clip launcher (scenes, clips, follow actions).", "_HB_SHOW_HIDE_PLAYTIME", null],
@@ -758,7 +761,8 @@
         ["mouse", "MM_CTX_ITEM", 1, "Copy item", "Shift+drag clones a clip"],
         ["toggle", 40621, 0, "The loop range is its own, separate from the time selection"],
         ["toggle", 41117, 0, "Clips can overlap and play together, as in FL's playlist"],
-        ["toggle", 40036, 1, "The playlist follows the song position"]
+        ["toggle", 40036, 1, "The playlist follows the song position"],
+        ["midi_dock", 0, "The piano roll floats in its own window (applied when a MIDI editor is open)"]
       ],
       "extras": [
         ["Channel Rack and Step Sequencer: MPL's RS5k step sequencer (F6).", "_RSa31e94c408150d20aad669ba609f01c4083975ae", "F6"],
@@ -959,7 +963,8 @@
         ["mouse", "MM_CTX_TRACK", 0, "Marquee select items", "Object Selection tool: drag a rectangle in empty space to select events"],
         ["mouse", "MM_CTX_ITEM", 4, "Copy item", "Alt+drag copies an event"],
         ["toggle", 40621, 0, "The loop range is its own, separate from the time selection"],
-        ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"]
+        ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
+        ["midi_dock", 1, "Editors open in the Lower Zone (applied when a MIDI editor is open)"]
       ],
       "extras": [
         ["Tools (1 Object Selection, 2 Range, 3 Split...): REAPER has no tool modes; its mouse modifiers do each by context. Alt+X splits, empty-space drag selects.", null, null],
@@ -1138,7 +1143,8 @@
         ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
         ["mouse", "MM_CTX_ITEM", 0, "Select time", "Smart Tool (Link on): dragging the top half of a clip selects a range"],
         ["mouse", "MM_CTX_ITEMLOWER", 0, "Move item ignoring time selection", "Smart Tool (Link on): dragging the bottom half moves the clip"],
-        ["mouse", "MM_CTX_ITEMLOWER", 4, "Copy item", "Alt+drag on the bottom half copies the clip"]
+        ["mouse", "MM_CTX_ITEMLOWER", 4, "Copy item", "Alt+drag on the bottom half copies the clip"],
+        ["midi_dock", 1, "The editor docks at the bottom (F2) (applied when a MIDI editor is open)"]
       ],
       "extras": [
         ["Arranger Track: REAPER's regions (drag a region to move its section with the Region/Marker Manager or Region Playlist).", 40326, null],
@@ -1286,7 +1292,8 @@
         ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
         ["mouse", "MM_CTX_TRACK", 0, "Select time", "Dragging where there are no clips selects time"],
         ["mouse", "win:MM_CTX_ITEM", 2, "Copy item", "Ctrl+drag a clip copies it"],
-        ["mouse", "mac:MM_CTX_ITEM", 4, "Copy item", "Alt+drag a clip copies it"]
+        ["mouse", "mac:MM_CTX_ITEM", 4, "Copy item", "Alt+drag a clip copies it"],
+        ["midi_dock", 1, "The detail editor sits in the bottom panel (E) (applied when a MIDI editor is open)"]
       ],
       "extras": [
         ["Clip Launcher: Helgobox's Playtime clip launcher.", "_HB_SHOW_HIDE_PLAYTIME", null],
@@ -1442,7 +1449,8 @@
         ["toggle", 40036, 1, "The view follows the Now time during playback"],
         ["toggle", 40621, 0, "The loop range is its own, separate from the time selection"],
         ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
-        ["mouse", "MM_CTX_ITEM", 2, "Copy item", "Ctrl+drag a clip copies it"]
+        ["mouse", "MM_CTX_ITEM", 2, "Copy item", "Ctrl+drag a clip copies it"],
+        ["midi_dock", 1, "The Piano Roll opens in the MultiDock (applied when a MIDI editor is open)"]
       ],
       "extras": [
         ["ProChannel and FX Rack: the track's FX chain.", 40291, null],
@@ -1583,7 +1591,8 @@
         ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
         ["mouse", "win:MM_CTX_ITEM", 2, "Copy item", "Ctrl+drag a clip copies it"],
         ["mouse", "mac:MM_CTX_ITEM", 4, "Copy item", "Option+drag a clip copies it"],
-        ["dock", "mixer", "top", 1, "Main Mixer docked at the top, as in Reason's one-window layout (needs mixer docking on in Settings)"]
+        ["dock", "mixer", "top", 1, "Main Mixer docked at the top, as in Reason's one-window layout (when mixer docking is allowed in Settings and REAPER has a docker at the top)"],
+        ["midi_dock", 1, "The Edit Mode area sits in the sequencer (applied when a MIDI editor is open)"]
       ],
       "extras": [
         ["The Rack: each track's FX chain holds its devices; REAPER's FX containers group them like Combinators.", 40291, "F6"],
@@ -1626,6 +1635,90 @@
             ["SideFX", "https://github.com/Conceptual-Machines/SideFX/raw/main/index.xml"]
           ],
           "find": "SideFX"
+        }
+      ]
+    },
+    {
+      "id": "audacity",
+      "name": "Audacity",
+      "alt": 11,
+      "theme": "Default_7.0.ReaperThemeZip",
+      "themes": ["Default_7.0.ReaperThemeZip"],
+      "accent": "#3A7BD5",
+      "description": "Audacity (Windows keys), for editing audio and podcasts. Space plays and stops, X stops where you are, P pauses, R records, L loops, Ctrl+I splits, Ctrl+K deletes the selection and closes the gap (ripple is on), Ctrl+T trims to the selection, Ctrl+B adds a label (a marker here), Ctrl+1/3 zoom, Ctrl+E zooms to the selection, Ctrl+F fits the project. Dragging in the audio selects time, as Audacity's Selection Tool does. Keys from Audacity's Keyboard Shortcut Reference (default set). Adobe Audition isn't covered: its key list couldn't be checked.",
+      "docs": ["https://manual.audacityteam.org/man/keyboard_shortcut_reference.html"],
+      "keys": [
+        ["Space", 40044, "Play/Stop"],
+        ["X", 40328, "Play/Stop and set cursor"],
+        ["P", 1008, "Pause"],
+        ["R", 1013, "Record"],
+        ["L", 1068, "Loop on/off"],
+        ["Shift+L", 40622, "Set loop to selection"],
+        ["Home", 40042, "Project start"],
+        ["End", 40043, "Project end"],
+        ["Left", 40630, "Selection start"],
+        ["Right", 40631, "Selection end"],
+        ["J", 41173, "Clip start"],
+        ["K", 41174, "Clip end"],
+        ["Ctrl+Z", "MAIN:Ctrl+Z", "Undo"],
+        ["Ctrl+Y", "MAIN:Ctrl+Shift+Z", "Redo"],
+        ["Ctrl+X", "_SWS_SMARTCUT", "Cut (the selected range, else the clips)"],
+        ["Ctrl+C", "_SWS_SMARTCOPY", "Copy (the selected range, else the clips)"],
+        ["Ctrl+V", 42398, "Paste"],
+        ["Ctrl+K", "_SWS_SMARTREMOVE", "Delete (the selected range, else the clips)"],
+        ["Delete", "_SWS_SMARTREMOVE", "Delete (the selected range, else the clips)"],
+        ["Backspace", "_SWS_SMARTREMOVE", "Delete (the selected range, else the clips)"],
+        ["Ctrl+D", 41296, "Duplicate the selection"],
+        ["Ctrl+I", "_SWS_SMARTSPLIT2", "Split"],
+        ["Ctrl+T", 40508, "Trim audio to the selection"],
+        ["Ctrl+B", 40157, "Add label (marker) at the selection"],
+        ["Ctrl+M", 40157, "Add label (marker) at the playback position"],
+        ["Ctrl+A", 40035, "Select all"],
+        ["Tab", 40417, "Next clip"],
+        ["Shift+Tab", 40416, "Previous clip"],
+        ["Alt+.", 40417, "Select the next clip"],
+        ["Alt+,", 40416, "Select the previous clip"],
+        ["Alt+Left", 40172, "Previous label (marker)"],
+        ["Alt+Right", 40173, "Next label (marker)"],
+        ["Ctrl+1", 1012, "Zoom in"],
+        ["Ctrl+3", 1011, "Zoom out"],
+        ["Ctrl+E", 40031, "Zoom to selection"],
+        ["Ctrl+F", 40295, "Fit to width"],
+        ["Ctrl+N", 40023, "New"],
+        ["Ctrl+O", 40025, "Open"],
+        ["Ctrl+S", 40026, "Save project"],
+        ["Ctrl+W", 40860, "Close"],
+        ["Ctrl+Shift+E", 40015, "Export audio"],
+        ["Ctrl+Shift+I", 40018, "Import audio"],
+        ["Ctrl+Shift+N", 40001, "New track"],
+        ["Ctrl+U", 40341, "Mute all tracks"],
+        ["Ctrl+Shift+U", 40339, "Unmute all tracks"],
+        ["Shift+U", 6, "Mute/unmute the track"],
+        ["Shift+S", 7, "Solo/unsolo the track"]
+      ],
+      "midi_keys": [],
+      "feel": [
+        ["radio", [41603, 41604, 41605, 41606, 41608], 41606, "Transport docked at the top of the window"],
+        ["toggle", 1157, 0, "Snap off (Audacity doesn't snap unless you ask)"],
+        ["toggle", 41990, 1, "Deleting closes the gap, as in Audacity (ripple editing per track)"],
+        ["toggle", 40621, 0, "The loop range is its own (Shift+L sets it to the selection)"],
+        ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
+        ["mouse", "MM_CTX_ITEM", 0, "Select time", "Selection Tool: dragging in the audio selects time"],
+        ["mouse", "MM_CTX_TRACK", 0, "Select time", "Dragging in an empty part of a track selects time"]
+      ],
+      "extras": [
+        ["Effects: REAPER puts them on the clip (take FX) or the track. Normalize and fades are item actions.", 40638, null],
+        ["Normalize: Item properties > Normalize.", 40108, null],
+        ["Fade in / fade out to the cursor.", 40509, null],
+        ["Noise reduction: ReaFIR in Subtract mode (built in).", null, null],
+        ["Labels are REAPER's markers and regions; a label track is the ruler's marker lane.", 40157, "Ctrl+B"]
+      ],
+      "recommends": ["smoothscroll"],
+      "tools": [
+        {
+          "name": "Ultraschall",
+          "for": "a REAPER setup made for podcasting",
+          "url": "https://ultraschall.fm/"
         }
       ]
     }

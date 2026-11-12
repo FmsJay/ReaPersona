@@ -61,6 +61,7 @@ Every other theme here belongs to its author and isn't redistributed. Get it fro
 | Reason | ReaPersona - Reason | ReaPersona |  | built by Setup |
 | Reason | Default_7.0 | Cockos |  | comes with REAPER |
 | Reason | INQUASAR DARK MATTER v.1.0 |  |  | [link](https://stash.reaper.fm/theme/2115/INQUASAR%20DARK%20MATTER%20v.1.0.ReaperThemeZip) |
+| Audacity | Default_7.0 | Cockos |  | comes with REAPER |
 
 Toolbars: the Cubase and Logic styles use the toolbar sets from CubicPack3 (Cubic13) and CLogic (Cubic13). Drop their zips onto ReaPersona's window, then install the shortcuts.
 

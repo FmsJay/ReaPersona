@@ -28,6 +28,22 @@ function M.write(p, t) -- through a temp file and a rename, so a crash mid-write
   os.remove(p) -- (Windows' rename won't replace a file)
   return os.rename(p .. ".tmp", p) == true
 end
+-- The MIDI editor docks only through an open editor, and REAPER opens new ones the way the last one was: a style's wish is
+-- kept (ExtState "midi dock") and applied now if an editor is open, else when one is next active while the picker is open.
+function M.midi_docked()
+  local ed = reaper.MIDIEditor_GetActive()
+  if ed then return reaper.DockIsChildOfDock(ed) >= 0 end
+  return (M.ini_section(M.read(res .. "/reaper.ini") or "", "midiedit") or ""):match("\ndock=(%d)") == "1"
+end
+function M.apply_midi_dock()
+  local want = reaper.GetExtState(M.SECTION, "midi dock")
+  if want == "" then return end
+  local ed = reaper.MIDIEditor_GetActive()
+  if not ed then return end
+  if (reaper.DockIsChildOfDock(ed) >= 0) ~= (want == "1") then reaper.MIDIEditor_OnCommand(ed, 40018) end -- (Options: Toggle window docking)
+  reaper.DeleteExtState(M.SECTION, "midi dock", false)
+end
+function M.want_midi_dock(on) reaper.SetExtState(M.SECTION, "midi dock", on and "1" or "0", false); M.apply_midi_dock() end
 function M.file_name(s) return (tostring(s):gsub('[/\\:%*%?"<>|%c]', "-"):gsub("^%.+", "")) end -- (a name as a safe file name)
 function M.log(msg) -- ReaPersona/errors.log: what went wrong, for fixing it
   local f = io.open(M.here .. "/errors.log", "a")
@@ -295,6 +311,8 @@ local function restore_feel(windows_left) -- (windows_left: a window's original 
     elseif kind == "s" then -- (a one-way switch: run its way back)
       local id = cmd_id(tonumber(a) or a)
       if id ~= 0 then reaper.Main_OnCommand(id, 0) end
+    elseif kind == "e" then -- (the MIDI editor's docking)
+      M.want_midi_dock(a == "1")
     elseif kind == "r" and a == "none" then -- (the transport floated or was hidden)
       if b == "0" and reaper.GetToggleCommandState(40260) == 1 then reaper.Main_OnCommand(40260, 0) end
       if c == "0" and reaper.GetToggleCommandState(40259) == 1 then reaper.Main_OnCommand(40259, 0) end
@@ -317,6 +335,7 @@ M.ASPECTS = {
   { "toolbar", "The DAW's toolbar in place of your main toolbar", true },
   { "mouse", "Mouse behaviours (Smart Tool and so on)", true },
   { "settings", "Snap, ripple, follow-playhead, the loop range and overlapping clips", true },
+  { "editor", "Dock the MIDI editor in the main window, or let it float", true },
 }
 function M.aspect_on(a)
   local v = reaper.GetExtState(M.SECTION, "aspect " .. a)
@@ -325,6 +344,7 @@ function M.aspect_on(a)
   return true
 end
 function M.aspect_of(f)
+  if f[1] == "midi_dock" then return "editor" end
   if f[1] == "dock" then return f[2] == "mixer" and "mixer_dock" or "browser" elseif f[1] == "radio" then return "transport" elseif f[1] == "switch" then return "toolbar"
   elseif f[1] == "mouse" then return "mouse"
   elseif f[1] == "toggle" then
@@ -341,9 +361,10 @@ local function apply_feel(st, windows_left)
     local ok, err = pcall(function()
     if not M.aspect_on(M.aspect_of(f)) then return end
     if f[1] == "dock" and WINDOWS[f[2]] and reaper.JS_Window_OnCommand then
+      local d = f[3] ~= "float" and docker_at(f[3]) or nil
+      if f[3] ~= "float" and not d then return end -- (this REAPER has no docker on that side: the window stays where it is)
       list[#list + 1] = windows_left[f[2]] or window_now(f[2]) -- (the original from before any style, if the last style moved it)
       windows_left[f[2]] = nil
-      local d = f[3] ~= "float" and docker_at(f[3]) or nil
       move_window(f[2], { shown = f[4] == 1, docker = d })
     elseif f[1] == "toggle" then
       local id = cmd_id(f[2])
@@ -368,6 +389,9 @@ local function apply_feel(st, windows_left)
       list[#list + 1] = was or ("r|none|" .. reaper.GetToggleCommandState(40260) .. "|" .. reaper.GetToggleCommandState(40259))
       local id = cmd_id(f[3])
       if id ~= 0 and reaper.GetToggleCommandState(id) ~= 1 then reaper.Main_OnCommand(id, 0) end
+    elseif f[1] == "midi_dock" then -- ["midi_dock", 1 docked / 0 floating, what]
+      list[#list + 1] = "e|" .. (M.midi_docked() and 1 or 0) .. "|"
+      M.want_midi_dock(f[2] == 1)
     elseif f[1] == "mouse" and reaper.SetMouseModifier and M.for_os(f[2]) then -- ("mac:MM_CTX_ITEM": only on a Mac)
       local ctx = M.for_os(f[2])
       list[#list + 1] = "m|" .. ctx .. "|" .. f[3] .. "|" .. reaper.GetMouseModifier(ctx, f[3], "")
@@ -816,11 +840,13 @@ local function feel_slot(f)
   if f[1] == "toggle" then return "toggle " .. tostring(f[2])
   elseif f[1] == "radio" then return "radio " .. table.concat(f[2], ",")
   elseif f[1] == "dock" then return "dock " .. f[2]
+  elseif f[1] == "midi_dock" then return "midi_dock"
   elseif f[1] == "mouse" then return "mouse " .. f[2] .. " " .. f[3]
   elseif f[1] == "switch" then local c = tonumber(f[2]) or 0; return (c >= 41956 and c <= 41959) and "switch midi" or "switch main" end
 end
 local function feel_value(f)
   if f[1] == "dock" then return f[3] .. "/" .. tostring(f[4]) elseif f[1] == "mouse" then return tostring(f[4])
+  elseif f[1] == "midi_dock" then return tostring(f[2])
   elseif f[1] == "switch" then return tostring(f[2]) else return tostring(f[3]) end
 end
 function M.combine_clashes(ids) -- -> { {kind = "key"|"midi"|"feel", what, options = { {id, label} }} } where the styles disagree
@@ -1129,11 +1155,17 @@ function M.get_tool(t) -- ReaPack's package browser, filtered to it, or its web 
   local find = t.filter or t.find
   if find and reaper.ReaPack_BrowsePackages then
     if t.repos and reaper.ReaPack_AddSetRepository then -- (its repository first, enabled; nothing installs until you pick it)
+      local added
       for _, r in ipairs(t.repos) do
-        local ok, err = reaper.ReaPack_AddSetRepository(r[1], r[2], true, 0, "")
-        if not ok then return "couldn't add " .. r[1] .. ": " .. tostring(err) end
+        local have, _, enabled = false, nil, false
+        if reaper.ReaPack_GetRepositoryInfo then have, _, enabled = reaper.ReaPack_GetRepositoryInfo(r[1]) end
+        if not (have and enabled) then -- (one you have stays as it is; one switched off is switched on, its address kept)
+          local ok, err = reaper.ReaPack_AddSetRepository(r[1], have and "" or r[2], true, 2, "") -- (2: auto-install as ReaPack is set)
+          if not ok then return "couldn't add " .. r[1] .. ": " .. tostring(err) end
+          added = true
+        end
       end
-      reaper.ReaPack_ProcessQueue(true) -- (fetches the new lists, so the browser can show the package)
+      if added then reaper.ReaPack_ProcessQueue(true) end -- (fetches the new lists, so the browser can show the package)
     end
     reaper.ReaPack_BrowsePackages(find)
   else M.open_url(t.url or "https://reapack.com/") end

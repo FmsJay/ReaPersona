@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One or Bitwig (or stock REAPER), switch on the fly, save your own presets, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.2.0
+-- @version 5.3.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each style is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings such
@@ -231,6 +231,7 @@ local function preview(st)
 end
 local selected, filter, pfilter = reaper.GetExtState(SECTION, "style"), "", ""
 local page = reaper.GetExtState(SECTION, "page") ~= "" and reaper.GetExtState(SECTION, "page") or "DAWs" -- (the page you were on)
+local function go(pg) page = pg; reaper.SetExtState(SECTION, "page", pg, false) end
 local merge = { base = "Default_7.0.ReaperThemeZip", colours = "", graphics = "", parts = {}, fonts = false, msg = "" }
 local PARTS = { "faders", "knobs", "meters", "transport", "buttons", "toolbar", "backgrounds" }
 local ensure_new = false -- (a merged style needs its one-key action registered)
@@ -549,6 +550,7 @@ local function import_theme()
   end
   say("Added " .. name)
 end
+local trying, try_theme -- (a theme on trial: { name, back = the theme to go back to, ends = time }; set up with the setup helpers)
 local function themes_page(sel, alt)
   local list = {}
   for _, st in ipairs(styles) do if st.kind == "theme" then list[#list + 1] = st end end
@@ -579,9 +581,13 @@ local function themes_page(sel, alt)
         if q == "" or th:lower():find(q, 1, true) then
           ImGui.TableNextRow(ctx)
           ImGui.TableNextColumn(ctx); ImGui.AlignTextToFramePadding(ctx)
-          if th == current then ImGui.TextColored(ctx, C.GREEN, th .. "  (in use)") else ImGui.Text(ctx, th) end
+          local nice = th:gsub("%.ReaperThemeZip$", ""):gsub("%.ReaperTheme$", "") -- (theme names, not file names)
+          if th == current then ImGui.TextColored(ctx, C.GREEN, nice .. "  (in use)") else ImGui.Text(ctx, nice) end
           ImGui.TableNextColumn(ctx)
-          if ImGui.SmallButton(ctx, "Use##u" .. i) then reaper.OpenColorThemeFile(themes_dir .. th); say(th .. " in use.") end
+          if ImGui.SmallButton(ctx, "Try##t" .. i) then try_theme(th) end
+          ImGui.SetItemTooltip(ctx, "Wear it for 20 seconds: Keep it, or it goes back to the theme you had.")
+          ImGui.SameLine(ctx)
+          if ImGui.SmallButton(ctx, "Use##u" .. i) then trying = nil; reaper.OpenColorThemeFile(themes_dir .. th); say(nice .. " in use.") end
           ImGui.TableNextColumn(ctx)
           if ImGui.SmallButton(ctx, "Add to " .. cur.name .. "##a" .. i) then add_fork(cur, th); say(th .. " is in " .. cur.name .. "'s Theme list.") end
         end
@@ -608,13 +614,26 @@ local function themes_page(sel, alt)
 end
 
 local mixsel = { keys = "pro_tools", feel = "ableton", theme = "", name = "" }
+local make_way = 1 -- (Make your own style: 1 from what's in use, 2 keys from one + layout from another, 3 blend several)
 local function presets_page(sel, alt)
   if card("presets top") then
-    heading("Presets")
-    muted("A preset is a style the way you like it: its keys and toolbar, plus the theme, transport and mixer layout, snap, the Media Explorer's place and the mouse behaviours as they were when you saved it. Use any style, change what you like, then save.")
-    if primary("Save what's in use as a preset...") then save_preset_prompt() end
+    heading("Make your own style")
+    for i, label in ipairs({ "From what I'm using now", "One DAW's shortcuts with another's layout", "Blend several DAWs" }) do
+      if i > 1 then ImGui.SameLine(ctx) end
+      if ImGui.RadioButton(ctx, label .. "##way", make_way == i) then make_way = i end
+    end
+    ImGui.Dummy(ctx, 0, 2)
+    if make_way == 1 then
+      muted("Use any style, change what you like (theme, layout, snap, mouse), then save it: its shortcuts and toolbar, plus everything as it's set right now.")
+      if primary("Save as my style...") then save_preset_prompt() end
+    elseif make_way == 2 then
+      muted("For example Pro Tools' shortcuts in Ableton's layout, with any theme. Pick them below.")
+    else
+      muted("Several DAWs' shortcuts and feel in one style (Pro Tools + Ableton, say), with every clash shown so you choose.")
+      if primary("Combine DAWs...") then go("Combine") end
+    end
     ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "Import a preset...") then
+    if ImGui.Button(ctx, "Import one...") then
       local ok, p = reaper.GetUserFileNameForRead("", "Import a ReaPersona preset", "*.json")
       if ok then
         local r = core.import_file(p)[1]
@@ -623,8 +642,8 @@ local function presets_page(sel, alt)
     end
     card_end()
   end
-  if card("mix") then
-    heading("Mix and match")
+  if make_way == 2 and card("mix") then
+    heading("Shortcuts from one, layout from another")
     muted("One style's keys, another's layout, toolbar and feel, and any theme: for example Pro Tools' shortcuts in Ableton's layout with a theme you like. It's saved as a profile in your presets.")
     local function combo(label, key, list)
       ImGui.SetNextItemWidth(ctx, 260)
@@ -1186,6 +1205,25 @@ local function shortcuts_state()
   for _, st in ipairs(styles) do if (st.alt or 0) > 0 then want = want + 1; if installed[st.alt] then have = have + 1 end end end
   return have, want
 end
+function try_theme(th)
+  local back = trying and trying.back or core.loaded_theme()
+  reaper.OpenColorThemeFile(themes_dir .. th)
+  trying = { name = th, back = back, ends = reaper.time_precise() + 20 }
+end
+local function trying_bar() -- (under the top bar while a theme is on trial; goes back by itself when time's up)
+  if not trying then return end
+  local left = trying.ends - reaper.time_precise()
+  if left <= 0 then
+    if trying.back then reaper.OpenColorThemeFile(themes_dir .. trying.back) end
+    say("Back to " .. tostring(trying.back) .. "."); trying = nil; return
+  end
+  ImGui.SetCursorPosX(ctx, 16)
+  ImGui.TextColored(ctx, C.YELLOW, "Trying " .. trying.name:gsub("%.ReaperTheme.*$", "") .. string.format(" (back in %d s)", math.ceil(left)))
+  ImGui.SameLine(ctx)
+  if ImGui.SmallButton(ctx, "Keep it##try") then say(trying.name .. " kept."); trying = nil; return end
+  ImGui.SameLine(ctx)
+  if ImGui.SmallButton(ctx, "Go back##try") then trying.ends = 0 end
+end
 local function setup_todo() -- (anything on Home still to do: the nav shows a dot, and the first run opens there)
   local have, want = shortcuts_state()
   return have < want or not core.startup_on()
@@ -1447,7 +1485,6 @@ local GROUPS = { -- { name, what it's for, its pages (tabs), the tabs' labels }
 }
 local function group_of(pg) for _, g in ipairs(GROUPS) do for _, p in ipairs(g[3]) do if p == pg or (pg == "Styles" and p == "DAWs") then return g end end end return GROUPS[2] end
 local last_tab = {} -- (each group reopens on the tab you left it on)
-local function go(pg) page = pg; reaper.SetExtState(SECTION, "page", pg, false) end
 local PAGES = {
   { "Setup", "Get everything installed: ReaPersona's themes, shortcuts, extensions, the startup line, other people's themes. Drop files here." },
   { "DAWs", "Make REAPER feel like another DAW, or stock REAPER, or your own setup." },
@@ -1495,6 +1532,7 @@ local function frame()
   local visible, open = ImGui.Begin(ctx, "ReaPersona", true)
   if visible then
     if ensure_new or core.stubs_stale then core.ensure_scripts(); ensure_new = false end
+    core.apply_midi_dock() -- (a style's MIDI editor docking waits for an editor to be open)
     if first_frame then
       first_frame = false
       if reaper.GetExtState(SECTION, "page") == "" and setup_todo() then go("Setup") end
@@ -1506,6 +1544,7 @@ local function frame()
     local want = reaper.GetExtState(SECTION, "page")
     if want ~= "" and want ~= page then page = want end
     top_bar(alt)
+    trying_bar()
     if last_error then
       ImGui.SetCursorPosX(ctx, 16)
       ImGui.TextColored(ctx, C.RED, "Something went wrong and was written to errors.log: " .. last_error)
