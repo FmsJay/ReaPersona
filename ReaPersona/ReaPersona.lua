@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One or Bitwig (or stock REAPER), switch on the fly, save your own presets, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.4.2
+-- @version 5.4.3
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each style is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings such

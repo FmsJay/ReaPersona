@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.4.3
+- **Studio One / Fender Studio Pro** checked against Fender's Studio Pro key shortcuts sheet: Redo on Ctrl+Y, Enter starts, NumPad , returns to zero; nudges, Goto Time, Find Command (Actions list), browser tabs (F6-F10), Channel Editor, export and import, Show Envelopes, next/previous event and bar, normalize, event volume, channel navigation, Insert Instrument Part, Undo Zoom. Keys from older lists that aren't on Fender's sheet (comma, Tab/Shift+Tab, Shift+NumPad *) are gone.
+
 ## 5.4.2
 - **Cubase** checked against Steinberg's official Cubase Pro 14 default key commands: Tap Tempo back on Shift+Space, plus Invert Selection, Rename Track, Tempo Track, Video, Performance Monitor, On-Screen Keyboard, nudges, hitpoints, markers 3-9, Zoom Tracks Exclusive and workspaces 6-9.
 - **Audition** checked against Adobe's default shortcut list: * on the keypad adds a marker too.
