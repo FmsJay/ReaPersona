@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One or Bitwig (or stock REAPER), switch on the fly, save your own presets, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.3.0
+-- @version 5.4.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each style is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings such
@@ -436,6 +436,15 @@ local function detail(sel, alt)
     ImGui.EndDisabled(ctx)
     ImGui.SameLine(ctx)
     if ImGui.Button(ctx, "Cheat sheet") then local p, why = core.cheat_sheet(sel); if p then core.open_url(p) else say(why) end end
+    local tpl = here .. "/templates/" .. (sel.preset and sel.base or sel.id) .. ".RPP"
+    if reaper.file_exists(tpl) then
+      ImGui.SameLine(ctx)
+      if ImGui.Button(ctx, "New project like " .. (sel.short or sel.name)) then
+        reaper.Main_OnCommand(40859, 0) -- (a new tab, so nothing open is replaced)
+        reaper.Main_openProject("template:" .. tpl)
+      end
+      ImGui.SetItemTooltip(ctx, "A new project with the tracks " .. (sel.short or sel.name) .. " starts you with, its buses and sends, using REAPER's own plugins.")
+    end
     ImGui.SetItemTooltip(ctx, "Every key, setting and feature of this style on one page, laid out for printing.")
     if (sel.alt or 0) > 0 and not sel.preset then
       ImGui.SameLine(ctx)
@@ -1250,7 +1259,13 @@ local function install_shortcuts()
   if not reaper.file_exists(here .. "/midi_defaults.json") then core.midi_defaults() end
   local exe = reaper.GetExePath():gsub("\\", "/")
   exe = IS_MAC and exe:match("^(.-%.app)") or (exe .. "/reaper.exe")
-  reaper.ExecProcess(core.py .. ' "' .. here .. '/install_shortcuts.py" --after-reaper-quits --relaunch "' .. exe .. '"', -1) -- (-1: don't wait)
+  local open = {} -- (the projects open now, reopened with REAPER)
+  for i = 0, 50 do
+    local p, fn = reaper.EnumProjects(i)
+    if not p then break end
+    if fn ~= "" and not fn:find('"', 1, true) then open[#open + 1] = ' --open "' .. fn .. '"' end
+  end
+  reaper.ExecProcess(core.py .. ' "' .. here .. '/install_shortcuts.py" --after-reaper-quits --relaunch "' .. exe .. '"' .. table.concat(open), -1) -- (-1: don't wait)
   reaper.Main_OnCommand(40004, 0) -- (File: Quit, with REAPER's own save prompts)
 end
 local function setup_all()
@@ -1498,6 +1513,99 @@ local PAGES = {
   { "Settings", "Smooth playhead, smooth scrolling and zoom, continuous scrolling, and ReaPersona's look." },
   { "Check", "What's installed, and checking the styles against this REAPER." },
 }
+-- Search everything (top bar, Ctrl+K): styles, shortcuts in every style, where a DAW's feature is in REAPER, themes, settings, pages.
+local search_q, search_focus = "", false
+local function search_page()
+  local q = search_q:lower()
+  local function has(...) for _, v in ipairs({ ... }) do if type(v) == "string" and v:lower():find(q, 1, true) then return true end end end
+  local shown = 0
+  local function section(title) heading(title, 15) end
+  if card("search") then
+    heading("Results for \"" .. search_q .. "\"")
+    local hits = {}
+    for _, st in ipairs(styles) do if has(st.name, st.id) then hits[#hits + 1] = st end end
+    if #hits > 0 then
+      section("Styles")
+      for i, st in ipairs(hits) do
+        if ImGui.SmallButton(ctx, "Use##ss" .. i) then use(st); selected = st.id end
+        ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Show##ss" .. i) then selected = st.id; search_q = ""; go("DAWs") end
+        ImGui.SameLine(ctx); ImGui.Text(ctx, st.name)
+      end
+      shown = shown + #hits
+    end
+    local rows = {}
+    for _, st in ipairs(styles) do
+      for _, k in ipairs(core.keys_here(st.keys)) do if has(k[1], k[3]) then rows[#rows + 1] = { st, k, "" } end end
+      for _, k in ipairs(st.midi_keys or {}) do if has(k[1], k[3]) then rows[#rows + 1] = { st, k, " (piano roll)" } end end
+    end
+    if #rows > 0 then
+      section("Shortcuts (" .. #rows .. ")")
+      if ImGui.BeginTable(ctx, "srch keys", 3, ImGui.TableFlags_RowBg | ImGui.TableFlags_SizingStretchProp) then
+        ImGui.TableSetupColumn(ctx, "style", ImGui.TableColumnFlags_WidthFixed, 150)
+        ImGui.TableSetupColumn(ctx, "key", ImGui.TableColumnFlags_WidthFixed, 150)
+        ImGui.TableSetupColumn(ctx, "what", ImGui.TableColumnFlags_WidthStretch)
+        for i, r in ipairs(rows) do
+          if i > 60 then break end
+          ImGui.TableNextRow(ctx)
+          ImGui.TableNextColumn(ctx)
+          if ImGui.Selectable(ctx, (r[1].short or r[1].name) .. "##sk" .. i, false) then keys_for = r[1].id; filter = search_q; search_q = ""; go("Shortcuts") end
+          ImGui.TableNextColumn(ctx); keycap(r[2][1])
+          ImGui.TableNextColumn(ctx); ImGui.Text(ctx, r[2][3] .. r[3])
+        end
+        ImGui.EndTable(ctx)
+      end
+      if #rows > 60 then muted((#rows - 60) .. " more: add a word to narrow it down.") end
+      shown = shown + #rows
+    end
+    local where = {}
+    for _, st in ipairs(styles) do for _, x in ipairs(st.extras or {}) do if has(x[1]) then where[#where + 1] = { st, x } end end end
+    if #where > 0 then
+      section("Where it is in REAPER")
+      for i, w in ipairs(where) do
+        if i > 20 then break end
+        if w[2][2] ~= nil then if ImGui.SmallButton(ctx, "Open##sw" .. i) then open_extra(w[2][2]) end; ImGui.SameLine(ctx) end
+        ImGui.TextWrapped(ctx, (w[1].short or w[1].name) .. ": " .. w[2][1])
+      end
+      shown = shown + #where
+    end
+    theme_list = theme_list or theme_files()
+    local th = {}
+    for _, t in ipairs(theme_list) do if has(t) then th[#th + 1] = t end end
+    if #th > 0 then
+      section("Themes")
+      for i, t in ipairs(th) do
+        if i > 15 then break end
+        if ImGui.SmallButton(ctx, "Try##st" .. i) then try_theme(t) end
+        ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Use##st" .. i) then trying = nil; reaper.OpenColorThemeFile(themes_dir .. t) end
+        ImGui.SameLine(ctx); ImGui.Text(ctx, (t:gsub("%.ReaperTheme.*$", "")))
+      end
+      shown = shown + #th
+    end
+    local sets = {}
+    for _, list in ipairs({ SETTINGS, CUSTOM }) do for _, x in ipairs(list) do if has(x[2], x[3]) then sets[#sets + 1] = x end end end
+    if #sets > 0 then
+      section("Settings")
+      for i, x in ipairs(sets) do
+        if setting_row("##ssx" .. i, x[2], reaper.GetToggleCommandState(x[1]) == 1, x[3]) then reaper.Main_OnCommand(x[1], 0) end
+      end
+      shown = shown + #sets
+    end
+    for _, a in ipairs(core.ASPECTS) do
+      if has(a[2]) then
+        if ImGui.SmallButton(ctx, "Open##sa" .. a[1]) then search_q = ""; go("Settings") end
+        ImGui.SameLine(ctx); ImGui.Text(ctx, "What a style may change: " .. a[2]); shown = shown + 1
+      end
+    end
+    for _, g in ipairs(GROUPS) do
+      if has(g[1], g[2], table.concat(g[4], " ")) then
+        if ImGui.SmallButton(ctx, "Go##sg" .. g[1]) then search_q = ""; go(g[3][1]) end
+        ImGui.SameLine(ctx); ImGui.Text(ctx, "Page: " .. g[1] .. " (" .. g[2] .. ")"); shown = shown + 1
+      end
+    end
+    if shown == 0 then muted("Nothing found. Try a shorter word, like \"split\", \"mixer\" or \"loop\".") end
+    card_end()
+  end
+end
 local function top_bar(alt)
   local cur = core.current()
   local y0 = ImGui.GetCursorPosY(ctx) -- (below the title bar)
@@ -1509,6 +1617,15 @@ local function top_bar(alt)
   pill(cur.name .. (in_use(cur, alt) and "" or "  (keys off)"), solid(col))
   if not in_use(cur, alt) then ImGui.SetItemTooltip(ctx, "Its shortcut layer isn't on (REAPER restarted?): Use it again, or run 'ReaPersona - restore last style'.") end
   local w = ImGui.GetWindowWidth(ctx)
+  if w > 760 then -- (search, Ctrl+K; on a narrow window it's left out of the bar)
+    ImGui.SameLine(ctx, 0, 16)
+    ImGui.SetCursorPosY(ctx, y0 + 8)
+    if ImGui.IsKeyChordPressed(ctx, ImGui.Mod_Ctrl | ImGui.Key_K) or search_focus then ImGui.SetKeyboardFocusHere(ctx); search_focus = false end
+    ImGui.SetNextItemWidth(ctx, math.min(260, w - ImGui.GetCursorPosX(ctx) - 320))
+    local _, q = ImGui.InputTextWithHint(ctx, "##search", "Search everything (Ctrl+K)", search_q)
+    search_q = q
+    if search_q ~= "" and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then search_q = "" end
+  end
   ImGui.SameLine(ctx, math.max(ImGui.GetCursorPosX(ctx), w - 300))
   ImGui.SetCursorPosY(ctx, y0 + 8)
   if ImGui.Button(ctx, "Save as my style...##top") then save_preset_prompt() end
@@ -1533,11 +1650,17 @@ local function frame()
   if visible then
     if ensure_new or core.stubs_stale then core.ensure_scripts(); ensure_new = false end
     core.apply_midi_dock() -- (a style's MIDI editor docking waits for an editor to be open)
+    local ask = reaper.GetExtState(SECTION, "search") -- (a search asked for from outside: another script, or a test)
+    if ask ~= "" then search_q = ask; reaper.DeleteExtState(SECTION, "search", false) end
     if first_frame then
       first_frame = false
       if reaper.GetExtState(SECTION, "page") == "" and setup_todo() then go("Setup") end
       local note = core.read(here .. "/last_install.txt")
-      if note then os.remove(here .. "/last_install.txt"); say((note:match("installed %d+ shortcut%(s%)") and "Shortcuts installed: " or "") .. note:gsub("%s+$", ""):match("[^\n]*$")) end
+      if note then -- (what the last one-button install did, in a few words; the details stay in the backup's name)
+        os.remove(here .. "/last_install.txt")
+        local n = note:match("installed (%d+) shortcut")
+        say(n and ("Shortcuts installed (" .. n .. "). Your old keymap was backed up first.") or ((note:gsub("%s+$", "")):match("[^\n]*$") or ""):sub(1, 120))
+      end
     end
     local alt = core.active_alt()
     local sel = core.by_id(selected) or styles[1]
@@ -1592,7 +1715,8 @@ local function frame()
         ImGui.Separator(ctx)
         ImGui.Dummy(ctx, 0, 2)
       end
-      if page == "Setup" then setup_page()
+      if search_q ~= "" then search_page()
+      elseif page == "Setup" then setup_page()
       elseif page == "DAWs" or page == "Styles" then daws_page(sel, alt)
       elseif page == "Themes" then themes_page(sel, alt)
       elseif page == "Browse" then browse_page()

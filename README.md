@@ -1,6 +1,8 @@
 # ReaPersona
 
-Make REAPER feel like the DAW you know: **Pro Tools, Logic Pro, Ableton Live, FL Studio, Cubase, Studio One / Fender Studio Pro, Bitwig Studio, Cakewalk / Sonar or Reason**, or the audio editor **Audacity**. You can also set it back to **stock REAPER**, use **your own setup**, or mix them into **your own profiles**. Everything switches on the fly from one window.
+Make REAPER feel like the DAW you know: **Pro Tools, Logic Pro, Ableton Live, FL Studio, Cubase, Studio One / Fender Studio Pro, Bitwig Studio, Cakewalk / Sonar or Reason**, or the audio editors **Audacity** and **Adobe Audition**. You can also set it back to **stock REAPER**, use **your own setup**, or mix them into **your own profiles**. Everything switches on the fly from one window.
+
+![Switching styles](docs/demo.gif)
 
 ![All the styles](docs/styles.png)
 
@@ -49,6 +51,9 @@ The first time, ReaPersona asks which DAW you're coming from and uses its style 
 
 ## Also in the window
 
+- **Search everything** (Ctrl+K in the top bar): styles, shortcuts in every style ("split" shows each DAW's key), where a DAW's feature is in REAPER, themes, settings and pages.
+- **New project like <DAW>:** each style's page starts a project with that DAW's usual tracks, buses and sends (REAPER's own plugins).
+
 - **Combine:** tick two or more DAWs (Pro Tools + Ableton, say). Their keys, MIDI keys, toolbar, layout and mouse feel come together into one style.
   - Every clash is listed: a key bound differently, or a layout setting.
   - Pick whose version you want per clash, or make one DAW always win. Your order decides the rest.
@@ -69,6 +74,10 @@ The first time, ReaPersona asks which DAW you're coming from and uses its style 
 - **Merge:** build a theme from several (layout, colours and parts from different themes), or a new style from two styles' shortcuts.
 - **Settings:** continuous scrolling, follow-playhead, smooth seek, smooth playhead and scroll/zoom, and ReaPersona's own look.
 - **Cheat sheets:** every key and setting of a style on one printable page.
+
+## On a Mac
+
+REAPER treats Ctrl as Cmd, so the styles work unchanged, and keys show as Cmd and Option. Keys that differ on a Mac (Pro Tools' Option+Return, Logic's Control-key commands, Option-drag to copy in Ableton, Bitwig and Reason) are stored separately. Theme building and the shortcut install use `python3`. Smooth Wheel Scroll's bundled build is Windows-only; see its own page for macOS. Not yet tested on a Mac: reports welcome.
 
 ## Install
 
@@ -95,6 +104,10 @@ Thanks also to:
 ## Adding a style
 
 Styles are data in `styles.json`. Each key is `[key, REAPER command id or named id, what the DAW calls it]`, and the feel uses the kinds documented at the top of that file. Run `validate.py` after editing (press *Check* in the Check page first, so it can compare against your REAPER), then install the shortcuts.
+
+## Changes
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## Licence
 

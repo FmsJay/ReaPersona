@@ -30,7 +30,8 @@ def main():
         if f == "ReaPersona.lua":
             src.append('        <source main="main">%s</source>' % escape(url))
         else:
-            src.append('        <source file="%s">%s</source>' % (escape(f, {'"': "&quot;"}), escape(url)))
+            plat = ' platform="win64"' if f.endswith("-x64.dll") else ""  # (a Windows build: ReaPack gives it to 64-bit Windows only)
+            src.append('        <source%s file="%s">%s</source>' % (plat, escape(f, {'"': "&quot;"}), escape(url)))
     xml = """<?xml version="1.0" encoding="utf-8"?>
 <index version="1" name="ReaPersona">
   <category name="Workflow">

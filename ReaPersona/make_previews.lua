@@ -14,6 +14,7 @@ reaper.RecursiveCreateDirectory(here .. "/previews", 0)
 local shots = {}
 for _, st in ipairs(core.styles) do if only == "" or st.id == only then shots[#shots + 1] = st end end
 local was_style, was_proj = core.current(), reaper.EnumProjects(-1)
+local was_my_theme = reaper.GetExtState("ReaPersona", "theme my_reaper") -- (switching away from My REAPER records the theme on; ours isn't yours)
 local was_mixer, was_docked = reaper.GetToggleCommandState(40078), reaper.GetToggleCommandState(40083)
 reaper.Main_OnCommand(40859, 0) -- New project tab
 reaper.Main_openProject("noprompt:" .. demo)
@@ -41,6 +42,11 @@ local function capture(path)
   local src = reaper.JS_GDI_GetWindowDC(hwnd)
   reaper.JS_GDI_Blit(reaper.JS_LICE_GetDC(full), 0, 0, src, 0, 0, w, h)
   reaper.JS_GDI_ReleaseDC(src, hwnd)
+  local ex = reaper.JS_Window_Find("Media Explorer", true) -- (its file list shows your folders: a plain panel in the picture)
+  if ex and reaper.JS_Window_IsVisible(ex) and reaper.DockIsChildOfDock(ex) >= 0 then
+    local _, el, et, er, eb = reaper.JS_Window_GetRect(ex)
+    reaper.JS_LICE_FillRect(full, el - l, et - t + 30, er - el, eb - et - 30, 0x262A30, 1, "COPY")
+  end
   local top = math.floor(36 * w / WIDTH) -- (leave out the title bar, menu and project tabs: your project names)
   local sh = math.floor((h - top) * WIDTH / w)
   local small = reaper.JS_LICE_CreateBitmap(true, WIDTH, sh)
@@ -53,6 +59,7 @@ end
 local i, at = 0, 0
 local function finish()
   hide_others(false)
+  reaper.SetExtState("ReaPersona", "theme my_reaper", was_my_theme, true)
   core.use(was_style)
   if reaper.GetToggleCommandState(40083) ~= was_docked then reaper.Main_OnCommand(40083, 0) end -- (the mixer docked as you had it)
   if reaper.GetToggleCommandState(40078) ~= was_mixer then reaper.Main_OnCommand(40078, 0) end
@@ -66,6 +73,11 @@ local function step()
   if i > #shots then return finish() end
   hide_others(false)
   core.use(shots[i])
+  local ships -- (the picture shows a theme ReaPersona ships or builds: its own DAW theme, else REAPER's Default 7, never yours)
+  for _, th in ipairs(shots[i].themes or {}) do if th:match("^ReaPersona %- ") and reaper.file_exists(core.themes_dir .. th) then ships = th; break end end
+  if shots[i].kind == "theme" then ships = core.theme_for(shots[i]) end
+  ships = ships or "Default_7.0.ReaperThemeZip"
+  if reaper.file_exists(core.themes_dir .. ships) then reaper.OpenColorThemeFile(core.themes_dir .. ships) end
   local docked = true -- (a style whose mixer is its own window shows its edit window instead: a floating mixer isn't in the capture)
   for _, f in ipairs(shots[i].feel or {}) do if f[1] == "toggle" and f[2] == 40083 then docked = f[3] == 1 end end
   if reaper.GetToggleCommandState(40078) ~= (docked and 1 or 0) then reaper.Main_OnCommand(40078, 0) end

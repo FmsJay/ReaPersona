@@ -232,6 +232,21 @@ local function docker_at(side) -- the first docker REAPER keeps on that side of 
   for i = 0, 15 do if reaper.DockGetPosition(i) == want then return i end end
 end
 M.docker_at = docker_at
+-- No docker on that side yet: take a spare one (nothing docked in it, no settings of its own) and, once the window is in it, send it
+-- to that side with "Docker: Show in <side> of main window" (41598 + side), which acts on the focused window's docker. The same
+-- spare is reused next time (ExtState "docker <side>"); left empty, REAPER doesn't show it.
+local function spare_docker(side)
+  local kept = tonumber(reaper.GetExtState(M.SECTION, "docker " .. side))
+  if kept and reaper.DockGetPosition(kept) == SIDES[side] then return kept end
+  local t = M.read(res .. "/reaper.ini") or ""
+  local used = {}
+  for n in t:gmatch("\ndocker[sm][eo][ld][e]?(%d+)=") do used[tonumber(n)] = true end -- (dockersel<N>, dockermode<N>)
+  for n in (M.ini_section(t, "REAPERdockpref") or ""):gmatch("=%S+ (%d+)") do used[tonumber(n)] = true end
+  for i = 15, 1, -1 do
+    if not used[i] and reaper.DockGetPosition(i) == 0 then reaper.SetExtState(M.SECTION, "docker " .. side, tostring(i), true); return i end
+  end
+end
+M.spare_docker = spare_docker
 function M.ini_section(t, name) -- the body of [name] in an ini text (up to the next line starting with "["), or nil
   local s = t:find("[" .. name .. "]", 1, true)
   if not s then return nil end
@@ -276,6 +291,11 @@ local function move_window(w, want)
       toggle_dock() -- (in the wrong docker: out first, then in)
       return true
     elseif not want.docker and d >= 0 then toggle_dock(); return true end
+    if want.side and want.docker and reaper.DockGetPosition(want.docker) ~= SIDES[want.side] then -- (a spare docker: to its side)
+      reaper.JS_Window_SetFocus(h)
+      reaper.Main_OnCommand(41598 + SIDES[want.side], 0)
+      return true
+    end
     if want.pref then reaper.Dock_UpdateDockID(W.ident, want.pref) end
     if not want.shown then reaper.Main_OnCommand(W.show, 0) end
   end, function() if pending[w] and pending[w].token == token then pending[w] = nil end end)
@@ -361,11 +381,12 @@ local function apply_feel(st, windows_left)
     local ok, err = pcall(function()
     if not M.aspect_on(M.aspect_of(f)) then return end
     if f[1] == "dock" and WINDOWS[f[2]] and reaper.JS_Window_OnCommand then
-      local d = f[3] ~= "float" and docker_at(f[3]) or nil
-      if f[3] ~= "float" and not d then return end -- (this REAPER has no docker on that side: the window stays where it is)
+      local d, made = f[3] ~= "float" and docker_at(f[3]) or nil, nil
+      if f[3] ~= "float" and not d then d = spare_docker(f[3]); made = d and f[3] end -- (no docker on that side yet: one is set up)
+      if f[3] ~= "float" and not d then return end -- (no spare docker either: the window stays where it is)
       list[#list + 1] = windows_left[f[2]] or window_now(f[2]) -- (the original from before any style, if the last style moved it)
       windows_left[f[2]] = nil
-      move_window(f[2], { shown = f[4] == 1, docker = d })
+      move_window(f[2], { shown = f[4] == 1, docker = d, side = made })
     elseif f[1] == "toggle" then
       local id = cmd_id(f[2])
       local now = id ~= 0 and reaper.GetToggleCommandState(id) or -1

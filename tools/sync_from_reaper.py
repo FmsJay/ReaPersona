@@ -10,13 +10,14 @@ import os, shutil, sys
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DST = os.path.join(HERE, "ReaPersona")
 FILES = ["ReaPersona.lua", "reapersona_core.lua", "styles.json", "install_shortcuts.py", "validate.py", "merge_themes.py",
-         "make_demo.lua", "make_previews.lua", "build_themes.py", "colour_keys.txt", "demo/ReaPersona demo.rpp",
+         "make_demo.lua", "make_previews.lua", "make_templates.lua", "build_themes.py", "colour_keys.txt", "demo/ReaPersona demo.rpp",
          "extensions/reaper_smoothwheelscroll-x64.dll", "extensions/SmoothWheelScroll-LICENSE.txt"]
 
 
 def main():
     src = sys.argv[1] if len(sys.argv) > 1 else r"J:\Portable Workstation\DAW\REAPER\Scripts\ReaPersona"
     files = FILES + ["previews/" + f for f in sorted(os.listdir(os.path.join(src, "previews"))) if f.endswith(".png")]
+    files += ["templates/" + f for f in sorted(os.listdir(os.path.join(src, "templates"))) if f.endswith(".RPP")]
     for f in files:
         os.makedirs(os.path.dirname(os.path.join(DST, f)), exist_ok=True)
         shutil.copy2(os.path.join(src, f), os.path.join(DST, f))

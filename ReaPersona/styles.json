@@ -1721,6 +1721,61 @@
           "url": "https://ultraschall.fm/"
         }
       ]
+    },
+    {
+      "id": "audition",
+      "name": "Adobe Audition",
+      "short": "Audition",
+      "alt": 12,
+      "theme": "Default_7.0.ReaperThemeZip",
+      "themes": ["Default_7.0.ReaperThemeZip"],
+      "accent": "#9B7BEA",
+      "description": "Adobe Audition (Windows keys), Multitrack view. Space plays and stops, Home and End go to the start and end, Ctrl+Left/Right jump to the previous or next marker, clip or selection edge, = and - zoom (Alt for vertical), M adds a marker, Alt+, and Alt+. nudge clips. Adobe publishes only a partial list, so this style has just the keys a source documents; Cut, Copy, Paste, Undo and the rest are REAPER's own, which are the same keys.",
+      "docs": [
+        "https://defkey.com/adobe-audition-26-windows-shortcuts",
+        "https://helpx.adobe.com/audition/using/default-keyboard-shortcuts.html"
+      ],
+      "keys": [
+        ["Space", 40044, "Start and stop playback"],
+        ["Home", 40042, "Move the playhead to the beginning"],
+        ["End", 40043, "Move the playhead to the end"],
+        ["Ctrl+Left", 40318, "Previous marker, clip or selection edge (here: clip edges)"],
+        ["Ctrl+Right", 40319, "Next marker, clip or selection edge (here: clip edges)"],
+        ["=", 1012, "Zoom in horizontally"],
+        ["+", 1012, "Zoom in horizontally"],
+        ["-", 1011, "Zoom out horizontally"],
+        ["Alt+=", 40111, "Zoom in vertically"],
+        ["Alt+-", 40112, "Zoom out vertically"],
+        ["M", 40157, "Add marker"],
+        ["Ctrl+Alt+Right", 40173, "Next marker"],
+        ["Ctrl+Alt+Left", 40172, "Previous marker"],
+        ["Alt+,", 40120, "Nudge the selected clip left"],
+        ["Alt+.", 40119, "Nudge the selected clip right"],
+        ["Alt+Up", 40117, "Nudge the selected clip up a track"],
+        ["Alt+Down", 40118, "Nudge the selected clip down a track"],
+        ["Ctrl+K", "_SWS_SMARTSPLIT2", "Split the clip at the playhead (from Adobe's community forum; check it in Audition)"]
+      ],
+      "midi_keys": [],
+      "feel": [
+        ["radio", [41603, 41604, 41605, 41606, 41608], 41606, "Transport at the top"],
+        ["toggle", 1157, 1, "Snapping on"],
+        ["toggle", 40621, 0, "The loop range is its own"],
+        ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
+        ["mouse", "MM_CTX_TRACK", 0, "Select time", "Dragging in an empty part of a track selects time"]
+      ],
+      "extras": [
+        ["Waveform Editor: REAPER edits audio right in the arrange view; double-click a clip for its properties.", 40009, null],
+        ["Effects Rack: the track's FX chain.", 40291, null],
+        ["Noise Reduction: ReaFIR in Subtract mode (built in).", null, null]
+      ],
+      "recommends": ["smoothscroll"],
+      "tools": [
+        {
+          "name": "Ultraschall",
+          "for": "a REAPER setup made for podcasting",
+          "url": "https://ultraschall.fm/"
+        }
+      ]
     }
   ],
   "themes": {

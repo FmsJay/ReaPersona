@@ -10,12 +10,12 @@ Only lines tagged '# ReaPersona' are added or replaced, and a dated backup is ma
     python install_shortcuts.py --remove   take the ReaPersona lines out again
     python install_shortcuts.py --no-midi  arrange layers only
 """
-import json, os, shutil, subprocess, sys, time
+import json, os, re, shutil, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-RES = HERE
-while RES and not os.path.exists(os.path.join(RES, "reaper-kb.ini")) and os.path.dirname(RES) != RES:  # (the resource path is the first
-    RES = os.path.dirname(RES)                                                                    # folder up with reaper-kb.ini)
+RES = HERE  # (the resource path: the first folder up with REAPER's reaper.ini, or its reaper-kb.ini; a new REAPER may not have the keymap yet)
+while not any(os.path.exists(os.path.join(RES, f)) for f in ("reaper.ini", "reaper-kb.ini")) and os.path.dirname(RES) != RES:
+    RES = os.path.dirname(RES)
 KB = os.path.join(RES, "reaper-kb.ini")
 FALLBACK = os.path.join(HERE, "midi_fallback.json")
 DEFAULTS = os.path.join(HERE, "midi_defaults.json")  # key -> MIDI editor command REAPER binds it to by default (picker > Check)
@@ -148,7 +148,8 @@ def install_toolbars(styles, remove, warnings):
     ReaPersona's is left alone. -> how many written"""
     menu = os.path.join(RES, "reaper-menu.ini")
     eol, secs = read_ini(menu)
-    shutil.copy2(menu, menu + ".before-reapersona-" + time.strftime("%Y%m%d-%H%M%S"))
+    if os.path.exists(menu):
+        shutil.copy2(menu, menu + ".before-reapersona-" + time.strftime("%Y%m%d-%H%M%S"))
     ours = lambda body: any(l.startswith("title=ReaPersona") or l.startswith("title=DAW Styles") for l in body)
     secs = [s for s in secs if not (s[0] and s[0].startswith("[Floating") and ours(s[1]))]
     n = 0
@@ -170,8 +171,30 @@ def install_toolbars(styles, remove, warnings):
 
 
 def reaper_running():
+    """Is the REAPER this keymap belongs to running? (Another REAPER install on the computer doesn't count, where that can be told.)"""
+    # (each running REAPER's resource folder: the -cfgfile ini's folder; else its program folder when that has a reaper.ini
+    # (portable); else the user profile's REAPER folder. It's ours when that's RES.)
     if os.name == "nt":
-        return b"reaper.exe" in subprocess.run(["tasklist", "/FI", "IMAGENAME eq reaper.exe"], capture_output=True).stdout.lower()
+        out = subprocess.run(["powershell", "-NoProfile", "-Command",
+                              "Get-CimInstance Win32_Process -Filter \"Name='reaper.exe'\" | ForEach-Object { $_.ExecutablePath + '|' + $_.CommandLine }"],
+                             capture_output=True, text=True)
+        if out.returncode != 0:  # (no PowerShell: any REAPER counts)
+            return b"reaper.exe" in subprocess.run(["tasklist", "/FI", "IMAGENAME eq reaper.exe"], capture_output=True).stdout.lower()
+        here = os.path.normcase(os.path.abspath(RES))
+        for line in out.stdout.splitlines():
+            exe, _, cmd = line.strip().partition("|")
+            if not exe:
+                continue
+            m = re.search(r'-cfgfile"?\s+"?([^"]+?\.ini)"?(\s|$)', cmd, re.I)
+            if m:
+                rdir = os.path.dirname(os.path.abspath(m.group(1)))
+            elif os.path.exists(os.path.join(os.path.dirname(exe), "reaper.ini")):
+                rdir = os.path.dirname(exe)
+            else:
+                rdir = os.path.join(os.environ.get("APPDATA", ""), "REAPER")
+            if os.path.normcase(os.path.abspath(rdir)) == here:
+                return True
+        return False
     return subprocess.run(["pgrep", "-x", "REAPER"], capture_output=True).returncode == 0
 
 
@@ -232,11 +255,14 @@ def run(remove=False, no_midi=False):
     if not isinstance(old_fallback, dict):
         old_fallback = {}
 
-    raw = open(KB, "rb").read()
-    eol = "\r\n" if b"\r\n" in raw else "\n"
+    raw = open(KB, "rb").read() if os.path.exists(KB) else b""  # (a new REAPER may not have written its keymap yet)
+    eol = "\r\n" if b"\r\n" in raw or (not raw and os.name == "nt") else "\n"
     lines = raw.decode("utf-8", errors="surrogateescape").replace("\r\n", "\n").split("\n")
     backup = KB + ".before-reapersona-" + time.strftime("%Y%m%d-%H%M%S")
-    shutil.copy2(KB, backup)
+    if raw:
+        shutil.copy2(KB, backup)
+    else:
+        backup = "(none: there was no keymap yet)"
 
     # 2. Which lines are ReaPersona's. REAPER rewrites reaper-kb.ini with its own comments, so the tag doesn't survive: installed.json
     # keeps the exact lines the last install wrote, and a line you changed since (another command) is yours. Without it (installs
@@ -340,8 +366,9 @@ if __name__ == "__main__":
         except BaseException as e:  # (SystemExit included: whatever happened is written down for the picker)
             out.write("not installed: %s\n" % e)
         open(status, "w", encoding="utf-8").write(out.getvalue())
+        projects = [sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == "--open"]  # (the projects that were open)
         if exe:
-            subprocess.Popen(["open", exe] if exe.endswith(".app") else [exe], close_fds=True,
+            subprocess.Popen((["open", "-a", exe] if exe.endswith(".app") else [exe]) + projects, close_fds=True,
                              creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
         sys.exit(0)
     run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)
