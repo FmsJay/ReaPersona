@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.6.0
+- **Theme versions:** each persona's page shows every version of its theme as a button (Pro Tools has nine: ReaPersona's own, Pro Tools 2020, Pro Tools Gold and more). Click one to make it that persona's theme; the ones you don't have yet are listed with Get it links. Right-click a version you added to take it off the list.
+- Themes > Your themes: **Add to...** adds a theme to any persona's versions, not only the one in use.
+- Persona Builder: each DAW's theme versions are blocks of their own.
+- Mixer docking is on by default, so a persona moves the mixer the way its DAW does (Pro Tools, FL Studio and Cubase keep it in its own window). Switch it off in Settings > What a persona may change to keep yours where it is.
+
 ## 5.5.2
 - Persona Builder: every line inside a block has a tick box, so you can leave out one part of a block (Pro Tools' undocked mixer, say) and keep the rest.
 - Saving changes to the persona in use applies them straight away.

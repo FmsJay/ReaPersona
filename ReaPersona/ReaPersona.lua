@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.5.2
+-- @version 5.6.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -193,6 +193,12 @@ local function add_fork(st, name)
     reaper.SetExtState(SECTION, "forks " .. st.id, (list ~= "" and (list .. "|") or "") .. name, true)
   end
   reaper.SetExtState(SECTION, "theme " .. st.id, name, true)
+end
+local function remove_fork(st, name) -- (a theme you added to a persona's versions, taken off the list; the file stays)
+  local keep = {}
+  for f in reaper.GetExtState(SECTION, "forks " .. st.id):gmatch("[^|]+") do if f ~= name then keep[#keep + 1] = f end end
+  reaper.SetExtState(SECTION, "forks " .. st.id, table.concat(keep, "|"), true)
+  if reaper.GetExtState(SECTION, "theme " .. st.id) == name then reaper.DeleteExtState(SECTION, "theme " .. st.id, true) end
 end
 
 -- Save what's been tweaked as a theme of its own (a local fork): a .ReaperTheme over the same images. A .ReaperTheme in use is copied with
@@ -509,23 +515,54 @@ local function detail(sel, alt)
       say(sel.name .. " is this project's persona (saved with the project)." .. (core.follow_on() and "" or " Turn on 'Switch persona with the project' in Settings to switch automatically."))
     end
     ImGui.SetItemTooltip(ctx, "Saved in the project file. With 'Switch persona with the project' on (Settings), opening this project or switching to its tab switches to this persona.")
-    local options, seen = {}, {}
-    for _, th in ipairs(sel.themes or { sel.theme }) do if not seen[th] and reaper.file_exists(themes_dir .. th) then options[#options + 1] = th; seen[th] = true end end
-    for _, th in ipairs(core.forks(sel)) do if not seen[th] then options[#options + 1] = th; seen[th] = true end end
-    if #options > 1 then
+    local vers, seen, mine = {}, {}, {}
+    for _, th in ipairs(sel.themes or { sel.theme }) do if th and not seen[th] then vers[#vers + 1] = th; seen[th] = true end end
+    for _, th in ipairs(core.forks(sel)) do if not seen[th] then vers[#vers + 1] = th; seen[th] = true; mine[th] = true end end
+    local have, missing = {}, {}
+    for _, th in ipairs(vers) do
+      if reaper.file_exists(themes_dir .. th) then have[#have + 1] = th
+      elseif core.CATALOG[th] and core.CATALOG[th].url and core.CATALOG[th].url:match("^https?:") then missing[#missing + 1] = th end
+    end
+    if #have > 1 or #missing > 0 then
       ImGui.Dummy(ctx, 0, 2)
-      ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Theme"); ImGui.SameLine(ctx)
-      ImGui.SetNextItemWidth(ctx, math.min(420, (ImGui.GetContentRegionAvail(ctx))))
-      if ImGui.BeginCombo(ctx, "##th", core.theme_for(sel) or "") then
-        for _, th in ipairs(options) do
-          if ImGui.Selectable(ctx, th, th == core.theme_for(sel)) then
-            reaper.SetExtState(SECTION, "theme " .. sel.id, th, true)
-            if on then trying = nil; reaper.OpenColorThemeFile(themes_dir .. th) end
-          end
+      heading("Theme versions", 15)
+      muted("Click one to make it " .. sel.name .. "'s theme" .. (on and " (it goes on now)." or " (it goes on when you use " .. sel.name .. ").") ..
+        " Add any theme to this list from Themes > Your themes > Add to; right-click one you added to take it off.")
+      local cur = core.theme_for(sel)
+      local x0 = ImGui.GetCursorScreenPos(ctx)
+      local xend, pad, first = x0 + ImGui.GetContentRegionAvail(ctx), ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding), true
+      for i, th in ipairs(have) do
+        local nice = th:gsub("%.ReaperTheme%a*$", ""):gsub("^ReaPersona %- (.*)$", "ReaPersona's %1")
+        local w = ImGui.CalcTextSize(ctx, nice) + 2 * pad
+        if not first and ImGui.GetItemRectMax(ctx) + 6 + w <= xend then ImGui.SameLine(ctx, 0, 6) end
+        first = false
+        local picked = th == cur
+        if picked then
+          ImGui.PushStyleColor(ctx, ImGui.Col_Button, solid(col)); ImGui.PushStyleColor(ctx, ImGui.Col_Text, on_colour(col))
         end
-        ImGui.EndCombo(ctx)
+        if ImGui.Button(ctx, nice .. "##tv" .. i) and not picked then
+          reaper.SetExtState(SECTION, "theme " .. sel.id, th, true)
+          if on then trying = nil; reaper.OpenColorThemeFile(themes_dir .. th) end
+          say(nice .. (on and " is on." or (" is " .. sel.name .. "'s theme now.")))
+        end
+        if picked then ImGui.PopStyleColor(ctx, 2) end
+        local c = core.CATALOG[th]
+        ImGui.SetItemTooltip(ctx, (picked and "In use for " .. sel.name .. ". " or "") .. (c and ("By " .. tostring(c.by) .. (c.note and (": " .. c.note) or "") .. ".") or
+          mine[th] and "You added this one." or "On this computer."))
+        if mine[th] and ImGui.BeginPopupContextItem(ctx, "##tvm" .. i) then
+          if ImGui.MenuItem(ctx, "Take off " .. sel.name .. "'s list") then remove_fork(sel, th) end
+          ImGui.EndPopup(ctx)
+        end
       end
-      ImGui.SetItemTooltip(ctx, "Themes made in this one's likeness, merged ones, themes you added, and your own versions. Remembered per persona.")
+      if #missing > 0 and ImGui.TreeNode(ctx, #missing .. " more version" .. (#missing == 1 and "" or "s") .. " you can get##tvget") then
+        for i, th in ipairs(missing) do
+          local c = core.CATALOG[th]
+          if ImGui.SmallButton(ctx, "Get it##tvg" .. i) then core.open_url(c.url) end
+          ImGui.SameLine(ctx); ImGui.Text(ctx, th:gsub("%.ReaperTheme%a*$", "") .. " by " .. tostring(c.by) .. (c.note and (" (" .. c.note .. ")") or ""))
+        end
+        muted("Drop the download on this window and it joins the list.")
+        ImGui.TreePop(ctx)
+      end
     end
     if (core.theme_for(sel) or ""):match("^ReaPersona %- ") then
       muted("ReaPersona's own theme is an approximation of " .. sel.name .. "'s colours on REAPER's Default 7 layout. Themes by other authors can look closer to the real thing: Setup lists them with Get it links, and Browse searches the Stash.")
@@ -624,7 +661,17 @@ local function themes_page(sel, alt)
           ImGui.SameLine(ctx)
           if ImGui.SmallButton(ctx, "Use##u" .. i) then trying = nil; reaper.OpenColorThemeFile(themes_dir .. th); say(nice .. " in use.") end
           ImGui.TableNextColumn(ctx)
-          if ImGui.SmallButton(ctx, "Add to " .. cur.name .. "##a" .. i) then add_fork(cur, th); say(th .. " is in " .. cur.name .. "'s Theme list.") end
+          if ImGui.SmallButton(ctx, "Add to...##a" .. i) then ImGui.OpenPopup(ctx, "addto##" .. i) end
+          ImGui.SetItemTooltip(ctx, "Make it one of a persona's theme versions (its page lists them to click).")
+          if ImGui.BeginPopup(ctx, "addto##" .. i) then
+            for _, st in ipairs(styles) do
+              if st.kind ~= "theme" and ImGui.MenuItem(ctx, st.name .. (st == cur and "  (in use)" or "") .. "##at" .. st.id) then
+                add_fork(st, th); if st == cur then trying = nil; reaper.OpenColorThemeFile(themes_dir .. th) end
+                say(nice .. " is one of " .. st.name .. "'s theme versions" .. (st == cur and ", and on now." or "."))
+              end
+            end
+            ImGui.EndPopup(ctx)
+          end
         end
       end
       ImGui.EndTable(ctx)
@@ -1487,7 +1534,17 @@ local function bld_palette()
   for _, x in ipairs(core.ASPECTS) do
     if has[x[1]] then chip(x[4], function() return core.new_block("feel", cur.id, x[1]) end, x[2]) end
   end
-  if cur.theme then chip("Theme", function() return core.new_block("theme", core.theme_for(cur)) end, core.theme_for(cur)) end
+  local tv, seen = {}, {} -- (its theme versions on this computer: each one a block)
+  for _, th in ipairs(cur.themes or { cur.theme }) do if th and not seen[th] and reaper.file_exists(themes_dir .. th) then seen[th] = true; tv[#tv + 1] = th end end
+  for _, th in ipairs(core.forks(cur)) do if not seen[th] and reaper.file_exists(themes_dir .. th) then seen[th] = true; tv[#tv + 1] = th end end
+  if #tv > 0 then
+    ImGui.Dummy(ctx, 0, 2)
+    ImGui.Text(ctx, cur.name .. "'s theme versions")
+    flow_start()
+    for _, th in ipairs(tv) do
+      chip((th:gsub("%.ReaperTheme%a*$", ""):gsub("^ReaPersona %- (.*)$", "ReaPersona's %1")), function() return core.new_block("theme", th) end, th)
+    end
+  end
   ImGui.Dummy(ctx, 0, 4)
   ImGui.Text(ctx, "REAPER settings")
   muted("Each starts as you have it now; change it in the block.")

@@ -358,10 +358,10 @@ local function restore_feel(windows_left) -- (windows_left: a window's original 
   end
   reaper.SetExtState(M.SECTION, "orig", "", true)
 end
--- Which parts of a style's feel you let styles change (Settings): the mixer's docking is off unless you turn it on, because a mixer
--- that leaves its docker every time you switch to Pro Tools, FL Studio or Cubase gets in the way.
+-- Which parts of a persona's feel you let personas change (Settings). All on by default, so each persona does what its DAW does
+-- (Pro Tools, FL Studio and Cubase keep the mixer in its own window); switch one off to keep your own way.
 M.ASPECTS = {
-  { "mixer_dock", "Dock or undock the mixer (Pro Tools, FL and Cubase keep theirs in its own window)", false, "Mixer docking" },
+  { "mixer_dock", "Dock or undock the mixer (Pro Tools, FL and Cubase keep theirs in its own window)", true, "Mixer docking" },
   { "mixer_layout", "Mixer layout: master on the left or right, insert and send slots", true, "Mixer layout" },
   { "transport", "Where the transport sits", true, "Transport position" },
   { "browser", "Where the Media Explorer docks", true, "Media Explorer" },

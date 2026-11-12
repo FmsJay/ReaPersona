@@ -67,12 +67,13 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
   - finds the DAWs installed on your computer;
   - turns your own Cubase/Nuendo key commands into a persona;
   - makes a ReaPersona theme from an Ableton Live theme (`.ask`).
-- **What a persona may change:** switch off the parts you want to keep as they are, whatever persona you use: mixer docking (off by default), mixer layout, transport, Media Explorer, toolbar, mouse, snap/ripple.
+- **What a persona may change:** switch off the parts you want to keep as they are, whatever persona you use: mixer docking, mixer layout, transport, Media Explorer, toolbar, mouse, snap/ripple.
 - **Customize REAPER:** item labels, grid lines, takes, spectral peaks, crossfades, grouping, locking, mixer options and what the ruler shows, in one place.
 - **Theme adjuster:** pops out into its own window; REAPER's own Theme Adjuster is one click away.
 
 - **Save what I'm using:** the persona in use the way you like it, with its theme, layout and settings, saved under a name. You can share it as a file.
-- **Themes:** every theme on your computer. *Try* wears one for 20 seconds (keep it or it goes back), *Use* applies one on its own, *Add to* puts it in a persona's Theme list.
+- **Themes:** every theme on your computer. *Try* wears one for 20 seconds (keep it or it goes back), *Use* applies one on its own, *Add to...* makes it one of any persona's theme versions.
+- **Theme versions:** each persona's page shows all its theme versions as buttons (Pro Tools has nine), with *Get it* links for the ones you don't have yet. Click one to make it that persona's theme.
 - **Adjust:** a theme's own settings, layouts and colours, live.
 - **Build one (themes):** a theme from several (layout, colours and parts from different themes).
 - **Settings:** continuous scrolling, follow-playhead, smooth seek, smooth playhead and scroll/zoom, and ReaPersona's own look.
