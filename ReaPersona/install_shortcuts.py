@@ -1,5 +1,6 @@
 """ReaPersona: write each style's shortcuts into REAPER's keymap. Run with REAPER CLOSED (REAPER reads reaper-kb.ini at start).
-Only lines tagged '# ReaPersona' are added or replaced, and a dated backup is made first.
+Only ReaPersona's own lines are added or replaced (installed.json lists the ones the last install wrote; before that, lines tagged
+'# ReaPersona'), and a dated backup is made first.
 - Arrange keys go in a shortcut layer per style (Main alt-N); your Main section is never touched.
 - MIDI editor keys: the MIDI editor has no layers, so each key any style uses there is bound to a small ReaPersona script that runs
   the style's action, or what the key did in your keymap when the style in use has none. Your own line for that key is moved into
@@ -16,6 +17,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RES = HERE  # (the resource path: the first folder up with REAPER's reaper.ini, or its reaper-kb.ini; a new REAPER may not have the keymap yet)
 while not any(os.path.exists(os.path.join(RES, f)) for f in ("reaper.ini", "reaper-kb.ini")) and os.path.dirname(RES) != RES:
     RES = os.path.dirname(RES)
+if not any(os.path.exists(os.path.join(RES, f)) for f in ("reaper.ini", "reaper-kb.ini")):
+    sys.exit("This has to sit inside REAPER's resource folder (Scripts/ReaPersona): no reaper.ini above " + HERE)
 KB = os.path.join(RES, "reaper-kb.ini")
 FALLBACK = os.path.join(HERE, "midi_fallback.json")
 DEFAULTS = os.path.join(HERE, "midi_defaults.json")  # key -> MIDI editor command REAPER binds it to by default (picker > Check)
@@ -116,7 +119,7 @@ def write_ini(path, eol, secs):
         out += body
     while out and out[-1] == "":
         out.pop()
-    open(path, "wb").write(("\n".join(out) + "\n").replace("\n", eol).encode("utf-8", errors="surrogateescape"))
+    write_atomic(path, ("\n".join(out) + "\n").replace("\n", eol).encode("utf-8", errors="surrogateescape"))
 
 
 def toolbar_lines(st, file_key="toolbar_file", list_key="toolbar", label=""):
@@ -149,7 +152,7 @@ def install_toolbars(styles, remove, warnings):
     menu = os.path.join(RES, "reaper-menu.ini")
     eol, secs = read_ini(menu)
     if os.path.exists(menu):
-        shutil.copy2(menu, menu + ".before-reapersona-" + time.strftime("%Y%m%d-%H%M%S"))
+        backup_of(menu)
     ours = lambda body: any(l.startswith("title=ReaPersona") or l.startswith("title=DAW Styles") for l in body)
     secs = [s for s in secs if not (s[0] and s[0].startswith("[Floating") and ours(s[1]))]
     n = 0
@@ -175,16 +178,22 @@ def reaper_running():
     # (each running REAPER's resource folder: the -cfgfile ini's folder; else its program folder when that has a reaper.ini
     # (portable); else the user profile's REAPER folder. It's ours when that's RES.)
     if os.name == "nt":
-        out = subprocess.run(["powershell", "-NoProfile", "-Command",
-                              "Get-CimInstance Win32_Process -Filter \"Name='reaper.exe'\" | ForEach-Object { $_.ExecutablePath + '|' + $_.CommandLine }"],
-                             capture_output=True, text=True)
-        if out.returncode != 0:  # (no PowerShell: any REAPER counts)
-            return b"reaper.exe" in subprocess.run(["tasklist", "/FI", "IMAGENAME eq reaper.exe"], capture_output=True).stdout.lower()
+        listed = b"reaper.exe" in subprocess.run(["tasklist", "/FI", "IMAGENAME eq reaper.exe"], capture_output=True).stdout.lower()
+        if not listed:
+            return False
+        try:
+            out = subprocess.run(["powershell", "-NoProfile", "-Command", "[Console]::OutputEncoding=[Text.Encoding]::UTF8; "
+                                  "Get-CimInstance Win32_Process -Filter \"Name='reaper.exe'\" | ForEach-Object { $_.ExecutablePath + '|' + $_.CommandLine }"],
+                                 capture_output=True, encoding="utf-8", errors="replace")
+        except OSError:  # (no PowerShell: any REAPER counts)
+            return True
         here = os.path.normcase(os.path.abspath(RES))
+        if out.returncode != 0 or not out.stdout.strip():
+            return True
         for line in out.stdout.splitlines():
             exe, _, cmd = line.strip().partition("|")
-            if not exe:
-                continue
+            if not exe:  # (a REAPER this can't look into, an elevated one say: it may be ours)
+                return True
             m = re.search(r'-cfgfile"?\s+"?([^"]+?\.ini)"?(\s|$)', cmd, re.I)
             if m:
                 rdir = os.path.dirname(os.path.abspath(m.group(1)))
@@ -195,7 +204,25 @@ def reaper_running():
             if os.path.normcase(os.path.abspath(rdir)) == here:
                 return True
         return False
-    return subprocess.run(["pgrep", "-x", "REAPER"], capture_output=True).returncode == 0
+    return subprocess.run(["pgrep", "-xi", "reaper"], capture_output=True).returncode == 0
+
+
+def backup_of(path):
+    """A dated copy of path (the newest 5 are kept). -> its name"""
+    stamp = path + ".before-reapersona-" + time.strftime("%Y%m%d-%H%M%S")
+    name, n = stamp, 1
+    while os.path.exists(name):
+        n += 1
+        name = "%s-%d" % (stamp, n)
+    shutil.copy2(path, name)
+    folder, base = os.path.split(path)
+    old = sorted(f for f in os.listdir(folder) if f.startswith(base + ".before-reapersona-"))
+    for f in old[:-5]:
+        try:
+            os.remove(os.path.join(folder, f))
+        except OSError:
+            pass
+    return name
 
 
 def write_atomic(path, data):
@@ -258,9 +285,8 @@ def run(remove=False, no_midi=False):
     raw = open(KB, "rb").read() if os.path.exists(KB) else b""  # (a new REAPER may not have written its keymap yet)
     eol = "\r\n" if b"\r\n" in raw or (not raw and os.name == "nt") else "\n"
     lines = raw.decode("utf-8", errors="surrogateescape").replace("\r\n", "\n").split("\n")
-    backup = KB + ".before-reapersona-" + time.strftime("%Y%m%d-%H%M%S")
     if raw:
-        shutil.copy2(KB, backup)
+        backup = backup_of(KB)
     else:
         backup = "(none: there was no keymap yet)"
 
@@ -269,15 +295,6 @@ def run(remove=False, no_midi=False):
     # before 5.2) a style's key in that style's layer counts as ours.
     manifest = json.load(open(MANIFEST, encoding="utf-8")).get("lines") if os.path.exists(MANIFEST) else None
     manifest = set(manifest) if isinstance(manifest, list) else None
-    style_keys = set()
-    for st in styles:
-        alt = int(st.get("alt") or 0)
-        for x in st.get("keys", []) if 1 <= alt <= 16 else []:
-            try:
-                if for_os(x[0]):
-                    style_keys.add("%d %d %d" % (encode(for_os(x[0])) + (alt,)))
-            except (ValueError, KeyError, TypeError, IndexError):
-                pass
     midi_cmds = set(scripts.get("midi", {}).values())
     midi_keys = set()
     for spec in set(midi_specs) | set(old_fallback):
@@ -295,9 +312,7 @@ def run(remove=False, no_midi=False):
         if q[4] == str(MIDI):  # (a "0 ... DISABLED DEFAULT" line on one of our MIDI keys: REAPER wrote it when a key script moved)
             return (q[3] in midi_cmds or "MIDI key" in line and ("Script: ReaPersona" in line or "Script: DAW Styles" in line)
                     or (q[3] == "0" and "%s %s" % (q[1], q[2]) in midi_keys))
-        if manifest is not None:
-            return key_of(line) in manifest
-        return "%s %s %s" % (q[1], q[2], q[4]) in style_keys
+        return manifest is not None and key_of(line) in manifest
     kept = [l for l in lines if not ours(l)]
     while kept and kept[-1] == "":
         kept.pop()
@@ -330,9 +345,9 @@ def run(remove=False, no_midi=False):
         kept.append("KEY %d %d %s %d\t\t %s : MIDI editor : %s : %s" % (f, k, cmd, MIDI, TAG, spec, ", ".join(midi_specs[spec])))
         added += 1
 
-    # 4. Write: the keymap first, then what depends on it. midi_fallback.json is only replaced once the keymap holds the new lines.
-    write_atomic(KB, ("\n".join(kept) + "\n").replace("\n", eol).encode("utf-8", errors="surrogateescape"))
+    # 4. Write: your moved MIDI editor lines first (midi_fallback.json), then the keymap, then the list of what was written.
     write_atomic(FALLBACK, json.dumps(fallback, indent=1).encode("utf-8"))
+    write_atomic(KB, ("\n".join(kept) + "\n").replace("\n", eol).encode("utf-8", errors="surrogateescape"))
     write_atomic(MANIFEST, json.dumps({"lines": written}, indent=0).encode("utf-8"))
     tb = install_toolbars(styles, remove, warnings)
     print("%s %d toolbar(s)" % ("removed ReaPersona toolbars;" if remove else "wrote", tb))
@@ -347,14 +362,19 @@ if __name__ == "__main__":
     assert encode("Num3") == (1, 99) and encode("F12") == (1, 123) and encode("+") == (0, 43) and encode("Ctrl+-") == (9, 189)
     assert encode("Shift+\\") == (5, 220) and encode("Shift+Num*") == (5, 106)
     assert encode("NumEnter") == (1, EXT + 13) and encode("Win+M") == (33, 77) and for_os("mac:Win+M") in (None, "Win+M")
+    if "--help" in sys.argv or "-h" in sys.argv:
+        sys.exit(__doc__)
     if "--after-reaper-quits" in sys.argv:
         # (the picker's one-button install: REAPER starts this, then quits; we wait, install, note the result and start REAPER again)
         exe = sys.argv[sys.argv.index("--relaunch") + 1] if "--relaunch" in sys.argv else None
         status = os.path.join(HERE, "last_install.txt")
-        for _ in range(360):  # (up to 3 minutes: REAPER may be asking whether to save)
-            if not reaper_running():
-                break
+        cancelled = os.path.join(HERE, "install_cancelled")
+        give_up = time.time() + 180  # (3 minutes: REAPER may be asking whether to save)
+        while reaper_running() and time.time() < give_up and not os.path.exists(cancelled):
             time.sleep(0.5)
+        if os.path.exists(cancelled):  # (the picker saw the quit cancelled: nothing to do)
+            os.remove(cancelled)
+            sys.exit(1)
         if reaper_running():
             open(status, "w", encoding="utf-8").write("REAPER didn't close, so the shortcuts weren't installed.\n")
             sys.exit(1)
@@ -367,8 +387,10 @@ if __name__ == "__main__":
             out.write("not installed: %s\n" % e)
         open(status, "w", encoding="utf-8").write(out.getvalue())
         projects = [sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == "--open"]  # (the projects that were open)
+        cfg = sys.argv[sys.argv.index("--cfgfile") + 1] if "--cfgfile" in sys.argv else None  # (the same configuration again)
         if exe:
-            subprocess.Popen((["open", "-a", exe] if exe.endswith(".app") else [exe]) + projects, close_fds=True,
+            args = ["-cfgfile", cfg] if cfg and os.path.exists(cfg) else []
+            subprocess.Popen((["open", "-a", exe] + projects + (["--args"] + args if args else []) if exe.endswith(".app") else [exe] + args + projects), close_fds=True,
                              creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
         sys.exit(0)
     run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)

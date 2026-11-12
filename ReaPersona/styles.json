@@ -326,7 +326,7 @@
         ["Ctrl+A", 40035, "Select All"],
         ["X", 40078, "Show/Hide Mixer"],
         ["P", 40153, "Show/Hide Piano Roll"],
-        ["Y", 40291, "Show/hide Smart Controls (here: the track's FX chain)"],
+        ["Y", 40271, "Show/hide the Library (here: the FX browser)"],
         ["Ctrl+Left", 1011, "Zoom out horizontally"],
         ["Ctrl+Right", 1012, "Zoom in horizontally"],
         ["Z", 40031, "Zoom to fit selection"],
@@ -342,8 +342,8 @@
         ["Ctrl+S", 40026, "Save"],
         ["Ctrl+Shift+S", 40022, "Save Project as"],
         ["Ctrl+B", 40015, "Bounce"],
-        ["B", 50124, "Show/hide the Browser (here: the Media Explorer)"],
-        ["O", 41157, "Show/hide Project Files (here: the project bay)"],
+        ["B", 40291, "Show/hide Smart Controls (here: the track's FX chain)"],
+        ["O", 50124, "Show/hide the Loop Browser (here: the Media Explorer)"],
         ["Ctrl+Shift+D", 42785, "Create Track Stack (here: move the selected tracks into a new folder)"],
         ["Num0", 1016, "Stop"],
         ["NumEnter", 1007, "Play"],
@@ -381,7 +381,8 @@
         ["mac:Win+M", 40175, "Mute regions (Control-M)"],
         ["mac:Win+R", 9, "Track record enable (Control-R)"],
         ["mac:Win+B", 41999, "Bounce in place (Control-B)"],
-        ["mac:Win+S", 7, "Solo the selected regions' tracks (Control-S)"]
+        ["mac:Win+S", 7, "Solo the selected regions' tracks (Control-S)"],
+        ["F", 50124, "Show/hide the Browsers (here: the Media Explorer)"]
       ],
       "midi_keys": [
         ["Alt+Up", "Edit: Move notes up one semitone", "Transpose Event +1 Semitone"],

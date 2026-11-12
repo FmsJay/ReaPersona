@@ -1,5 +1,29 @@
 # Changelog
 
+## 5.5.0
+- **Styles are now personas** everywhere in the window: a persona is everything REAPER feels like, from shortcuts and theme to layout and REAPER's own options. Your saved setups are personas too. (Files, actions and shortcuts keep their names, so nothing you set up breaks.)
+- **Persona Builder** (Personas > Persona Builder, in place of Combine): drag blocks into a stack and see what each sets as you go. Blocks are a DAW (its shortcuts, layout and feel, theme), one part of a DAW's feel (mouse, mixer layout, transport, Media Explorer, toolbar, snap/ripple, MIDI editor docking), REAPER settings groups (playback and scrolling, editing, recording, view, mixer) set the way you want, a theme and a colour. The lower block wins a clash, and the block that loses shows "replaced by". *Try it*, *Go back*, *Save*; *Build on this* and *Edit in the Builder* on persona pages. One DAW's shortcuts work straight away; several DAWs' get a layer of their own.
+- **A persona per project:** *Use for this project* saves a persona in the project; with *Switch persona with the project* on (Settings), opening a project or switching to its tab switches persona. Projects without one keep the persona in use, or switch to one you pick.
+- REAPER keeps many options per project (snap, ripple, the metronome, the mixer layout). What a persona changed is now put back in the project tab it changed it in; before, switching tabs and then personas could leave one project's mixer layout on another.
+- Fixes from a full review:
+  - A theme on trial gives way when another theme or persona goes on, and goes back when the window closes.
+  - Search clears when you change page, and Escape clears it at any width.
+  - The top bar's buttons wrap under the title in a narrow window instead of sliding over it.
+  - Colour tweaks in Adjust belong to the theme they were made on.
+  - Deleting a persona says it can't be undone.
+  - The Stash says it's loading.
+  - Text size reaches the main buttons.
+  - The picker's toolbar button lights while it's open.
+  - Shared personas and presets can only change settings ReaPersona's own personas use, and always get a free shortcut layer that holds none of your keys.
+  - A failed write never replaces a good file.
+  - A MIDI-editor docking still waiting for an editor counts as how it is.
+  - My REAPER's theme comes back even from outside ColorThemes.
+  - Mouse behaviours marked for one system are read correctly in saved personas.
+  - The keymap file route never writes over an unreadable midi_fallback.json.
+  - A persona of yours named like a shipped one gets its own action.
+  - The install: detects a running REAPER even with accented letters in its path, or one it can't look into; without installed.json it only replaces tagged lines (a shortcut layer of your own keeps its keys); writes reaper-menu.ini safely; keeps the newest 5 backups; stops waiting if you cancel REAPER's quit; reopens REAPER on the same `-cfgfile`; and refuses to run outside a REAPER folder.
+  - Logic: Y opens the Library, B Smart Controls, F the Browsers and O the Loop Browser, as in Logic.
+
 ## 5.4.5
 - Themes > Your themes opens with every theme on your computer (search, Try, Use, Add to style); the theme styles come after.
 
