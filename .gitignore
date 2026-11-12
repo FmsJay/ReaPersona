@@ -15,3 +15,9 @@ ReaPersona/toolbars/
 __pycache__/
 ReaPersona/_incoming/
 ReaPersona/user_themes.json
+ReaPersona/midi_map.lua
+ReaPersona/installed.json
+ReaPersona/errors.log
+ReaPersona/_downloads/
+*.tmp
+*.bad-*

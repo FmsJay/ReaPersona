@@ -100,6 +100,9 @@ def build(colorthemes, name, rec):
             low = rel.lower()
             if low.endswith(".reapertheme"):
                 text = colours(data.decode("utf-8", "replace").replace("\r\n", "\n"), rec)
+                text, n = re.subn(r"(?m)^ui_img=.*$", "ui_img=" + folder, text)  # (its images are in our folder, not Default 7's)
+                if not n:
+                    text = text.replace("[REAPER]", "[REAPER]\nui_img=" + folder, 1) if "[REAPER]" in text else text + "\n[REAPER]\nui_img=" + folder + "\n"
                 out.writestr(folder + ".ReaperTheme", text)  # (at the top of the zip, named as its image folder)
                 continue
             if low.endswith(".png") and not os.path.basename(low).startswith("toolbar_"):

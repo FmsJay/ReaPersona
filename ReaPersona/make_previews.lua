@@ -14,7 +14,7 @@ reaper.RecursiveCreateDirectory(here .. "/previews", 0)
 local shots = {}
 for _, st in ipairs(core.styles) do if only == "" or st.id == only then shots[#shots + 1] = st end end
 local was_style, was_proj = core.current(), reaper.EnumProjects(-1)
-local was_mixer = reaper.GetToggleCommandState(40078)
+local was_mixer, was_docked = reaper.GetToggleCommandState(40078), reaper.GetToggleCommandState(40083)
 reaper.Main_OnCommand(40859, 0) -- New project tab
 reaper.Main_openProject("noprompt:" .. demo)
 local demo_proj = reaper.EnumProjects(-1)
@@ -54,6 +54,7 @@ local i, at = 0, 0
 local function finish()
   hide_others(false)
   core.use(was_style)
+  if reaper.GetToggleCommandState(40083) ~= was_docked then reaper.Main_OnCommand(40083, 0) end -- (the mixer docked as you had it)
   if reaper.GetToggleCommandState(40078) ~= was_mixer then reaper.Main_OnCommand(40078, 0) end
   if reaper.IsProjectDirty(demo_proj) == 0 then reaper.SelectProjectInstance(demo_proj); reaper.Main_OnCommand(40860, 0) end -- close the demo tab
   if was_proj then reaper.SelectProjectInstance(was_proj) end

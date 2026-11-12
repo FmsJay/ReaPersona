@@ -7,9 +7,9 @@ import json, os, sys
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from install_shortcuts import encode, load_styles  # noqa: E402
+from install_shortcuts import RES, encode, load_styles  # noqa: E402
 
-THEMES = os.path.join(os.path.dirname(os.path.dirname(HERE)), "ColorThemes")
+THEMES = os.path.join(RES, "ColorThemes")
 
 
 def table(name):

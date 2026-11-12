@@ -19,6 +19,7 @@ while RES and not os.path.exists(os.path.join(RES, "reaper-kb.ini")) and os.path
 KB = os.path.join(RES, "reaper-kb.ini")
 FALLBACK = os.path.join(HERE, "midi_fallback.json")
 DEFAULTS = os.path.join(HERE, "midi_defaults.json")  # key -> MIDI editor command REAPER binds it to by default (picker > Check)
+MANIFEST = os.path.join(HERE, "installed.json")  # the exact lines the last install wrote ("flags key cmd section")
 TAG = "# ReaPersona"
 OLD_TAG = "# DAW Styles"  # (lines the old name wrote, before REAPER rewrote their comments)
 MIDI = 32060
@@ -156,20 +157,92 @@ def install_toolbars(styles, remove, warnings):
     return n
 
 
+def reaper_running():
+    if os.name == "nt":
+        return b"reaper.exe" in subprocess.run(["tasklist", "/FI", "IMAGENAME eq reaper.exe"], capture_output=True).stdout.lower()
+    return subprocess.run(["pgrep", "-x", "REAPER"], capture_output=True).returncode == 0
+
+
+def write_atomic(path, data):
+    """Through a temp file and os.replace: a crash never leaves half a file."""
+    with open(path + ".tmp", "wb") as f:
+        f.write(data)
+    os.replace(path + ".tmp", path)
+
+
+def key_of(line):
+    """'KEY f k cmd sec ...' -> 'f k cmd sec', or None."""
+    q = line.split()
+    return " ".join(q[1:5]) if len(q) >= 5 and q[0] == "KEY" else None
+
+
 def run(remove=False, no_midi=False):
-    if b"reaper.exe" in subprocess.run(["tasklist", "/FI", "IMAGENAME eq reaper.exe"], capture_output=True).stdout.lower():
+    if reaper_running():
         sys.exit("Close REAPER first: it reads its keymap only when it starts.")
+    scripts = json.load(open(os.path.join(HERE, "scripts.json"), encoding="utf-8")) if os.path.exists(os.path.join(HERE, "scripts.json")) else {}
+    styles = load_styles()
+    warnings = []
+
+    # 1. Plan every line first, so a bad entry in a shared style is skipped with a warning before anything is changed.
+    plan, midi_specs = [], {}  # plan: (flags, key, cmd or "MAIN:spec", alt, comment)
+    for st in [] if remove else styles:
+        alt = int(st.get("alt") or 0)
+        for entry in st.get("keys", []) if 1 <= alt <= 16 else []:
+            try:
+                spec, cmd, what = entry
+                if isinstance(cmd, str) and cmd.startswith("script:"):
+                    cmd = scripts.get("main", {}).get(cmd[7:])
+                    if not cmd:
+                        warnings.append("%s %s: open the ReaPersona picker once first (registers its actions)" % (st["name"], spec)); continue
+                if isinstance(cmd, str) and cmd.startswith("MAIN:"):
+                    encode(cmd[5:])
+                elif not (isinstance(cmd, int) or (isinstance(cmd, str) and cmd and not any(c.isspace() for c in cmd))):
+                    raise ValueError("bad command %r" % (cmd,))
+                f, k = encode(spec)
+                plan.append((f, k, cmd, alt, "%s : %s : %s : %s" % (TAG, st["name"], spec, what)))
+            except (ValueError, KeyError, TypeError) as e:
+                warnings.append("%s: skipped key %r (%s)" % (st.get("name"), entry, e))
+        for mk in st.get("midi_keys", []):
+            try:
+                encode(mk[0])
+                midi_specs.setdefault(mk[0], []).append(st["name"])
+            except (ValueError, KeyError, TypeError, IndexError) as e:
+                warnings.append("%s: skipped MIDI key %r (%s)" % (st.get("name"), mk, e))
+    defaults = json.load(open(DEFAULTS, encoding="utf-8")) if os.path.exists(DEFAULTS) else None
+    if no_midi or (defaults is None and not remove):  # (without REAPER's own MIDI editor defaults, a My REAPER key would lose what it did)
+        if not no_midi:
+            warnings.append("MIDI editor keys: no midi_defaults.json yet (open REAPER, picker > Check), so they weren't installed")
+        midi_specs = {}
+    old_fallback = json.load(open(FALLBACK, encoding="utf-8")) if os.path.exists(FALLBACK) else {}
+    if not isinstance(old_fallback, dict):
+        old_fallback = {}
+
     raw = open(KB, "rb").read()
     eol = "\r\n" if b"\r\n" in raw else "\n"
     lines = raw.decode("utf-8", errors="surrogateescape").replace("\r\n", "\n").split("\n")
     backup = KB + ".before-reapersona-" + time.strftime("%Y%m%d-%H%M%S")
     shutil.copy2(KB, backup)
-    scripts = json.load(open(os.path.join(HERE, "scripts.json"), encoding="utf-8")) if os.path.exists(os.path.join(HERE, "scripts.json")) else {}
-    # (REAPER rewrites reaper-kb.ini with its own comments when it saves it, so the tag doesn't survive: a line is also ours when it
-    # binds a style's key in that style's layer, or a MIDI editor key to a ReaPersona MIDI key script. Your own keys in a layer stay.)
-    style_keys = {(str(f), str(k), str(int(st.get("alt", 0)))) for st in load_styles() if 1 <= int(st.get("alt", 0)) <= 16
-                  for f, k in (encode(x[0]) for x in st.get("keys", []))}
+
+    # 2. Which lines are ReaPersona's. REAPER rewrites reaper-kb.ini with its own comments, so the tag doesn't survive: installed.json
+    # keeps the exact lines the last install wrote, and a line you changed since (another command) is yours. Without it (installs
+    # before 5.2) a style's key in that style's layer counts as ours.
+    manifest = json.load(open(MANIFEST, encoding="utf-8")).get("lines") if os.path.exists(MANIFEST) else None
+    manifest = set(manifest) if isinstance(manifest, list) else None
+    style_keys = set()
+    for st in styles:
+        alt = int(st.get("alt") or 0)
+        for x in st.get("keys", []) if 1 <= alt <= 16 else []:
+            try:
+                style_keys.add("%d %d %d" % (encode(x[0]) + (alt,)))
+            except (ValueError, KeyError, TypeError, IndexError):
+                pass
     midi_cmds = set(scripts.get("midi", {}).values())
+    midi_keys = set()
+    for spec in set(midi_specs) | set(old_fallback):
+        try:
+            midi_keys.add("%d %d" % encode(spec))
+        except (ValueError, KeyError, TypeError):
+            pass
 
     def ours(line):
         if TAG in line or OLD_TAG in line:
@@ -177,55 +250,49 @@ def run(remove=False, no_midi=False):
         q = line.split()
         if len(q) < 5 or q[0] != "KEY":
             return False
-        if q[4] == str(MIDI):
-            return q[3] in midi_cmds or "MIDI key" in line and ("Script: ReaPersona" in line or "Script: DAW Styles" in line)
-        return (q[1], q[2], q[4]) in style_keys
+        if q[4] == str(MIDI):  # (a "0 ... DISABLED DEFAULT" line on one of our MIDI keys: REAPER wrote it when a key script moved)
+            return (q[3] in midi_cmds or "MIDI key" in line and ("Script: ReaPersona" in line or "Script: DAW Styles" in line)
+                    or (q[3] == "0" and "%s %s" % (q[1], q[2]) in midi_keys))
+        if manifest is not None:
+            return key_of(line) in manifest
+        return "%s %s %s" % (q[1], q[2], q[4]) in style_keys
     kept = [l for l in lines if not ours(l)]
     while kept and kept[-1] == "":
         kept.pop()
-    if os.path.exists(FALLBACK):  # (your own MIDI editor lines a previous install moved aside)
-        kept += [v["line"] for v in json.load(open(FALLBACK, encoding="utf-8")).values() if v.get("line") and not ours(v["line"])]
-        os.remove(FALLBACK)
-    added, warnings = 0, []
-    if not remove:
-        midi_specs = {}
-        for st in load_styles():
-            alt = int(st.get("alt", 0))
-            for spec, cmd, what in st.get("keys", []) if 1 <= alt <= 16 else []:
-                if isinstance(cmd, str) and cmd.startswith("MAIN:"):
-                    cmd = main_command(kept, cmd[5:], {"Ctrl+Z": 40029, "Ctrl+Shift+Z": 40030}.get(cmd[5:], 0))
-                if isinstance(cmd, str) and cmd.startswith("script:"):
-                    cmd = scripts.get("main", {}).get(cmd[7:])
-                    if not cmd:
-                        warnings.append("%s %s: open the ReaPersona picker once first (registers its actions)" % (st["name"], spec)); continue
-                f, k = encode(spec)
-                kept.append("KEY %d %d %s %d\t\t %s : %s : %s : %s" % (f, k, cmd, alt, TAG, st["name"], spec, what))
-                added += 1
-            for mk in st.get("midi_keys", []):
-                midi_specs.setdefault(mk[0], []).append(st["name"])
-        fallback = {}
-        defaults = json.load(open(DEFAULTS, encoding="utf-8")) if os.path.exists(DEFAULTS) else None
-        if no_midi or defaults is None:  # (without REAPER's own MIDI editor defaults, a My REAPER key would lose what it did)
-            if not no_midi:
-                warnings.append("MIDI editor keys: no midi_defaults.json yet (open REAPER, picker > Check), so they weren't installed")
-            midi_specs = {}
-        for spec in sorted(midi_specs):
-            cmd = scripts.get("midi", {}).get(spec)
-            if not cmd:
-                warnings.append("MIDI %s: open the ReaPersona picker once first (registers the MIDI key scripts)" % spec); continue
-            f, k = encode(spec)
-            for l in list(kept):
-                p = l.split()
-                if len(p) >= 5 and p[0] == "KEY" and p[1] == str(f) and p[2] == str(k) and p[4] == str(MIDI) and not ours(l):
-                    fallback[spec] = {"cmd": p[3], "line": l}
-                    kept.remove(l)
-            if spec not in fallback and spec in defaults:  # (REAPER's built-in binding: kb.ini only holds changes)
-                fallback[spec] = {"cmd": str(defaults[spec])}
-            kept.append("KEY %d %d %s %d\t\t %s : MIDI editor : %s : %s" % (f, k, cmd, MIDI, TAG, spec, ", ".join(midi_specs[spec])))
-            added += 1
-        json.dump(fallback, open(FALLBACK, "w", encoding="utf-8"), indent=1)
-    open(KB, "wb").write(("\n".join(kept) + "\n").replace("\n", eol).encode("utf-8", errors="surrogateescape"))
-    tb = install_toolbars(load_styles(), remove, warnings)
+    kept += [v["line"] for v in old_fallback.values()  # (your own MIDI editor lines a previous install moved aside)
+             if isinstance(v, dict) and v.get("line") and not ours(v["line"])]
+
+    # 3. The new lines.
+    added, written, fallback = 0, [], {}
+    yours = {" ".join(l.split()[1:3] + l.split()[4:5]) for l in kept if key_of(l)}  # ("flags key section" of lines that stay)
+    for f, k, cmd, alt, comment in plan:
+        if "%d %d %d" % (f, k, alt) in yours:  # (you rebound this key in the style's layer: yours stays)
+            continue
+        if isinstance(cmd, str) and cmd.startswith("MAIN:"):
+            cmd = main_command(kept, cmd[5:], {"Ctrl+Z": 40029, "Ctrl+Shift+Z": 40030}.get(cmd[5:], 0))
+        kept.append("KEY %d %d %s %d\t\t %s" % (f, k, cmd, alt, comment))
+        written.append("%d %d %s %d" % (f, k, cmd, alt))
+        added += 1
+    for spec in sorted(midi_specs):
+        cmd = scripts.get("midi", {}).get(spec)
+        if not cmd:
+            warnings.append("MIDI %s: open the ReaPersona picker once first (registers the MIDI key scripts)" % spec); continue
+        f, k = encode(spec)
+        for l in list(kept):
+            p = l.split()
+            if len(p) >= 5 and p[0] == "KEY" and p[1] == str(f) and p[2] == str(k) and p[4] == str(MIDI) and not ours(l):
+                fallback[spec] = {"cmd": p[3], "line": l}
+                kept.remove(l)
+        if spec not in fallback and spec in defaults:  # (REAPER's built-in binding: kb.ini only holds changes)
+            fallback[spec] = {"cmd": str(defaults[spec])}
+        kept.append("KEY %d %d %s %d\t\t %s : MIDI editor : %s : %s" % (f, k, cmd, MIDI, TAG, spec, ", ".join(midi_specs[spec])))
+        added += 1
+
+    # 4. Write: the keymap first, then what depends on it. midi_fallback.json is only replaced once the keymap holds the new lines.
+    write_atomic(KB, ("\n".join(kept) + "\n").replace("\n", eol).encode("utf-8", errors="surrogateescape"))
+    write_atomic(FALLBACK, json.dumps(fallback, indent=1).encode("utf-8"))
+    write_atomic(MANIFEST, json.dumps({"lines": written}, indent=0).encode("utf-8"))
+    tb = install_toolbars(styles, remove, warnings)
     print("%s %d toolbar(s)" % ("removed ReaPersona toolbars;" if remove else "wrote", tb))
     for w in warnings:
         print("skipped:", w)

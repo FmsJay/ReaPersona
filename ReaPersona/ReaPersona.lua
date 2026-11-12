@@ -42,13 +42,15 @@ local function run_script(rel)
   if id ~= 0 then reaper.Main_OnCommand(id, 0); return true end
 end
 local function theme_files()
-  local t, i = {}, 0
+  local t, i, have = {}, 0, {}
+  reaper.EnumerateFiles(themes_dir, -1) -- (REAPER caches folder listings: themes just built or added show up)
   while true do
     local f = reaper.EnumerateFiles(themes_dir, i)
     if not f then break end
-    if f:match("%.ReaperTheme$") or f:match("%.ReaperThemeZip$") then t[#t + 1] = f end
+    if f:match("%.ReaperTheme$") or f:match("%.ReaperThemeZip$") then t[#t + 1] = f; have[f] = true end
     i = i + 1
   end
+  for n = #t, 1, -1 do if have[t[n] .. "Zip"] then table.remove(t, n) end end -- (X.ReaperTheme next to X.ReaperThemeZip is REAPER's note of it)
   table.sort(t, function(a, b) return a:lower() < b:lower() end)
   return t
 end
@@ -170,7 +172,9 @@ local changed = {} -- key -> native colour, what's been tweaked since the theme 
 local function refresh() reaper.ThemeLayout_RefreshAll(); reaper.UpdateArrange(); reaper.TrackList_AdjustWindows(false) end
 local function add_fork(st, name)
   local list = reaper.GetExtState(SECTION, "forks " .. st.id)
-  reaper.SetExtState(SECTION, "forks " .. st.id, (list ~= "" and (list .. "|") or "") .. name, true)
+  if not ("|" .. list .. "|"):find("|" .. name .. "|", 1, true) then -- (once each)
+    reaper.SetExtState(SECTION, "forks " .. st.id, (list ~= "" and (list .. "|") or "") .. name, true)
+  end
   reaper.SetExtState(SECTION, "theme " .. st.id, name, true)
 end
 
@@ -222,7 +226,6 @@ local selected, filter, pfilter = reaper.GetExtState(SECTION, "style"), "", ""
 local page = reaper.GetExtState(SECTION, "page") ~= "" and reaper.GetExtState(SECTION, "page") or "DAWs" -- (the page you were on)
 local merge = { base = "Default_7.0.ReaperThemeZip", colours = "", graphics = "", parts = {}, fonts = false, msg = "" }
 local PARTS = { "faders", "knobs", "meters", "transport", "buttons", "toolbar", "backgrounds" }
-local km = { base = "pro_tools", from = "ableton", gaps = false, name = "", msg = "" } -- (merge shortcuts)
 local ensure_new = false -- (a merged style needs its one-key action registered)
 local check_msg, toast, toast_until = "", "", 0
 local function say(text) toast, toast_until = text, reaper.time_precise() + 4 end
@@ -342,7 +345,8 @@ local function save_preset_prompt()
   local ok, name = reaper.GetUserInputs("Save preset", 1, "Name,extrawidth=160", (cur.preset and cur.name or (cur.name .. " (mine)")))
   name = ok and name:gsub("^%s+", ""):gsub("%s+$", "") or ""
   if name == "" then return end
-  local st = core.save_preset(name)
+  local st, why = core.save_preset(name)
+  if not st then return say("Not saved: " .. tostring(why)) end
   selected = st.id
   say("Saved " .. name .. ": it's in your list.")
 end
@@ -414,12 +418,12 @@ local function detail(sel, alt)
     if ImGui.Button(ctx, "Save preset...") then save_preset_prompt() end
     ImGui.SetItemTooltip(ctx, "Keep what's in use now under a name: the style's keys and toolbar, the theme, the transport and mixer layout, snap and ripple, where the Media Explorer sits, and the mouse behaviours, as they are set right now. It joins your Presets.")
     ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "Cheat sheet") then core.open_url(core.cheat_sheet(sel)) end
+    if ImGui.Button(ctx, "Cheat sheet") then local p, why = core.cheat_sheet(sel); if p then core.open_url(p) else say(why) end end
     ImGui.SetItemTooltip(ctx, "Every key, setting and feature of this style on one page, laid out for printing.")
     if (sel.alt or 0) > 0 and not sel.preset then
       ImGui.SameLine(ctx)
       if ImGui.Button(ctx, "Share...") then
-        local ok, p = reaper.JS_Dialog_BrowseForSaveFile and reaper.JS_Dialog_BrowseForSaveFile("Share " .. sel.name, reaper.GetResourcePath(), sel.name .. ".reapersona.json", "ReaPersona style (*.reapersona.json)\0*.reapersona.json\0\0")
+        local ok, p = reaper.JS_Dialog_BrowseForSaveFile and reaper.JS_Dialog_BrowseForSaveFile("Share " .. sel.name, reaper.GetResourcePath(), core.file_name(sel.name) .. ".reapersona.json", "ReaPersona style (*.reapersona.json)\0*.reapersona.json\0\0")
         if ok == 1 and p ~= "" then reaper.MB(core.export(sel, p) and ("Saved " .. p .. ".\n\nAnyone with ReaPersona can import it.") or "Couldn't save it.", "ReaPersona", 0) end
       end
       ImGui.SetItemTooltip(ctx, "Save this style (keys, MIDI keys, feel, and your theme version if you made one) as one file to give someone.")
@@ -427,7 +431,7 @@ local function detail(sel, alt)
     if sel.preset then
       ImGui.SameLine(ctx)
       if ImGui.Button(ctx, "Share...##preset") then
-        local ok, p = reaper.JS_Dialog_BrowseForSaveFile and reaper.JS_Dialog_BrowseForSaveFile("Share " .. sel.name, reaper.GetResourcePath(), sel.name .. ".reapersona-preset.json", "ReaPersona preset (*.json)\0*.json\0\0")
+        local ok, p = reaper.JS_Dialog_BrowseForSaveFile and reaper.JS_Dialog_BrowseForSaveFile("Share " .. sel.name, reaper.GetResourcePath(), core.file_name(sel.name) .. ".reapersona-preset.json", "ReaPersona preset (*.json)\0*.json\0\0")
         if ok == 1 and p ~= "" then reaper.MB(core.export_preset(sel.id, p) and ("Saved " .. p .. ".\n\nAnyone with ReaPersona can drop it on the window.") or "Couldn't save it.", "ReaPersona", 0) end
       end
       ImGui.SetItemTooltip(ctx, "This preset as one file: drop it on someone's ReaPersona window (they need the styles it's built on).")
@@ -435,10 +439,13 @@ local function detail(sel, alt)
     if sel.preset or sel.user then
       ImGui.SameLine(ctx)
       ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.RED)
-      if ImGui.Button(ctx, sel.preset and "Delete preset" or "Delete style") and reaper.MB("Delete " .. sel.name .. "?", "ReaPersona", 4) == 6 then
-        if on then core.use(core.by_id(sel.base or "my_reaper")) end
-        if sel.preset then core.delete_preset(sel.id) else core.delete_user_style(sel.id) end
-        selected = sel.base or "my_reaper"
+      local deps = sel.preset and {} or core.presets_on(sel.id)
+      if ImGui.Button(ctx, sel.preset and "Delete preset" or "Delete style") and reaper.MB("Delete " .. sel.name .. "?" ..
+          (#deps > 0 and ("\n\nThese presets are built on it and will use My REAPER's keys instead:\n" .. table.concat(deps, "\n")) or ""), "ReaPersona", 4) == 6 then
+        if on and sel.preset then core.use(core.by_id(sel.base or "my_reaper")) end
+        local ok, why
+        if sel.preset then ok, why = core.delete_preset(sel.id) else ok, why = core.delete_user_style(sel.id) end
+        if ok then selected = sel.base or core.current().id else say("Not deleted: " .. tostring(why)) end
       end
       ImGui.PopStyleColor(ctx)
     end
@@ -545,7 +552,7 @@ local function themes_page(sel, alt)
     ImGui.SameLine(ctx)
     if primary("Add a theme...") then import_theme() end
     ImGui.SetItemTooltip(ctx, "Copy a .ReaperThemeZip or .ReaperTheme you downloaded into REAPER's ColorThemes folder.")
-    local current = (reaper.GetLastColorThemeFile() or ""):gsub("\\", "/"):match("[^/]+$") or ""
+    local current = core.loaded_theme() or ""
     local cur = core.current()
     if ImGui.BeginTable(ctx, "themes", 3, ImGui.TableFlags_RowBg | ImGui.TableFlags_SizingStretchProp | ImGui.TableFlags_ScrollY, 0, 320) then
       ImGui.TableSetupColumn(ctx, "name", ImGui.TableColumnFlags_WidthStretch)
@@ -660,23 +667,27 @@ local function combine_page(sel)
     if #comb.order > 1 then
       ImGui.Dummy(ctx, 0, 2)
       heading("Order: first wins", 15)
+      local swap -- (done after the list is drawn: swapping mid-loop drew one style twice)
       for i, id in ipairs(comb.order) do
         local st = core.by_id(id)
         ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, i .. ". " .. st.name)
         ImGui.SameLine(ctx, 220)
         ImGui.BeginDisabled(ctx, i == 1)
-        if ImGui.SmallButton(ctx, "Up##up" .. id) then comb.order[i], comb.order[i - 1] = comb.order[i - 1], comb.order[i] end
+        if ImGui.SmallButton(ctx, "Up##up" .. id) then swap = i - 1 end
         ImGui.EndDisabled(ctx)
         ImGui.SameLine(ctx)
         ImGui.BeginDisabled(ctx, i == #comb.order)
-        if ImGui.SmallButton(ctx, "Down##dn" .. id) then comb.order[i], comb.order[i + 1] = comb.order[i + 1], comb.order[i] end
+        if ImGui.SmallButton(ctx, "Down##dn" .. id) then swap = i end
         ImGui.EndDisabled(ctx)
       end
+      if swap then comb.order[swap], comb.order[swap + 1] = comb.order[swap + 1], comb.order[swap] end
     end
     card_end()
   end
   if #comb.order < 2 then return end
-  local clashes = core.combine_clashes(comb.order)
+  local key = table.concat(comb.order, ",") -- (worked out again only when the ticked styles change)
+  if comb.clash_key ~= key then comb.clashes, comb.clash_key = core.combine_clashes(comb.order), key end
+  local clashes = comb.clashes
   if card("comb clashes") then
     heading(#clashes == 0 and "No clashes" or (#clashes .. " clash" .. (#clashes == 1 and "" or "es")))
     if #clashes > 0 then
@@ -791,7 +802,7 @@ local function settings_page()
       local state = core.extension_state(key)
       if state == "on" or state == "off" then
         if x.toggle then
-          if setting_row("##ext" .. key, x.name, state == "on", x.why) then reaper.Main_OnCommand(reaper.NamedCommandLookup(x.toggle), 0) end
+          if setting_row("##ext" .. key, x.name, state == "on", x.why) then reaper.Main_OnCommand(reaper.NamedCommandLookup(x.toggle), 0); core.forget() end
         else ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, x.name .. ": installed") end
         if x.settings then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Settings##set" .. key) then reaper.Main_OnCommand(reaper.NamedCommandLookup(x.settings), 0) end end
       elseif state == "restart" then
@@ -841,7 +852,7 @@ end
 
 local adjust_out = false -- (Adjust in its own window)
 local function adjust_page(sel)
-  local current = (reaper.GetLastColorThemeFile() or ""):gsub("\\", "/"):match("[^/]+$") or ""
+  local current = core.loaded_theme() or ""
   if card("adj top") then
     heading("Adjust the theme in use")
     muted(current)
@@ -974,9 +985,10 @@ local function merge_page(sel)
       local name, why = core.merge(themes_dir .. merge.base, themes_dir .. merge.colours, merge.graphics ~= "" and themes_dir .. merge.graphics or nil, parts, merge.fonts)
       if name then
         reaper.OpenColorThemeFile(themes_dir .. name)
-        add_fork(sel, name)
+        local cur = core.current() -- (the theme goes on now, so it belongs to the style in use)
+        add_fork(cur, name)
         merge.list = nil
-        merge.msg = "Made " .. name .. ", in use, and in " .. sel.name .. "'s Theme list."
+        merge.msg = "Made " .. name .. ", in use, and in " .. cur.name .. "'s Theme list."
       else merge.msg = "Couldn't merge: " .. tostring(why) end
     end
     ImGui.EndDisabled(ctx)
@@ -1120,10 +1132,8 @@ end
 
 -- ---------------------------------------------------------------- the window: a bar on top, pages down the side
 -- ---------------------------------------------------------------- Setup: everything ReaPersona can use, what's there, and one click for each
-local last_drop = {}
 local daws_found -- (other DAWs on this computer, looked for once)
 local function drop_report(list)
-  last_drop = list
   local lines, n = {}, 0
   for _, r in ipairs(list) do
     if r[1] ~= "skipped" then n = n + 1 end
@@ -1322,11 +1332,11 @@ local function browse_page()
     muted("The REAPER Stash, where most themes, key maps and custom actions are shared. Add downloads one and takes it in like a dropped file; anything that needs a sign-in opens its page instead.")
     for i, c in ipairs(core.STASH_CATS) do
       if i > 1 then ImGui.SameLine(ctx) end
-      if ImGui.RadioButton(ctx, c[2] .. "##bc" .. i, br.cat == c[1]) then br.cat, br.page, br.items = c[1], 1, nil end
+      if ImGui.RadioButton(ctx, c[2] .. "##bc" .. i, br.cat == c[1]) then br.cat, br.page, br.items, br.msg = c[1], 1, nil, "" end
     end
     for i, s in ipairs(core.STASH_SORTS) do
       if i > 1 then ImGui.SameLine(ctx) end
-      if ImGui.RadioButton(ctx, s[2] .. "##bs" .. i, br.sort == s[1]) then br.sort, br.page, br.items = s[1], 1, nil end
+      if ImGui.RadioButton(ctx, s[2] .. "##bs" .. i, br.sort == s[1]) then br.sort, br.page, br.items, br.msg = s[1], 1, nil, "" end
     end
     ImGui.SetNextItemWidth(ctx, 240)
     local enter, q = ImGui.InputTextWithHint(ctx, "##bq", "search, e.g. Pro Tools", br.q, ImGui.InputTextFlags_EnterReturnsTrue)
@@ -1416,7 +1426,7 @@ local function frame()
   ImGui.PushFont(ctx, font, 15)
   local visible, open = ImGui.Begin(ctx, "ReaPersona", true)
   if visible then
-    if ensure_new then core.ensure_scripts(); ensure_new = false end
+    if ensure_new or core.stubs_stale then core.ensure_scripts(); ensure_new = false end
     local alt = core.active_alt()
     local sel = core.by_id(selected) or styles[1]
     local want = reaper.GetExtState(SECTION, "page")
@@ -1458,7 +1468,7 @@ local function frame()
       elseif page == "Adjust" then
         if adjust_out then
           if card("adj out") then heading("Adjust is in its own window"); if ImGui.Button(ctx, "Bring it back here") then adjust_out = false end; card_end() end
-        else adjust_page(sel) end
+        else adjust_page(core.current()) end -- (the theme you adjust is the one in use: its style gets the result)
       elseif page == "Merge" then merge_page(sel)
       elseif page == "Check" then check_page() end
       ImGui.EndChild(ctx)
@@ -1501,11 +1511,17 @@ local function frame()
 end
 -- One frame at a time, protected: an error is logged and the window starts a fresh ImGui context (a frame cut short leaves the old one
 -- unbalanced), instead of the whole window closing with a ReaScript error.
+local errors_in_a_row = 0
 local function loop()
   local ok, open = xpcall(frame, debug.traceback)
+  errors_in_a_row = ok and 0 or errors_in_a_row + 1
   if not ok then
     if open ~= last_logged then core.log(open); last_logged = open end
     last_error = tostring(open):match("^[^\n]*"):gsub("^.-ReaPersona[/\\]", "")
+    if errors_in_a_row >= 2 then -- (a page that fails every frame: back to the styles, so the window stays usable)
+      page, selected = "DAWs", core.current().id
+      reaper.SetExtState(SECTION, "page", page, false)
+    end
     ctx = ImGui.CreateContext("ReaPersona")
     font = ImGui.CreateFont("sans-serif"); ImGui.Attach(ctx, font)
     bold = ImGui.CreateFont("sans-serif", ImGui.FontFlags_Bold); ImGui.Attach(ctx, bold)

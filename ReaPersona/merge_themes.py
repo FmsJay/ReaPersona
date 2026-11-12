@@ -1,6 +1,7 @@
 """ReaPersona: merge themes into a new one of your own, kept in ColorThemes (local only: most Stash themes carry no licence,
 so a merged theme isn't shared without its authors' permission).
     python merge_themes.py "<base>.ReaperThemeZip" "<colours from>" [--graphics "<graphics from>" --parts faders,knobs,...] [--fonts]
+        [--themes "<ColorThemes folder>"]
 The base gives the layout (its WALTER rtconfig, so its own adjuster settings keep working) and every image; the colours theme gives
 the colour values; --graphics swaps in the other theme's images for the chosen parts, only where the base has an image of the same
 name (so the base's layout still fits them); --fonts takes the colours theme's fonts too. Prints the new theme's file name.
@@ -8,7 +9,9 @@ name (so the base's layout still fits them); --fonts takes the colours theme's f
 import fnmatch, io, os, re, sys, zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-THEMES = os.path.join(os.path.dirname(os.path.dirname(HERE)), "ColorThemes")
+sys.path.insert(0, HERE)
+from install_shortcuts import RES  # noqa: E402  (the resource folder, found by walking up: ReaPack puts us one level deeper)
+THEMES = os.path.join(RES, "ColorThemes")
 PARTS = {  # image name patterns per part of the look
     "faders": ["*volthumb*", "*panthumb*", "*widththumb*", "*fader*"],
     "knobs": ["*knob*"],
@@ -85,7 +88,7 @@ def merge(base, colours, graphics=None, parts=(), fonts=False):
     ctext, _, _ = theme_text(colours)
     text = put(btext, "color theme", section(ctext, "color theme"))
     if fonts:
-        text = put(text, "REAPER", {k: v for k, v in section(ctext, "REAPER").items() if k.endswith("_font") or "font" in k})
+        text = put(text, "REAPER", {k: v for k, v in section(ctext, "REAPER").items() if "font" in k})
     swap = {}
     if graphics and parts:
         _, gzip, gfolder = theme_text(graphics)
@@ -126,6 +129,7 @@ if __name__ == "__main__":
         if flag in args:
             i = args.index(flag); v = args[i + 1]; del args[i:i + 2]; return v
     g, p = opt("--graphics"), opt("--parts")
+    THEMES = opt("--themes") or THEMES  # (the picker passes REAPER's own ColorThemes folder)
     f = "--fonts" in args
     args = [a for a in args if a != "--fonts"]
     full = lambda a: a if os.path.isabs(a) else os.path.join(THEMES, a)
