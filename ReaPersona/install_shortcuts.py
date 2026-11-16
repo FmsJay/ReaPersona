@@ -390,7 +390,18 @@ if __name__ == "__main__":
         cfg = sys.argv[sys.argv.index("--cfgfile") + 1] if "--cfgfile" in sys.argv else None  # (the same configuration again)
         if exe:
             args = ["-cfgfile", cfg] if cfg and os.path.exists(cfg) else []
-            subprocess.Popen((["open", "-a", exe] + projects + (["--args"] + args if args else []) if exe.endswith(".app") else [exe] + args + projects), close_fds=True,
-                             creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+            if exe.endswith(".app"):
+                # (a Mac: open hands REAPER to LaunchServices and returns, so it's waited for, by its full path, in a session of its own. Started
+                # and left as this script exited, it never brought REAPER back. StudioSync's Mac test, 5.8.3)
+                try:
+                    r = subprocess.run(["/usr/bin/open", "-a", exe] + projects + (["--args"] + args if args else []), capture_output=True,
+                                       text=True, timeout=60, start_new_session=True)
+                    note = "REAPER started again" if r.returncode == 0 else "REAPER didn't start again (open said %s: %s)" % (r.returncode, r.stderr.strip())
+                except Exception as e:
+                    note = "REAPER didn't start again: %s" % e
+                open(status, "a", encoding="utf-8").write(note + "\n")
+            else:
+                subprocess.Popen([exe] + args + projects, close_fds=True,
+                                 creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
         sys.exit(0)
     run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)

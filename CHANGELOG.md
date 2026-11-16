@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.8.3
+- **Mac: REAPER comes back after Install shortcuts.** The shortcuts installed, but REAPER didn't reopen: the relaunch was started and left as the installer exited. It's now waited for (it returns at once), and whether REAPER started again goes into the install's result.
+
 ## 5.8.2
 - **Mac: Python is found.** REAPER on a Mac runs a bare `python3` as nothing, so ReaPersona never saw Python there: no theme building, and Install shortcuts always took the manual route. It now finds Python's full path (the developer tools' Python counts only when they're installed). Theme downloads and folder clean-up had the same problem with `curl` and `rm`.
 
