@@ -1281,16 +1281,26 @@ function M.toolbar_installed(section) -- is [Floating toolbar N] / [Floating MID
 end
 
 -- ---------------------------------------------------------------- setup: Python, ReaPersona's own themes, the startup line
+local CURL = reaper.GetOS():find("^Win") and "curl" or "/usr/bin/curl" -- (a full path on a Mac: REAPER runs a bare name there as nothing, code -999)
 local function sh(cmd, ms) local out = reaper.ExecProcess(cmd, ms or 20000) or ""; local code, text = out:match("^(%-?%d+)\r?\n(.*)$"); return code, text or out end
 function M.remove_tree(dir) -- a folder ReaPersona made itself, and everything in it
   if reaper.GetOS():find("^Win") then sh('cmd /c rmdir /s /q "' .. dir:gsub("/", "\\") .. '"', 20000)
-  else sh("rm -rf '" .. dir:gsub("'", "'\\''") .. "'", 20000) end
+  else sh("/bin/rm -rf '" .. dir:gsub("'", "'\\''") .. "'", 20000) end -- (a full path: on a Mac REAPER runs a bare name as nothing, code -999)
 end
 function M.python() -- -> "Python 3.x" when a Python 3 runs here, else nil (cached; M.py is the command that worked)
   if M._py == nil then
     M._py = false
-    for _, c in ipairs(reaper.GetOS():find("^Win") and { "python", "py -3", "python3" } or { "python3", "python" }) do
-      local code, text = sh(c .. " --version", 8000)
+    local win = reaper.GetOS():find("^Win")
+    for _, c in ipairs(win and { "python", "py -3", "python3" } or { "python3", "python" }) do
+      -- (on a Mac REAPER runs a bare "python3" as nothing (code -999, no PATH search), so no Mac ever found Python: the shell finds its full
+      -- path, and that's what runs from then on. /usr/bin's is only a stub offering the developer tools, unless they're installed. Mac test, 5.8.2)
+      if not win then
+        local _, where = sh("/bin/sh -c 'command -v " .. c .. "'", 8000)
+        c = where and where:match("^(/%S+)")
+        if c and c:match("^/usr/bin/") and sh("/usr/bin/xcode-select -p", 8000) ~= "0" then c = nil end
+      end
+      local code, text
+      if c then code, text = sh(c .. " --version", 8000) end
       local v = code == "0" and text:match("Python 3%S*")
       if v then M._py, M.py = v, c; break end
     end
@@ -1538,7 +1548,7 @@ function M.stash_list(cat, sort, query, pageno)
   local out_file = M.here .. "/_downloads/stash.html"
   local url = "https://stash.reaper.fm/browse.php?q=" .. (query or ""):gsub("[^%w%-_%.~]", function(c) return string.format("%%%02X", c:byte()) end) ..
     "&cat=" .. cat .. "&v=th&o=" .. sort .. "&pp=48&p=" .. (pageno or 1)
-  local code = sh('curl -s -L --max-time 25 -o "' .. out_file .. '" "' .. url .. '"', 30000)
+  local code = sh(CURL .. ' -s -L --max-time 25 -o "' .. out_file .. '" "' .. url .. '"', 30000)
   local html = M.read(out_file)
   os.remove(out_file)
   if code ~= "0" or not html then return nil, "couldn't reach stash.reaper.fm" end
@@ -1568,7 +1578,7 @@ function M.stash_get(item)
   local dir = M.here .. "/_downloads"
   reaper.RecursiveCreateDirectory(dir, 0)
   local path = dir .. "/" .. name
-  local code = sh('curl -s -L --max-time 60 -o "' .. path .. '" "' .. url .. '"', 70000)
+  local code = sh(CURL .. ' -s -L --max-time 60 -o "' .. path .. '" "' .. url .. '"', 70000)
   local head = (M.read(path) or ""):sub(1, 200):lower()
   if code ~= "0" or head == "" or head:find("<!doctype", 1, true) or head:find("<html", 1, true) then os.remove(path); return nil, "page" end
   local got = M.import_file(path)
@@ -1824,7 +1834,7 @@ local function fetch(url) -- a catalog download into _downloads -> its path, or 
   local dir = M.here .. "/_downloads"
   reaper.RecursiveCreateDirectory(dir, 0)
   local path = dir .. "/" .. (name ~= "" and name or "download")
-  local code = sh('curl -s -L --max-time 120 -o "' .. path .. '" "' .. url .. '"', 130000)
+  local code = sh(CURL .. ' -s -L --max-time 120 -o "' .. path .. '" "' .. url .. '"', 130000)
   local head = (M.read(path) or ""):sub(1, 300):lower()
   if code ~= "0" or head == "" or head:find("<!doctype", 1, true) or head:find("<html", 1, true) then os.remove(path); return nil, "the download didn't come (offline, or the site wants a browser)" end
   return path

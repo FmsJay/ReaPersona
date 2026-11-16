@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.8.2
+- **Mac: Python is found.** REAPER on a Mac runs a bare `python3` as nothing, so ReaPersona never saw Python there: no theme building, and Install shortcuts always took the manual route. It now finds Python's full path (the developer tools' Python counts only when they're installed). Theme downloads and folder clean-up had the same problem with `curl` and `rm`.
+
 ## 5.8.1
 - **Mac: Install shortcuts brings REAPER back.** REAPER quit for the shortcut install and never reopened on a Mac (it looked for REAPER.app in the wrong place). It now reopens with your projects, as on Windows.
 
