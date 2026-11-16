@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.9.3
+-- @version 5.9.4
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -866,7 +866,7 @@ local function settings_page()
     muted("Follow StudioSync uses StudioSync's colour choice when it's installed (Dark otherwise).")
     card_end()
   end
-  if card("set remove") then -- (removed with ReaPack alone, its startup block, actions and settings stayed behind. Review, 5.9.3)
+  if card("set remove") then -- (removed with ReaPack alone, its startup block, actions and settings stayed behind. Review, 5.9.4)
     heading("Remove ReaPersona")
     muted("Puts My REAPER back, then takes out the startup block, ReaPersona's actions and its settings, and (with Python, REAPER restarting) its shortcut layers and toolbars. Your personas, presets and themes stay in their files. Then uninstall it in ReaPack.")
     ImGui.BeginDisabled(ctx, removing ~= nil)
@@ -1074,7 +1074,7 @@ local function keys_page()
       local _, f = ImGui.InputTextWithHint(ctx, "##kf", "search keys or actions", filter)
       filter = f
       ImGui.SameLine(ctx)
-      if sel.user and sel.keys_from then -- (on a DAW's layer: changing them there changed that DAW's keys too. Review, 5.9.3)
+      if sel.user and sel.keys_from then -- (on a DAW's layer: changing them there changed that DAW's keys too. Review, 5.9.4)
         local from = (core.by_id(sel.keys_from) or { name = "a DAW" }).name
         if ImGui.Button(ctx, "Make them its own") then
           local ok, why = core.own_layer(sel)
@@ -1727,7 +1727,7 @@ local function builder_page()
   if card("bld make") then
     heading(bld.id and ("Editing " .. bld.name) or "Persona Builder")
     muted("Stack blocks into a persona: a DAW's shortcuts, another's mouse feel or mixer layout, REAPER settings, a theme, a colour. Each block shows what it sets; untick a line to leave it out. Where two blocks set the same thing, the lower one wins.")
-    local layer, ids = core.keys_layer(bld.blocks, bld.id) -- (some of one DAW's keys left out: a layer of their own. Review, 5.9.3)
+    local layer, ids = core.keys_layer(bld.blocks, bld.id) -- (some of one DAW's keys left out: a layer of their own. Review, 5.9.4)
     local daws = {}
     for _, id in ipairs(ids) do daws[#daws + 1] = core.by_id(id).name end
     ImGui.TextColored(ctx, layer == "own" and C.YELLOW or C.MUTED, layer == "none" and "Shortcuts: your own." or layer == "borrow" and ("Shortcuts: " .. daws[1] .. "'s, ready as soon as you save.")
@@ -2166,5 +2166,5 @@ reaper.atexit(function()
   if trying then trying.ends = 0; trial_over() end -- (a theme on trial goes back when the window closes)
   if cmd and cmd ~= 0 then reaper.SetToggleCommandState(0, cmd, 0); reaper.RefreshToolbar2(0, cmd) end
 end)
-pcall(core.upgrade_startup) -- (now too, not only at REAPER's start: updated and removed in one session left the old block. Review, 5.9.3)
+pcall(core.upgrade_startup) -- (now too, not only at REAPER's start: updated and removed in one session left the old block. Review, 5.9.4)
 reaper.defer(loop)

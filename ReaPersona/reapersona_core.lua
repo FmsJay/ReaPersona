@@ -781,7 +781,7 @@ function M.all_actions() return reaper.GetExtState(M.SECTION, "all actions") == 
 local function optional(name) return name == "next style" or name == "restore last style" or name:match("^use ") ~= nil end
 -- (a mouse modifier (reaper-mouse.ini) or an SWS cycle action (S&M_Cyclaction.ini; older SWS kept them in S&M.ini) runs one by its id
 -- too, and lost it when the trim took it out of the Actions list. Their ids sit after "=", ",", "|" or "!", so any non-word character
--- counts. Review, 5.9.3)
+-- counts. Review, 5.9.4)
 function M.ids_in(text) -- the "_RS..." ids a REAPER or SWS ini text runs -> { [id] = true } (pure)
   local t = {}
   for id in ("\n" .. (text or "")):gmatch("[^%w_](_RS%x+)") do t[id] = true end
@@ -937,7 +937,7 @@ local function free_alt() -- a shortcut layer no style uses and that holds none 
 end
 -- A persona of yours keeps a layer of its own. One a later version gave a new DAW (Audacity took alt-11 in 5.3.0, Audition alt-12 in
 -- 5.4.0) held both sets of keys, so each changed the other's; yours moves to a free layer, and its keys go in at the next shortcut
--- install. Review, 5.9.3
+-- install. Review, 5.9.4
 function M.layer_clashes(styles) -- -> your personas whose own layer a built-in one, or one of yours listed earlier, also has (pure)
   local taken, out = {}, {}
   for _, s in ipairs(styles) do if not s.user and (s.alt or 0) > 0 then taken[s.alt] = true end end

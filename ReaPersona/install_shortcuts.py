@@ -383,7 +383,7 @@ if __name__ == "__main__":
         out = _io.StringIO()
         try:
             with contextlib.redirect_stdout(out):
-                run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)  # (--remove: Settings > Remove ReaPersona, review 5.9.3)
+                run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)  # (--remove: Settings > Remove ReaPersona, review 5.9.4)
         except BaseException as e:  # (SystemExit included: whatever happened is written down for the picker)
             out.write("not installed: %s\n" % e)
         open(status, "w", encoding="utf-8").write(out.getvalue())

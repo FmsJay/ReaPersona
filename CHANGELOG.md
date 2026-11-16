@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 5.9.4
 - **Remove ReaPersona** (Settings): My REAPER comes back, then the startup block, ReaPersona's actions and its settings go, and with Python its shortcut layers and toolbars (REAPER restarts). Your personas, presets and themes stay. The startup block from any version, or one written by hand, is now recognised, swapped for the one that stays quiet once ReaPersona is gone, and also when the window opens.
 - **Your personas' keys are their own.** A Builder persona with some of a DAW's keys left out, or one that already has a layer, gets a layer of its own instead of the DAW's; *Make them its own* (Shortcuts) copies a persona's borrowed keys onto its own layer before you change them. One of yours on a layer a newer built-in took moves to a free one.
 - **The Actions list trim keeps what a mouse modifier or an SWS cycle action runs**, as it already did for keys and toolbars.
