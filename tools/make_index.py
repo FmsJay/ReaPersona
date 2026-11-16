@@ -34,8 +34,9 @@ def main():
             src.append('        <source%s file="%s">%s</source>' % (plat, escape(f, {'"': "&quot;"}), escape(url)))
     # Extensions > ReaPersona and View > ReaPersona (extension/, source shared with StudioSync): a package of its own with a version of its
     # own, raised only when the extension changes, so ReaPersona's updates don't try to replace a file REAPER has loaded.
-    ext_version, ext = "1.0.0", []
-    for name, plat in (("reaper_reapersona-x64.dll", "win64"), ("reaper_reapersona.dylib", "darwin")):
+    ext_version, ext = "1.0.1", []  # (1.0.1: macOS and Linux builds, from StudioSync's .github/workflows/extension.yml)
+    for name, plat in (("reaper_reapersona-x64.dll", "win64"), ("reaper_reapersona.dylib", "darwin"),
+                       ("reaper_reapersona-x86_64.so", "linux64"), ("reaper_reapersona-aarch64.so", "linux-aarch64")):
         if os.path.exists(os.path.join(HERE, "extension", name)):
             ext.append('        <source platform="%s" file="%s">%s/raw/%s/extension/%s</source>' % (plat, name, REPO, sha, name))
     ext_pkg = ("""

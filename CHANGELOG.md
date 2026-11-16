@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.9.1
+- **The Extensions/View menu items on macOS and Linux too** (ReaPersona menus 1.0.1: a universal Mac build and Linux x86_64/aarch64). They appear after REAPER's next start.
+
 ## 5.9.0
 - **ReaPersona is in REAPER's menus:** Extensions > ReaPersona and View > ReaPersona open it, ticked while it's open. A small extension ReaPack installs with ReaPersona does it (64-bit Windows now, the Mac build follows); the items appear after REAPER's next start.
 - **A shorter Actions list:** only ReaPersona and the actions its keys use (play from start, memory location) and project following stay. The persona switches ("use Ableton Live" and the rest, next and restore last) come back with Settings > "Every ReaPersona action in REAPER's Actions list"; one a key or toolbar button already uses stays either way.

@@ -94,7 +94,7 @@ REAPER treats Ctrl as Cmd, so the personas should work unchanged, and keys show 
    - **ReaImGui** and **js_ReaScriptAPI** (ReaPack: ReaTeam Extensions)
    - **SWS** (sws-extension.org)
 4. Open **ReaPersona** (**Extensions > ReaPersona**, **View > ReaPersona**, or the Actions list), open **Home**, and press **Set up everything**.
-   The menu items come from a small extension ReaPack installs with ReaPersona (64-bit Windows now, the Mac build is on its way), after REAPER's next start.
+   The menu items come from a small extension ReaPack installs with ReaPersona (64-bit Windows, macOS and Linux), after REAPER's next start.
    REAPER's Actions list keeps only ReaPersona and the actions its keys use. Settings > "Every ReaPersona action in REAPER's Actions list" brings back
    the persona switches ("use Ableton Live" and the rest) for your own shortcuts and toolbar buttons.
 
