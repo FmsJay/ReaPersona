@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.9.3
+- **Linux: Python is found.** The check that skips macOS's stand-in Python (which only asks to install the developer tools) ran on Linux too, so Linux's own `/usr/bin/python3` was never used.
+- **Removing ReaPersona leaves no startup error.** Its line in `__startup.lua` now runs only while ReaPersona is there; the line from older versions is swapped for it at the next start.
+- **A theme on trial stays a trial.** Saving your tweaks during a trial no longer went back when the trial ran out, and switching persona mid-trial no longer kept the trial theme as My REAPER's own.
+
 ## 5.9.2
 - **Linux: REAPER comes back after Install shortcuts.** The relaunched REAPER inherited a dead output pipe from the one that quit and was killed before it showed; it now starts on its own, is checked to be running, and is tried once more if not. The relaunch looks for Linux's `reaper` program too. Tested on Ubuntu 24.04.
 

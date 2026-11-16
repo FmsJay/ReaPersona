@@ -637,6 +637,7 @@ function M.restore_last()
   M.write_midi_map(st) -- (script command ids can change between runs)
   set_toggles(st and (st.base or st.id))
   if M.follow_on() then M.start_following() end -- (a persona per project: the action that follows project tabs)
+  pcall(M.upgrade_startup)
 end
 
 -- ---------------------------------------------------------------- MIDI editor keys
@@ -1316,7 +1317,7 @@ function M.python() -- -> "Python 3.x" when a Python 3 runs here, else nil (cach
       if not win then
         local _, where = sh("/bin/sh -c 'command -v " .. c .. "'", 8000)
         c = where and where:match("^(/%S+)")
-        if c and c:match("^/usr/bin/") and sh("/usr/bin/xcode-select -p", 8000) ~= "0" then c = nil end
+        if c and M.IS_MAC and c:match("^/usr/bin/") and sh("/usr/bin/xcode-select -p", 8000) ~= "0" then c = nil end
       end
       local code, text
       if c then code, text = sh(c .. " --version", 8000) end
@@ -1389,16 +1390,31 @@ function M.build_own_themes() -- -> list of themes written, or nil + why
 end
 function M.startup_path() return res .. "/Scripts/__startup.lua" end
 function M.startup_on() return cached("startup", function() return (M.read(M.startup_path()) or ""):find("reapersona_core.lua", 1, true) ~= nil end) end
-function M.add_startup() -- one block in Scripts/__startup.lua that brings back the last style's keys when REAPER starts
-  if M.startup_on() then return true end
+local STARTUP_OPEN, STARTUP_CLOSE = "\n-- >>> ReaPersona:", "-- <<< ReaPersona <<<\n"
+local function startup_block()
   -- (relative to the resource folder when it's inside it, so the line works on a drive with another letter; else the full path)
   local r = res:gsub("\\", "/")
   local where
   if M.here:lower():sub(1, #r + 1) == r:lower() .. "/" then where = 'reaper.GetResourcePath() .. ' .. string.format("%q", M.here:sub(#r + 1))
   else where = string.format("%q", M.here) end
-  local block = "\n-- >>> ReaPersona: REAPER forgets the shortcut layer at restart, so bring back the last persona's keys\ndo\n" ..
-    '  local ok, err = pcall(function() dofile(' .. where .. ' .. "/reapersona_core.lua").restore_last() end)\n' ..
-    '  if not ok then reaper.ShowConsoleMsg("[ReaPersona] restore failed: " .. tostring(err) .. "\\n") end\nend\n-- <<< ReaPersona <<<\n'
+  -- (only while ReaPersona is there: removed, the block said "restore failed" at every start. Review, 5.9.3)
+  return STARTUP_OPEN .. " REAPER forgets the shortcut layer at restart, so bring back the last persona's keys\ndo\n" ..
+    '  local core = ' .. where .. ' .. "/reapersona_core.lua"\n' ..
+    '  local ok, err = true, nil\n' ..
+    '  if reaper.file_exists(core) then ok, err = pcall(function() dofile(core).restore_last() end) end\n' ..
+    '  if not ok then reaper.ShowConsoleMsg("[ReaPersona] restore failed: " .. tostring(err) .. "\\n") end\nend\n' .. STARTUP_CLOSE
+end
+-- A block from before 5.9.3 (no file check) is swapped for today's. Called at each start, from restore_last.
+function M.upgrade_startup()
+  local text = M.read(M.startup_path()) or ""
+  local a = text:find(STARTUP_OPEN, 1, true)
+  local _, b = text:find(STARTUP_CLOSE, a or 1, true)
+  if not (a and b) or text:sub(a, b):find("file_exists", 1, true) then return end
+  M.write(M.startup_path(), text:sub(1, a - 1) .. startup_block() .. text:sub(b + 1))
+end
+function M.add_startup() -- one block in Scripts/__startup.lua that brings back the last style's keys when REAPER starts
+  if M.startup_on() then return true end
+  local block = startup_block()
   local f = io.open(M.startup_path(), "a")
   if not f then return nil, "couldn't write " .. M.startup_path() end
   f:write(block); f:close()

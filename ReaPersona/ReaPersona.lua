@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.9.2
+-- @version 5.9.3
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -186,6 +186,8 @@ local COLOURS = {
   { "col_seltrack", "Selected track control panel" }, { "col_main_bg2", "Window background" }, { "col_main_text2", "Text" },
   { "col_mi_bg", "MIDI editor background" }, { "col_mi_note", "MIDI note" } }
 local changed, changed_on = {}, nil -- key -> native colour, what's been tweaked since the theme was loaded; and that theme
+-- (declared here, before save_fork: it set a global of that name, so a theme on trial still went back after you saved it. Review, 5.9.3)
+local trying, try_theme -- (a theme on trial: { name, back = the theme to go back to, ends = time }; set up with the setup helpers)
 local function refresh() reaper.ThemeLayout_RefreshAll(); reaper.UpdateArrange(); reaper.TrackList_AdjustWindows(false) end
 local function add_fork(st, name)
   local list = reaper.GetExtState(SECTION, "forks " .. st.id)
@@ -254,7 +256,6 @@ local merge = { base = "Default_7.0.ReaperThemeZip", colours = "", graphics = ""
 local PARTS = { "faders", "knobs", "meters", "transport", "buttons", "toolbar", "backgrounds" }
 local bld_load -- (opens the Persona Builder on a persona; set up with its page)
 local drop_report, install_theme_ui -- (what came in, and a one-click theme install: set up with the setup helpers)
-local trying, try_theme -- (a theme on trial: { name, back = the theme to go back to, ends = time }; set up with the setup helpers)
 local quit_check -- (when the install's quit should be over)
 local ensure_new = false -- (a merged style needs its one-key action registered)
 local check_msg, toast, toast_until = "", "", 0
@@ -285,7 +286,10 @@ local last_style -- (the style before the last switch: Undo switch goes back to 
 local function use(st)
   local was = core.current()
   if was and was.id ~= st.id then last_style = was.id end
-  trying = nil -- (a theme on trial gives way to the persona's)
+  -- (a theme on trial gives way to the persona's, but the one it was trying over is what this persona had: leaving My REAPER
+  -- mid-trial kept the trial theme as My REAPER's own. Review, 5.9.3)
+  if trying and trying.back then reaper.OpenColorThemeFile(themes_dir .. trying.back) end
+  trying = nil
   core.use(st); say(st.name .. " in use. Undo switch (top) puts " .. (was and was.name or "the last one") .. " back.")
   for _, key in ipairs(st.recommends or {}) do -- (offered once: no is remembered)
     local x = core.EXTENSIONS[key]
