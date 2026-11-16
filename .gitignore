@@ -21,3 +21,4 @@ ReaPersona/errors.log
 ReaPersona/_downloads/
 *.tmp
 *.bad-*
+tests/_tmp-*/

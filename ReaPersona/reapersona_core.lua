@@ -773,15 +773,24 @@ function M.scripts_missing()
   return n
 end
 -- The Actions list for someone who isn't making shortcuts (James, 5.9.0: it listed 20 of ours): what the persona keys run (play from start,
--- memory location) and following projects stay; switching persona ("use <DAW>", next, restore last) is there when a key or a toolbar uses
--- it, or with Settings > "Every ReaPersona action in REAPER's Actions list" (ExtState "all actions"). Their ids come from their paths.
+-- memory location) and following projects stay; switching persona ("use <DAW>", next, restore last) is there when a key, a toolbar, a
+-- mouse modifier or an SWS cycle action uses it, or with Settings > "Every ReaPersona action in REAPER's Actions list" (ExtState
+-- "all actions"). Their ids come from their paths.
 -- ReaPersona itself opens from the Actions list, Extensions > ReaPersona or View > ReaPersona (extension/reaper_menu.cpp in StudioSync).
 function M.all_actions() return reaper.GetExtState(M.SECTION, "all actions") == "1" end
 local function optional(name) return name == "next style" or name == "restore last style" or name:match("^use ") ~= nil end
-local function used_ids() -- the "_RS..." ids a key or a toolbar runs
+-- (a mouse modifier (reaper-mouse.ini) or an SWS cycle action (S&M_Cyclaction.ini; older SWS kept them in S&M.ini) runs one by its id
+-- too, and lost it when the trim took it out of the Actions list. Their ids sit after "=", ",", "|" or "!", so any non-word character
+-- counts. Review, 5.9.3)
+function M.ids_in(text) -- the "_RS..." ids a REAPER or SWS ini text runs -> { [id] = true } (pure)
   local t = {}
-  for _, f in ipairs({ res .. "/reaper-kb.ini", res .. "/reaper-menu.ini" }) do
-    for id in (M.read(f) or ""):gmatch("[ =](_RS%x+)") do t[id] = true end
+  for id in ("\n" .. (text or "")):gmatch("[^%w_](_RS%x+)") do t[id] = true end
+  return t
+end
+local function used_ids() -- the "_RS..." ids a key, a toolbar, a mouse modifier or a cycle action runs
+  local t = {}
+  for _, f in ipairs({ "reaper-kb.ini", "reaper-menu.ini", "reaper-mouse.ini", "S&M_Cyclaction.ini", "S&M.ini" }) do
+    for id in pairs(M.ids_in(M.read(res .. "/" .. f))) do t[id] = true end
   end
   return t
 end
@@ -925,6 +934,27 @@ local function free_alt() -- a shortcut layer no style uses and that holds none 
     if a and a >= 1 and a <= 16 and not mine[f .. " " .. k .. " " .. cmd .. " " .. sec] and not line:find("# ReaPersona", 1, true) then used[a] = true end
   end
   for a = 1, 16 do if not used[a] then return a end end
+end
+-- A persona of yours keeps a layer of its own. One a later version gave a new DAW (Audacity took alt-11 in 5.3.0, Audition alt-12 in
+-- 5.4.0) held both sets of keys, so each changed the other's; yours moves to a free layer, and its keys go in at the next shortcut
+-- install. Review, 5.9.3
+function M.layer_clashes(styles) -- -> your personas whose own layer a built-in one, or one of yours listed earlier, also has (pure)
+  local taken, out = {}, {}
+  for _, s in ipairs(styles) do if not s.user and (s.alt or 0) > 0 then taken[s.alt] = true end end
+  for _, s in ipairs(styles) do
+    if s.user and not s.keys_from and (s.alt or 0) > 0 then
+      if taken[s.alt] then out[#out + 1] = s else taken[s.alt] = true end
+    end
+  end
+  return out
+end
+do
+  local moved = M.layer_clashes(M.styles)
+  for _, st in ipairs(moved) do
+    local a = free_alt()
+    if a then st.alt = a; save_user_style(st) else M.log(st.name .. " shares shortcut layer alt-" .. st.alt .. " and no layer is free") end
+  end
+  if #moved > 0 then load_presets() end -- (presets on one of them take its new layer)
 end
 -- ---------------------------------------------------------------- combining styles: several DAWs' keys and feel in one style
 -- Styles are taken in priority order (first wins); `choice` overrides that per clash: choice["key " .. spec], choice["midi " .. spec]
@@ -1131,16 +1161,46 @@ function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true
   st.accent = st.accent or accent
   st.themes = { st.theme }
   local install = false
-  if #daws == 1 then st.keys_from = daws[1]; M.resolve_keys(st) -- (one DAW's keys: its own shortcut layer, nothing to install)
-  elseif #daws > 1 then -- (keys from several DAWs: a layer of their own, which needs installing)
-    local old = M.by_id(st.id)
-    st.alt = old and old.kind == "built" and not old.keys_from and (old.alt or 0) > 0 and old.alt or free_alt()
+  local layer, _, own = M.keys_layer(blocks, st.id)
+  if layer == "borrow" then st.keys_from = daws[1]; M.resolve_keys(st) -- (one DAW's keys, all of them: its shortcut layer, nothing to install)
+  elseif layer == "own" then -- (a layer of their own, which needs installing)
+    st.alt = own or free_alt()
     if not st.alt then return nil, "all 16 shortcut layers are in use" end
     install = true
   else st.alt = 0 end -- (no shortcuts block: your own keys)
   st.description = name .. ", built from " .. table.concat(names, ", ") .. " (lower blocks win)." ..
-    (#daws > 1 and (" Its shortcuts are on layer alt-" .. st.alt .. ".") or "")
+    (layer == "own" and (" Its shortcuts are on layer alt-" .. st.alt .. ".") or "")
   return st, install
+end
+-- Whose shortcut layer a built persona's keys are on. Borrowing a DAW's layer is only for one DAW's keys taken whole: one with some keys
+-- left out took the whole layer anyway, and changing the keys of one of yours on a borrowed layer changed that DAW's too. So keys from
+-- several DAWs, keys left out, or a persona that has a layer of its own already (its keys may have been changed there) get a layer of
+-- their own. Review, 5.9.3. -> "none" (your own keys), "borrow" or "own"; the DAW ids; the layer it keeps, if any
+function M.keys_layer(blocks, id)
+  local daws, cut = {}, false
+  for _, b in ipairs(blocks) do
+    if b.kind == "daw" and b.keys and b.id and M.by_id(b.id) then
+      daws[#daws + 1] = b.id
+      for slot, off in pairs(type(b.off) == "table" and b.off or {}) do if off and (slot:match("^key ") or slot:match("^midi ")) then cut = true end end
+    end
+  end
+  local old = id and M.by_id(id)
+  local own = old and old.user and not old.keys_from and (old.alt or 0) > 0 and old.alt or nil
+  if #daws == 0 then return "none", daws end
+  if #daws == 1 and not cut and not own then return "borrow", daws end
+  return "own", daws, own
+end
+-- One of yours on a DAW's layer gets a copy of those keys on a layer of its own, so changing them in REAPER's Actions window changes
+-- yours and not the DAW's (Review, 5.9.3). Its keys go in at the next shortcut install. -> the persona, or nil + why
+function M.own_layer(st)
+  if not (st and st.user and st.keys_from) then return st end
+  local a = free_alt()
+  if not a then return nil, "all 16 shortcut layers are in use" end
+  local was = { st.keys, st.midi_keys, st.alt, st.keys_from }
+  st.keys, st.midi_keys, st.alt, st.keys_from = copy(st.keys), copy(st.midi_keys), a, nil
+  local ok, why = save_user_style(st)
+  if not ok then st.keys, st.midi_keys, st.alt, st.keys_from = table.unpack(was) end
+  return ok, why
 end
 function M.save_built(blocks, name, id) -- -> the persona, true when its shortcuts need installing; or nil + why
   local st, install = M.build_style(blocks, name, id)
@@ -1404,13 +1464,58 @@ local function startup_block()
     '  if reaper.file_exists(core) then ok, err = pcall(function() dofile(core).restore_last() end) end\n' ..
     '  if not ok then reaper.ShowConsoleMsg("[ReaPersona] restore failed: " .. tostring(err) .. "\\n") end\nend\n' .. STARTUP_CLOSE
 end
--- A block from before 5.9.3 (no file check) is swapped for today's. Called at each start, from restore_last.
+-- Where ReaPersona's block is in __startup.lua's text: from a line starting "-- >>> ReaPersona" or "-- >>> DAW Styles" to the next
+-- "-- <<< ReaPersona <<<" (or DAW Styles) line, with the newline before it. Any wording after the name counts: a block written by hand
+-- ("-- >>> ReaPersona (was DAW Styles, ...)") was never matched, so it was never swapped for one with the file check and kept saying
+-- "restore failed" once ReaPersona was gone. Review, 5.9.3. -> first, last character of the first block, or nil (pure)
+function M.find_startup(text)
+  local t, from = "\n" .. text, 1 -- (a block on the very first line has no newline before it)
+  while true do
+    local b, a
+    for _, name in ipairs({ "ReaPersona", "DAW Styles" }) do
+      local _, y = t:find("\n%-%- <<< " .. name .. " <<<[^\n]*\n?", from)
+      if y and (not b or y < b) then b = y end
+    end
+    if not b then return nil end
+    -- (the last opening line before that close: an opening line left without its close never takes your own lines with it)
+    for _, name in ipairs({ "ReaPersona", "DAW Styles" }) do
+      local i = from
+      while true do
+        local x = t:find("\n%-%- >>> " .. name, i)
+        if not x or x >= b then break end
+        a, i = math.max(a or 0, x), x + 1
+      end
+    end
+    if a then return math.max(a - 1, 1), b - 1 end
+    from = b -- (a closing line with nothing opened: look further on)
+  end
+end
+function M.strip_startup(text) -- every ReaPersona block out of __startup.lua's text, the rest left exactly as it was (pure)
+  while true do
+    local a, b = M.find_startup(text)
+    if not a then return text end
+    text = text:sub(1, a - 1) .. text:sub(b + 1)
+  end
+end
+-- A block from before 5.9.3 (no file check), or one written by hand, is swapped for today's, and a second copy goes. Called at each
+-- start (restore_last) and when the window opens, so updating and then removing ReaPersona without a restart leaves no old block.
 function M.upgrade_startup()
   local text = M.read(M.startup_path()) or ""
-  local a = text:find(STARTUP_OPEN, 1, true)
-  local _, b = text:find(STARTUP_CLOSE, a or 1, true)
-  if not (a and b) or text:sub(a, b):find("file_exists", 1, true) then return end
-  M.write(M.startup_path(), text:sub(1, a - 1) .. startup_block() .. text:sub(b + 1))
+  local a, b = M.find_startup(text)
+  if not a then return end
+  local rest = M.strip_startup(text:sub(b + 1))
+  if text:sub(a, b):find("file_exists", 1, true) and rest == text:sub(b + 1) then return end
+  M.write(M.startup_path(), text:sub(1, a - 1) .. startup_block() .. rest)
+  M.forget()
+end
+function M.remove_startup() -- ReaPersona's block (any version's) out of Scripts/__startup.lua -> true, or nil + why
+  local text = M.read(M.startup_path())
+  if not text then return true end
+  local out = M.strip_startup(text)
+  M.forget()
+  if out == text then return true end
+  if not M.write(M.startup_path(), out) then return nil, "couldn't write " .. M.startup_path() end
+  return true
 end
 function M.add_startup() -- one block in Scripts/__startup.lua that brings back the last style's keys when REAPER starts
   if M.startup_on() then return true end
@@ -1420,6 +1525,56 @@ function M.add_startup() -- one block in Scripts/__startup.lua that brings back 
   f:write(block); f:close()
   M.forget()
   return true
+end
+
+-- ---------------------------------------------------------------- removing ReaPersona (Settings > Remove ReaPersona)
+-- Removed with ReaPack alone, ReaPersona left its startup block, its actions and its ExtState behind (Review, 5.9.3). The window puts
+-- My REAPER back first, so everything a persona changed is undone; then this takes out the startup block, ReaPersona's actions and what
+-- it keeps in REAPER's ExtState. The shortcut layers and toolbars need REAPER closed: install_shortcuts.py --remove does those. Your
+-- personas, presets and themes stay in their files, so nothing of yours is lost if you come back.
+function M.extstate_keys(text, section) -- the keys reaper-extstate.ini's text keeps for section (pure)
+  local out = {}
+  for k in (M.ini_section(text, section) or ""):gmatch("\n([^=\r\n]+)=") do out[#out + 1] = k end
+  return out
+end
+local function extstate_names() -- every key this version sets: some may not be in reaper-extstate.ini yet (REAPER writes it later)
+  local t = { "style", "orig", "orig project", "view", "look", "migrated", "page", "welcomed", "text size", "all actions", "follow projects",
+    "follow beat", "project default", "midi dock", "search", "theme my_reaper", "theme path my_reaper" }
+  for _, list in ipairs({ M.styles, M.presets }) do
+    for _, st in ipairs(list) do for _, k in ipairs({ "theme ", "forks ", "declined theme " }) do t[#t + 1] = k .. st.id end end
+  end
+  for name in pairs(M.OWN) do t[#t + 1] = "params " .. name end
+  for _, a in ipairs(M.ASPECTS) do t[#t + 1] = "aspect " .. a[1] end
+  for side in pairs(SIDES) do t[#t + 1] = "docker " .. side end
+  for key in pairs(M.EXTENSIONS) do t[#t + 1] = "declined " .. key end
+  return t
+end
+function M.uninstall() -- -> lines saying what was done
+  local done = {}
+  local ok, why = M.remove_startup()
+  done[#done + 1] = ok and "The startup block is out of __startup.lua." or ("The startup block is still in __startup.lua: " .. tostring(why))
+  local list = {}
+  for _, sub in ipairs({ { "actions", 0 }, { "midi_keys", MIDI_SEC } }) do
+    local d = M.here .. "/" .. sub[1]
+    reaper.EnumerateFiles(d, -1)
+    for i = 0, 2000 do
+      local f = reaper.EnumerateFiles(d, i)
+      if not f then break end
+      if f:match("%.lua$") then list[#list + 1] = { sub[2], d .. "/" .. f } end
+    end
+  end
+  for n, s in ipairs(list) do reaper.AddRemoveReaScript(false, s[1], s[2], n == #list) end
+  done[#done + 1] = #list .. " ReaPersona actions are out of the Actions list."
+  M.scripts.stubs = nil -- (registered afresh if you come back; the ids stay, so --remove still knows ReaPersona's MIDI editor keys)
+  M.write(M.here .. "/scripts.json", M.json_encode(M.scripts) .. "\n")
+  local ini = M.read(res .. "/reaper-extstate.ini") or ""
+  for _, k in ipairs(extstate_names()) do reaper.DeleteExtState(M.SECTION, k, true) end
+  for _, sec in ipairs({ M.SECTION, "DAWStyles" }) do -- (DAWStyles: what the old name kept)
+    for _, k in ipairs(M.extstate_keys(ini, sec)) do reaper.DeleteExtState(sec, k, true) end
+  end
+  done[#done + 1] = "ReaPersona's settings are out of REAPER's ExtState."
+  M.forget()
+  return done
 end
 
 -- ---------------------------------------------------------------- helper tools some styles' features use (offered when missing)
@@ -1706,16 +1861,11 @@ function M.import_file(path, out, in_zip, depth) -- (depth: how many packs deep;
       local st, why = M.import(p)
       out[#out + 1] = { st and "style" or "skipped", st and st.name or base, st and ("shortcut layer alt-" .. st.alt) or why }
     else out[#out + 1] = { "skipped", base, "not a ReaPersona persona or preset" } end
-  elseif low:match("%.zip$") or low:match("%.rar$") then -- (a theme pack: unpacked with Windows' or macOS's own tar, then what's inside comes in)
+  elseif low:match("%.zip$") or low:match("%.rar$") then -- (a theme pack: unpacked (M.unpack), then what's inside comes in)
     if in_zip and (depth or 1) >= 2 then out[#out + 1] = { "skipped", base, "a pack inside a pack inside a pack: unpack it and drop that in" }; return out end
     local nm = M.file_name(base:gsub("%.[ZzRr][IiAa][PpRr]$", "")):gsub("^%s+$", "")
     local dir = M.here .. "/_incoming/" .. (nm ~= "" and nm or "pack") .. "-" .. os.time()
-    reaper.RecursiveCreateDirectory(dir, 0)
-    local win = reaper.GetOS():find("^Win")
-    -- (Windows' own tar, by full path: another tar earlier on PATH, Git's say, reads "J:/..." as a remote host)
-    local tar = win and ((os.getenv("SystemRoot") or "C:\\Windows") .. "\\System32\\tar.exe") or "/usr/bin/tar"
-    local q = win and function(s) return '"' .. s .. '"' end or function(s) return "'" .. s:gsub("'", "'\\''") .. "'" end
-    local code, text = sh(q(tar) .. " -xf " .. q(p) .. " -C " .. q(dir), 60000)
+    local code, text = M.unpack(p, dir)
     local n0 = #out
     local skip = M.pack_prepass(dir, nm, out) -- (fonts, scripts and mods for themes you have: dealt with before the walk)
     local function walk(d)
@@ -1747,21 +1897,44 @@ function M.copy_tree(from, to) -- every file under from, to the same place under
   for i = 0, 500 do local d = reaper.EnumerateSubdirectories(from, i); if not d then break end n = n + M.copy_tree(from .. "/" .. d, to .. "/" .. d) end
   return n
 end
-local function untar(archive, dir) -- (Windows' own tar by full path: another tar on PATH, Git's say, reads "J:/..." as a remote host)
-  local win = reaper.GetOS():find("^Win")
-  local tar = win and ((os.getenv("SystemRoot") or "C:\\Windows") .. "\\System32\\tar.exe") or "/usr/bin/tar"
+-- How a pack (.zip or .rar, or a .ReaperThemeZip, which is a zip) is unpacked on this system. Windows' and macOS's own tar is bsdtar,
+-- which opens both; Linux's tar is GNU tar, which opens neither, so there it's unzip or unrar, else bsdtar or 7z, whichever is installed
+-- (Review, 5.9.3). have(name) -> that program's full path, or nil. -> the command, or nil + what to install (pure)
+function M.unpack_command(os_name, archive, dir, have)
+  local win = os_name:find("^Win") ~= nil
   local q = win and function(x) return '"' .. x .. '"' end or function(x) return "'" .. x:gsub("'", "'\\''") .. "'" end
+  -- (Windows' own tar by full path: another tar on PATH, Git's say, reads "J:/..." as a remote host)
+  if win then return q((os.getenv("SystemRoot") or "C:\\Windows") .. "\\System32\\tar.exe") .. " -xf " .. q(archive) .. " -C " .. q(dir) end
+  if os_name:find("^OSX") or os_name:find("^macOS") then return q("/usr/bin/tar") .. " -xf " .. q(archive) .. " -C " .. q(dir) end
+  local rar = archive:lower():match("%.rar$") ~= nil
+  for _, t in ipairs(rar and { "unrar", "bsdtar", "7z", "7zz" } or { "unzip", "bsdtar", "7z", "7zz" }) do
+    local p = have(t)
+    if p and t == "unzip" then return q(p) .. " -o -qq " .. q(archive) .. " -d " .. q(dir)
+    elseif p and t == "unrar" then return q(p) .. " x -o+ -idq " .. q(archive) .. " " .. q(dir .. "/") -- (unrar: a folder ends in /)
+    elseif p and t == "bsdtar" then return q(p) .. " -xf " .. q(archive) .. " -C " .. q(dir)
+    elseif p then return q(p) .. " x -y -o" .. q(dir) .. " " .. q(archive) end -- (7z: no space after -o)
+  end
+  return nil, "opening a ." .. (rar and "rar" or "zip") .. " needs " .. (rar and "unrar" or "unzip") .. ", bsdtar or 7z, and none of them is installed" ..
+    " (Ubuntu and Debian: sudo apt install " .. (rar and "libarchive-tools" or "unzip") .. ")"
+end
+local function find_program(name) -- (Linux: its full path, as M.python finds Python's)
+  local code, where = sh("/bin/sh -c 'command -v " .. name .. "'", 8000)
+  return code == "0" and where and where:match("^(/%S+)") or nil
+end
+function M.unpack(archive, dir) -- archive's files into dir -> exit code, output; or nil + what's missing
   reaper.RecursiveCreateDirectory(dir, 0)
-  return sh(q(tar) .. " -xf " .. q(archive) .. " -C " .. q(dir), 60000)
+  local cmd, why = M.unpack_command(reaper.GetOS(), archive, dir, find_program)
+  if not cmd then return nil, why end
+  return sh(cmd, 60000)
 end
 -- A mod for a theme you have (a pack folder holding "Name/" images, maybe "Name.ReaperTheme", where Name.ReaperThemeZip is installed):
 -- the theme unpacked, the mod laid over it, saved as "Name (label)" next to it. -> the new theme's file name, or nil + why
 function M.make_variant(base, mod_dir, label)
   local name = M.file_name(base .. " (" .. label .. ")")
   local tmp = M.here .. "/_incoming/variant-" .. os.time() .. "-" .. math.random(1000, 9999)
-  untar(M.themes_dir .. base .. ".ReaperThemeZip", tmp)
+  local done, missing = M.unpack(M.themes_dir .. base .. ".ReaperThemeZip", tmp)
   local rt = M.read(mod_dir .. "/" .. base .. ".ReaperTheme") or M.read(tmp .. "/" .. base .. ".ReaperTheme")
-  if not (rt and M.is_dir(tmp .. "/" .. base)) then M.remove_tree(tmp); return nil, "couldn't unpack " .. base end
+  if not (rt and M.is_dir(tmp .. "/" .. base)) then M.remove_tree(tmp); return nil, "couldn't unpack " .. base .. (done and "" or (": " .. missing)) end
   M.copy_tree(mod_dir .. "/" .. base, tmp .. "/" .. base)
   local to = M.themes_dir .. name
   if M.is_dir(to) then os.rename(to, to .. ".before-" .. os.date("%Y%m%d-%H%M%S")) end

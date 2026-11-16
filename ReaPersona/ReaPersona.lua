@@ -257,6 +257,7 @@ local PARTS = { "faders", "knobs", "meters", "transport", "buttons", "toolbar", 
 local bld_load -- (opens the Persona Builder on a persona; set up with its page)
 local drop_report, install_theme_ui -- (what came in, and a one-click theme install: set up with the setup helpers)
 local quit_check -- (when the install's quit should be over)
+local removing, remove_finish -- (Settings > Remove ReaPersona: waiting for My REAPER's windows to be back, then the rest; set up with Setup)
 local ensure_new = false -- (a merged style needs its one-key action registered)
 local check_msg, toast, toast_until = "", "", 0
 local function say(text) toast, toast_until = tostring(text), reaper.time_precise() + 6 + 0.06 * #tostring(text) end
@@ -865,6 +866,22 @@ local function settings_page()
     muted("Follow StudioSync uses StudioSync's colour choice when it's installed (Dark otherwise).")
     card_end()
   end
+  if card("set remove") then -- (removed with ReaPack alone, its startup block, actions and settings stayed behind. Review, 5.9.3)
+    heading("Remove ReaPersona")
+    muted("Puts My REAPER back, then takes out the startup block, ReaPersona's actions and its settings, and (with Python, REAPER restarting) its shortcut layers and toolbars. Your personas, presets and themes stay in their files. Then uninstall it in ReaPack.")
+    ImGui.BeginDisabled(ctx, removing ~= nil)
+    if ImGui.Button(ctx, "Remove ReaPersona...") and reaper.MB("Take ReaPersona out of REAPER?\n\n" ..
+        "- My REAPER comes back: your own shortcuts, theme, layout and settings\n- the startup block, ReaPersona's actions and its settings go\n" ..
+        (core.python() and "- REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap (backed up first), and REAPER opens again\n"
+          or "- without Python the shortcut layers stay in your keymap (they do nothing without ReaPersona)\n") ..
+        "\nYour personas, presets and themes stay in their files. Last, uninstall ReaPersona in Extensions > ReaPack > Browse packages.", "ReaPersona: remove", 4) == 6 then
+      reaper.SetExtState(SECTION, "follow projects", "0", true) -- (the project-following script stops)
+      use(core.by_id("my_reaper") or styles[1])
+      removing = true -- (the rest once My REAPER's windows are back: loop)
+    end
+    ImGui.EndDisabled(ctx)
+    card_end()
+  end
 end
 
 local adjust_out = false -- (Adjust in its own window)
@@ -1057,8 +1074,17 @@ local function keys_page()
       local _, f = ImGui.InputTextWithHint(ctx, "##kf", "search keys or actions", filter)
       filter = f
       ImGui.SameLine(ctx)
-      if ImGui.Button(ctx, "Change them") then reaper.Main_OnCommand(40605, 0) end
-      ImGui.SetItemTooltip(ctx, "REAPER's Actions window: pick the section 'Main (alt-" .. tostring(sel.alt) .. ")' at the top to see and change " .. sel.name .. "'s keys. Changes are live and kept.")
+      if sel.user and sel.keys_from then -- (on a DAW's layer: changing them there changed that DAW's keys too. Review, 5.9.3)
+        local from = (core.by_id(sel.keys_from) or { name = "a DAW" }).name
+        if ImGui.Button(ctx, "Make them its own") then
+          local ok, why = core.own_layer(sel)
+          say(ok and (sel.name .. " has a shortcut layer of its own (alt-" .. sel.alt .. "). Install the shortcuts on Home (REAPER restarts), then change them here.") or ("Not changed: " .. tostring(why)))
+        end
+        ImGui.SetItemTooltip(ctx, sel.name .. " uses " .. from .. "'s shortcut layer, so changing them would change " .. from .. "'s too. This copies them onto a layer of " .. sel.name .. "'s own.")
+      else
+        if ImGui.Button(ctx, "Change them") then reaper.Main_OnCommand(40605, 0) end
+        ImGui.SetItemTooltip(ctx, "REAPER's Actions window: pick the section 'Main (alt-" .. tostring(sel.alt) .. ")' at the top to see and change " .. sel.name .. "'s keys. Changes are live and kept.")
+      end
       if sel.docs then
         ImGui.SameLine(ctx)
         if ImGui.Button(ctx, "Official list") then core.open_url(sel.docs[1]) end
@@ -1262,12 +1288,14 @@ local function keymap_route() -- (no Python: a keymap file to import by hand)
   reaper.Main_OnCommand(40605, 0)
 end
 -- REAPER reads its keymap only when it starts: install_shortcuts.py waits for REAPER to close, installs, and starts it again.
-local function install_shortcuts()
+local function install_shortcuts(remove) -- (remove: Remove ReaPersona, which has asked already: the lines come out instead)
   if not core.python() then return keymap_route() end
-  if reaper.MB("REAPER closes (it asks first if anything is unsaved), the shortcuts install, and REAPER opens again: about 10 seconds.\n\n" ..
-    "A backup of your keymap is made first.", "ReaPersona: install shortcuts", 1) ~= 1 then return end
-  if core.scripts_missing() > 0 then core.ensure_scripts() end -- (the scripts the keys run have to be registered first)
-  if not reaper.file_exists(here .. "/midi_defaults.json") then core.midi_defaults() end
+  if not remove then
+    if reaper.MB("REAPER closes (it asks first if anything is unsaved), the shortcuts install, and REAPER opens again: about 10 seconds.\n\n" ..
+      "A backup of your keymap is made first.", "ReaPersona: install shortcuts", 1) ~= 1 then return end
+    if core.scripts_missing() > 0 then core.ensure_scripts() end -- (the scripts the keys run have to be registered first)
+    if not reaper.file_exists(here .. "/midi_defaults.json") then core.midi_defaults() end
+  end
   -- (on a Mac GetExePath is the folder holding REAPER.app, e.g. /Applications, not the app: matching ".app" in it found nothing and REAPER never came back)
   local d = reaper.GetExePath():gsub("\\", "/"):gsub("/+$", "")
   local exe = d .. (reaper.GetOS():find("^Win") and "/reaper.exe" or "/reaper") -- (Linux: the reaper binary beside it)
@@ -1282,10 +1310,19 @@ local function install_shortcuts()
     if fn ~= "" and not fn:find('"', 1, true) then open[#open + 1] = ' --open "' .. fn .. '"' end
   end
   local cfg = reaper.get_ini_file():gsub("\\", "/") -- (-cfgfile users get REAPER back on the same configuration)
-  reaper.ExecProcess(core.py .. ' "' .. here .. '/install_shortcuts.py" --after-reaper-quits --relaunch "' .. exe .. '" --cfgfile "' .. cfg .. '"' .. table.concat(open), -1) -- (-1: don't wait)
+  reaper.ExecProcess(core.py .. ' "' .. here .. '/install_shortcuts.py" --after-reaper-quits --relaunch "' .. exe .. '" --cfgfile "' .. cfg .. '"' .. (remove and " --remove" or "") .. table.concat(open), -1) -- (-1: don't wait)
   os.remove(here .. "/install_cancelled")
   reaper.Main_OnCommand(40004, 0) -- (File: Quit, with REAPER's own save prompts)
   quit_check = reaper.time_precise() + 4 -- (REAPER still running 4 s after: the quit was cancelled, and the installer is told)
+end
+remove_finish = function() -- (Remove ReaPersona, once My REAPER is back) -> false: the window closes
+  local done = core.uninstall()
+  local py = core.python() ~= nil
+  reaper.MB(table.concat(done, "\n") .. "\n\n" .. (py and "Next: REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap, and REAPER opens again."
+    or "Without Python the shortcut layers stay in your keymap; they do nothing without ReaPersona. The MIDI editor keys ReaPersona took over do nothing now: set them again in the Actions window if you used them.") ..
+    "\n\nLast: Extensions > ReaPack > Browse packages, right-click ReaPersona > Uninstall.", "ReaPersona: removed", 0)
+  if py then install_shortcuts(true) end
+  return false
 end
 local function setup_all()
   if reaper.MB("Set up everything ReaPersona can do from here?\n\n" ..
@@ -1690,9 +1727,10 @@ local function builder_page()
   if card("bld make") then
     heading(bld.id and ("Editing " .. bld.name) or "Persona Builder")
     muted("Stack blocks into a persona: a DAW's shortcuts, another's mouse feel or mixer layout, REAPER settings, a theme, a colour. Each block shows what it sets; untick a line to leave it out. Where two blocks set the same thing, the lower one wins.")
+    local layer, ids = core.keys_layer(bld.blocks, bld.id) -- (some of one DAW's keys left out: a layer of their own. Review, 5.9.3)
     local daws = {}
-    for _, b in ipairs(bld.blocks) do if b.kind == "daw" and b.keys and core.by_id(b.id) then daws[#daws + 1] = core.by_id(b.id).name end end
-    ImGui.TextColored(ctx, #daws > 1 and C.YELLOW or C.MUTED, #daws == 0 and "Shortcuts: your own." or #daws == 1 and ("Shortcuts: " .. daws[1] .. "'s, ready as soon as you save.")
+    for _, id in ipairs(ids) do daws[#daws + 1] = core.by_id(id).name end
+    ImGui.TextColored(ctx, layer == "own" and C.YELLOW or C.MUTED, layer == "none" and "Shortcuts: your own." or layer == "borrow" and ("Shortcuts: " .. daws[1] .. "'s, ready as soon as you save.")
       or ("Shortcuts: " .. table.concat(daws, " + ") .. " in a layer of their own, so they need installing once you save (REAPER restarts)."))
     ImGui.SetNextItemWidth(ctx, 280 * UI)
     local _, n = ImGui.InputTextWithHint(ctx, "##bldname", "Name it, e.g. Mixing", bld.name); bld.name = n
@@ -2104,6 +2142,7 @@ local function loop()
     core.write(here .. "/install_cancelled", "quit was cancelled\n")
     say("REAPER didn't close, so the shortcuts weren't installed.")
   end
+  if removing and not core.busy() then removing = nil; if not remove_finish() then return end end -- (My REAPER's windows are back)
   local ok, open = xpcall(frame, debug.traceback)
   errors_in_a_row = ok and 0 or errors_in_a_row + 1
   if not ok then
@@ -2127,4 +2166,5 @@ reaper.atexit(function()
   if trying then trying.ends = 0; trial_over() end -- (a theme on trial goes back when the window closes)
   if cmd and cmd ~= 0 then reaper.SetToggleCommandState(0, cmd, 0); reaper.RefreshToolbar2(0, cmd) end
 end)
+pcall(core.upgrade_startup) -- (now too, not only at REAPER's start: updated and removed in one session left the old block. Review, 5.9.3)
 reaper.defer(loop)

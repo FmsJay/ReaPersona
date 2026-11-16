@@ -45,7 +45,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
 - **Smooth playhead and smooth scrolling:** ReaSmoothPlayhead installs through ReaPack; Smooth Wheel Scroll comes with ReaPersona on Windows.
 - **Themes by other people:** each one the personas can use. *Install* downloads it from where its author shares it (the REAPER Stash or the author's own link) and takes it in; *Get it* opens the page for the few that need a browser (paid, or a sign-in).
   - Each persona's page has *Install <DAW>'s recommended look* and *Install all*; switching to a persona offers its look once.
-  - Packs are handled for you: .zip and .rar packs (even one inside another), unzipped themes with their image folders, the fonts a theme needs (installed for your account on your yes, no administrator), a theme's own scripts (added to the Actions list on your yes), and mod packs, whose mods become theme versions to click (rLive's ModPack gives five).
+  - Packs are handled for you: .zip and .rar packs (even one inside another), unzipped themes with their image folders, the fonts a theme needs (installed for your account on your yes, no administrator), a theme's own scripts (added to the Actions list on your yes), and mod packs, whose mods become theme versions to click (rLive's ModPack gives five). On Linux, packs need `unzip` (or `bsdtar` or `7z`; `unrar` or `bsdtar` for .rar), and ReaPersona says which is missing.
 
 **Drag and drop:** drop files onto ReaPersona's window to add them.
 - Themes, either `.ReaperThemeZip`/`.ReaperTheme` files or a theme pack `.zip` straight from the download.
@@ -78,7 +78,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
 - **Theme versions:** each persona's page shows all its theme versions as buttons (Pro Tools has nine), with *Get it* links for the ones you don't have yet. Click one to make it that persona's theme.
 - **Adjust:** a theme's own settings, layouts and colours, live.
 - **Build one (themes):** a theme from several (layout, colours and parts from different themes).
-- **Settings:** what personas may change, a persona per project, the smooth playhead and scroll/zoom extensions, and ReaPersona's own look.
+- **Settings:** what personas may change, a persona per project, the smooth playhead and scroll/zoom extensions, ReaPersona's own look, and **Remove ReaPersona**: My REAPER comes back, and the startup block, ReaPersona's actions, settings, shortcut layers and toolbars come out (your personas, presets and themes stay). Then uninstall it in ReaPack.
 - **Cheat sheets:** every key and setting of a persona on one printable page.
 
 ## On a Mac

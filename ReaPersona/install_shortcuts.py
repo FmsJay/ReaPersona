@@ -365,7 +365,8 @@ if __name__ == "__main__":
     if "--help" in sys.argv or "-h" in sys.argv:
         sys.exit(__doc__)
     if "--after-reaper-quits" in sys.argv:
-        # (the picker's one-button install: REAPER starts this, then quits; we wait, install, note the result and start REAPER again)
+        # (the picker's one-button install, or with --remove its Remove ReaPersona: REAPER starts this, then quits; we wait, install or
+        # remove, note the result and start REAPER again)
         exe = sys.argv[sys.argv.index("--relaunch") + 1] if "--relaunch" in sys.argv else None
         status = os.path.join(HERE, "last_install.txt")
         cancelled = os.path.join(HERE, "install_cancelled")
@@ -382,7 +383,7 @@ if __name__ == "__main__":
         out = _io.StringIO()
         try:
             with contextlib.redirect_stdout(out):
-                run(no_midi="--no-midi" in sys.argv)
+                run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)  # (--remove: Settings > Remove ReaPersona, review 5.9.3)
         except BaseException as e:  # (SystemExit included: whatever happened is written down for the picker)
             out.write("not installed: %s\n" % e)
         open(status, "w", encoding="utf-8").write(out.getvalue())
