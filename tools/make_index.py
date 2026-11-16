@@ -32,6 +32,22 @@ def main():
         else:
             plat = ' platform="win64"' if f.endswith("-x64.dll") else ""  # (a Windows build: ReaPack gives it to 64-bit Windows only)
             src.append('        <source%s file="%s">%s</source>' % (plat, escape(f, {'"': "&quot;"}), escape(url)))
+    # Extensions > ReaPersona and View > ReaPersona (extension/, source shared with StudioSync): a package of its own with a version of its
+    # own, raised only when the extension changes, so ReaPersona's updates don't try to replace a file REAPER has loaded.
+    ext_version, ext = "1.0.0", []
+    for name, plat in (("reaper_reapersona-x64.dll", "win64"), ("reaper_reapersona.dylib", "darwin")):
+        if os.path.exists(os.path.join(HERE, "extension", name)):
+            ext.append('        <source platform="%s" file="%s">%s/raw/%s/extension/%s</source>' % (plat, name, REPO, sha, name))
+    ext_pkg = ("""
+    <reapack name="ReaPersona menus.ext" type="extension" desc="ReaPersona in REAPER's Extensions and View menus">
+      <metadata>
+        <link rel="website">%s</link>
+      </metadata>
+      <version name="%s" author="James" time="%s">
+        <changelog><![CDATA[ReaPersona in the Extensions and View menus, and the action 'ReaPersona: open'.]]></changelog>
+%s
+      </version>
+    </reapack>""" % (REPO, ext_version, time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "\n".join(ext))) if ext else ""
     xml = """<?xml version="1.0" encoding="utf-8"?>
 <index version="1" name="ReaPersona">
   <category name="Workflow">
@@ -43,10 +59,10 @@ def main():
         <changelog><![CDATA[%s]]></changelog>
 %s
       </version>
-    </reapack>
+    </reapack>%s
   </category>
 </index>
-""" % (REPO, version, time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), changelog, "\n".join(src))
+""" % (REPO, version, time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), changelog, "\n".join(src), ext_pkg)
     open(os.path.join(HERE, "index.xml"), "w", encoding="utf-8", newline="\n").write(xml)
     print("index.xml: %d files at %s" % (len(src), sha[:8]))
 

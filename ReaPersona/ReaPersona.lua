@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.8.4
+-- @version 5.9.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -788,6 +788,15 @@ local function settings_page()
     muted("Switch off what you'd rather keep as it is, whatever persona you use. Takes effect the next time you use a persona; what a persona already changed is still put back when you switch away.")
     for i, a in ipairs(core.ASPECTS) do
       if setting_row("##asp" .. i, a[2], core.aspect_on(a[1])) then reaper.SetExtState(SECTION, "aspect " .. a[1], core.aspect_on(a[1]) and "0" or "1", true) end
+    end
+    card_end()
+  end
+  if card("set actions") then
+    heading("REAPER's Actions list")
+    muted("ReaPersona opens from Extensions > ReaPersona, View > ReaPersona or the Actions list. Switching persona from a key or a toolbar button needs its actions there: a key or button already using one keeps it either way.")
+    if setting_row("##allact", "Every ReaPersona action in REAPER's Actions list", core.all_actions()) then
+      reaper.SetExtState(SECTION, "all actions", core.all_actions() and "0" or "1", true)
+      core.ensure_scripts()
     end
     card_end()
   end

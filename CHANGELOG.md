@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.9.0
+- **ReaPersona is in REAPER's menus:** Extensions > ReaPersona and View > ReaPersona open it, ticked while it's open. A small extension ReaPack installs with ReaPersona does it (64-bit Windows now, the Mac build follows); the items appear after REAPER's next start.
+- **A shorter Actions list:** only ReaPersona and the actions its keys use (play from start, memory location) and project following stay. The persona switches ("use Ableton Live" and the rest, next and restore last) come back with Settings > "Every ReaPersona action in REAPER's Actions list"; one a key or toolbar button already uses stays either way.
+
 ## 5.8.4
 - **Mac: REAPER really comes back after Install shortcuts.** Right after REAPER quits, macOS still lists it as running, so reopening it only woke the REAPER that was closing. ReaPersona now waits until it's fully gone, reopens it, checks that it's running (trying once more if not), and only then says it started again.
 

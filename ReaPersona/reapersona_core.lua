@@ -750,7 +750,7 @@ end
 
 -- ---------------------------------------------------------------- helper scripts (written and registered once, by the picker)
 local function safe(spec) return (spec:gsub("[^%w]", function(c) return string.format("_%02X", c:byte()) end)) end
-local STUBS = 3 -- (bump when the stubs below change, so they're written again)
+local STUBS = 4 -- (bump when the stubs below change, so they're written again. 4: the Actions list sorted once, M.ensure_scripts)
 local HEAD = '-- @noindex\n-- (made by ReaPersona)\nlocal p = debug.getinfo(1, "S").source:match("^@?(.*)[/\\\\]")\n'
 local function stub(path, fn, arg) -- a one-line action: core.<fn>(arg), arg written as a Lua string literal
   return M.write(path, HEAD .. 'dofile(p .. "/../reapersona_core.lua").' .. fn .. "(" .. (arg and string.format("%q", arg) or "") .. ")\n")
@@ -766,10 +766,23 @@ end
 function M.scripts_missing()
   local n = (M.scripts.stubs ~= STUBS or M.stubs_stale) and 1 or 0
   for _, st in ipairs(M.styles) do
-    if not M.scripts.main["use " .. st.id] then n = n + 1 end
+    if not M.scripts.main["use " .. st.id] and M.all_actions() then n = n + 1 end -- (out of the Actions list unless asked for: M.ensure_scripts)
     for _, k in ipairs(st.midi_keys or {}) do if not M.scripts.midi[k[1]] then n = n + 1 end end
   end
   return n
+end
+-- The Actions list for someone who isn't making shortcuts (James, 5.9.0: it listed 20 of ours): what the persona keys run (play from start,
+-- memory location) and following projects stay; switching persona ("use <DAW>", next, restore last) is there when a key or a toolbar uses
+-- it, or with Settings > "Every ReaPersona action in REAPER's Actions list" (ExtState "all actions"). Their ids come from their paths.
+-- ReaPersona itself opens from the Actions list, Extensions > ReaPersona or View > ReaPersona (extension/reaper_menu.cpp in StudioSync).
+function M.all_actions() return reaper.GetExtState(M.SECTION, "all actions") == "1" end
+local function optional(name) return name == "next style" or name == "restore last style" or name:match("^use ") ~= nil end
+local function used_ids() -- the "_RS..." ids a key or a toolbar runs
+  local t = {}
+  for _, f in ipairs({ res .. "/reaper-kb.ini", res .. "/reaper-menu.ini" }) do
+    for id in (M.read(f) or ""):gmatch("[ =](_RS%x+)") do t[id] = true end
+  end
+  return t
 end
 function M.ensure_scripts()
   reaper.RecursiveCreateDirectory(M.here .. "/actions", 0)
@@ -778,12 +791,18 @@ function M.ensure_scripts()
                  ["play from start"] = { "play_from_start" }, ["follow projects"] = { "follow_projects" } }
   local names = {}
   for _, st in ipairs(M.styles) do main["use " .. st.id] = { "use_id", st.id }; local l = (st.short or st.name):lower(); names[l] = (names[l] or 0) + 1 end
-  local todo = {}
+  local todo, off, all, used = {}, {}, M.all_actions(), used_ids()
   for name, call in pairs(main) do
     local st = name:match("^use ") and M.by_id(name:sub(5))
     local label = st and ("use " .. (st.short or st.name) .. ((st.user and names[(st.short or st.name):lower()] > 1) and (" (" .. st.id .. ")") or "")) or name -- (yours named like another: its own file)
     local p = M.here .. "/actions/ReaPersona - " .. M.file_name(label) .. ".lua"
-    stub(p, call[1], call[2]); todo[#todo + 1] = { 0, p, "main", name }
+    stub(p, call[1], call[2])
+    if not optional(name) or all or used[M.scripts.main[name] or ""] then todo[#todo + 1] = { 0, p, "main", name }
+    else off[#off + 1] = { p, name } end
+  end
+  for n, o in ipairs(off) do -- (out of the Actions list: nothing runs it by its id)
+    reaper.AddRemoveReaScript(false, 0, o[1], n == #off and #todo == 0)
+    M.scripts.main[o[2]] = nil
   end
   local specs = {}
   for _, st in ipairs(M.styles) do for _, k in ipairs(st.midi_keys or {}) do specs[k[1]] = true end end
