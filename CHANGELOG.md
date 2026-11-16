@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.8.1
+- **Mac: Install shortcuts brings REAPER back.** REAPER quit for the shortcut install and never reopened on a Mac (it looked for REAPER.app in the wrong place). It now reopens with your projects, as on Windows.
+
 ## 5.8.0
 - **One-click theme installs.** 41 of the catalog's themes install with one click (Install on a persona's page and on Home), downloaded from where their authors share them: the REAPER Stash, or the author's own link. Themes that need a browser (paid, or a sign-in) keep a Get it link.
 - **Each persona's recommended look:** a button on its page installs it and makes it the persona's theme; switching to a persona whose look isn't installed offers it once. *Install all* gets every version of a persona's theme.

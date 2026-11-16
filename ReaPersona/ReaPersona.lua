@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.8.0
+-- @version 5.8.1
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -1255,8 +1255,13 @@ local function install_shortcuts()
     "A backup of your keymap is made first.", "ReaPersona: install shortcuts", 1) ~= 1 then return end
   if core.scripts_missing() > 0 then core.ensure_scripts() end -- (the scripts the keys run have to be registered first)
   if not reaper.file_exists(here .. "/midi_defaults.json") then core.midi_defaults() end
-  local exe = reaper.GetExePath():gsub("\\", "/")
-  exe = IS_MAC and exe:match("^(.-%.app)") or (exe .. "/reaper.exe")
+  -- (on a Mac GetExePath is the folder holding REAPER.app, e.g. /Applications, not the app: matching ".app" in it found nothing and REAPER never came back)
+  local d = reaper.GetExePath():gsub("\\", "/"):gsub("/+$", "")
+  local exe = d .. "/reaper.exe"
+  if IS_MAC then
+    exe = d:match("^(.-%.app)") or d .. "/REAPER.app"
+    for _, a in ipairs({ d .. "/REAPER.app", d .. "/REAPER64.app" }) do if not d:match("%.app") and reaper.file_exists(a .. "/Contents/Info.plist") then exe = a; break end end
+  end
   local open = {} -- (the projects open now, reopened with REAPER)
   for i = 0, 50 do
     local p, fn = reaper.EnumProjects(i)
