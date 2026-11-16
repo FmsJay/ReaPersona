@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.9.2
+- **Linux: REAPER comes back after Install shortcuts.** The relaunched REAPER inherited a dead output pipe from the one that quit and was killed before it showed; it now starts on its own, is checked to be running, and is tried once more if not. The relaunch looks for Linux's `reaper` program too. Tested on Ubuntu 24.04.
+
 ## 5.9.1
 - **The Extensions/View menu items on macOS and Linux too** (ReaPersona menus 1.0.1: a universal Mac build and Linux x86_64/aarch64). They appear after REAPER's next start.
 

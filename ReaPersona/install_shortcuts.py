@@ -421,8 +421,25 @@ if __name__ == "__main__":
                         note = "REAPER started again"
                         break
                 open(status, "a", encoding="utf-8").write(note + "\n")
-            else:
+            elif os.name == "nt":
                 subprocess.Popen([exe] + args + projects, close_fds=True,
                                  creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+            else:
+                # (Linux: this script's output is a pipe to the REAPER that just quit, and the new one, writing its first line there, was killed by
+                # SIGPIPE before it showed: nothing inherited, a session of its own, and believed only once it runs; once more if not. Linux VM, 5.9.2)
+                note = "REAPER didn't start again: open it yourself"
+                for _ in range(2):
+                    try:
+                        subprocess.Popen([exe] + args + projects, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                         close_fds=True, start_new_session=True)
+                    except Exception as e:
+                        note = "REAPER didn't start again: %s" % e
+                    up_by = time.time() + 15
+                    while not reaper_running() and time.time() < up_by:
+                        time.sleep(0.5)
+                    if reaper_running():
+                        note = "REAPER started again"
+                        break
+                open(status, "a", encoding="utf-8").write(note + "\n")
         sys.exit(0)
     run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)
