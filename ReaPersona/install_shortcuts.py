@@ -204,7 +204,7 @@ def reaper_running():
             if os.path.normcase(os.path.abspath(rdir)) == here:
                 return True
         return False
-    return subprocess.run(["pgrep", "-xi", "reaper"], capture_output=True).returncode == 0
+    return subprocess.run(["/usr/bin/pgrep", "-xi", "reaper"], capture_output=True).returncode == 0
 
 
 def backup_of(path):
@@ -392,13 +392,34 @@ if __name__ == "__main__":
             args = ["-cfgfile", cfg] if cfg and os.path.exists(cfg) else []
             if exe.endswith(".app"):
                 # (a Mac: open hands REAPER to LaunchServices and returns, so it's waited for, by its full path, in a session of its own. Started
-                # and left as this script exited, it never brought REAPER back. StudioSync's Mac test, 5.8.3)
-                try:
-                    r = subprocess.run(["/usr/bin/open", "-a", exe] + projects + (["--args"] + args if args else []), capture_output=True,
-                                       text=True, timeout=60, start_new_session=True)
-                    note = "REAPER started again" if r.returncode == 0 else "REAPER didn't start again (open said %s: %s)" % (r.returncode, r.stderr.strip())
-                except Exception as e:
-                    note = "REAPER didn't start again: %s" % e
+                # and left as this script exited, it never brought REAPER back (5.8.3). And right after the quit, LaunchServices still lists the
+                # REAPER going away: open "activated" that one, said 0, and nothing started (5.8.4). So: wait until it's gone from there too, then
+                # open, and believe it only when a REAPER is running; once more if not. StudioSync's Mac test)
+                def listed():
+                    try:
+                        return "ASN:" in subprocess.run(["/usr/bin/lsappinfo", "find", "bundleid=com.cockos.reaper"], capture_output=True,
+                                                        text=True, timeout=5).stdout or reaper_running()  # (it prints the app's ASN while it's listed)
+                    except Exception:
+                        return reaper_running()
+                gone_by = time.time() + 15
+                while listed() and time.time() < gone_by:
+                    time.sleep(0.5)
+                time.sleep(1)
+                note = "REAPER didn't start again: open it yourself"
+                for _ in range(2):
+                    try:
+                        r = subprocess.run(["/usr/bin/open", "-a", exe] + projects + (["--args"] + args if args else []), capture_output=True,
+                                           text=True, timeout=60, start_new_session=True)
+                        if r.returncode != 0:
+                            note = "REAPER didn't start again (open said %s: %s)" % (r.returncode, r.stderr.strip())
+                    except Exception as e:
+                        note = "REAPER didn't start again: %s" % e
+                    up_by = time.time() + 15
+                    while not reaper_running() and time.time() < up_by:
+                        time.sleep(0.5)
+                    if reaper_running():
+                        note = "REAPER started again"
+                        break
                 open(status, "a", encoding="utf-8").write(note + "\n")
             else:
                 subprocess.Popen([exe] + args + projects, close_fds=True,

@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.8.4
+- **Mac: REAPER really comes back after Install shortcuts.** Right after REAPER quits, macOS still lists it as running, so reopening it only woke the REAPER that was closing. ReaPersona now waits until it's fully gone, reopens it, checks that it's running (trying once more if not), and only then says it started again.
+
 ## 5.8.3
 - **Mac: REAPER comes back after Install shortcuts.** The shortcuts installed, but REAPER didn't reopen: the relaunch was started and left as the installer exited. It's now waited for (it returns at once), and whether REAPER started again goes into the install's result.
 
