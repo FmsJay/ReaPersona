@@ -254,7 +254,10 @@ end
 local selected, filter, pfilter = reaper.GetExtState(SECTION, "style"), "", ""
 local page = reaper.GetExtState(SECTION, "page") ~= "" and reaper.GetExtState(SECTION, "page") or "DAWs" -- (the page you were on)
 local search_q, search_focus = "", false -- (search everything: top bar, Ctrl+K)
-local function go(pg) page = pg; search_q = ""; reaper.SetExtState(SECTION, "page", pg, false) end
+local function go(pg) -- (a screen reader with OSARA hears the page's name)
+  page = pg; search_q = ""; reaper.SetExtState(SECTION, "page", pg, false)
+  if reaper.osara_outputMessage then reaper.osara_outputMessage(pg == "Guide" and "How it works" or pg) end
+end
 local merge = { base = "Default_7.0.ReaperThemeZip", colours = "", graphics = "", parts = {}, fonts = false, msg = "" }
 local PARTS = { "faders", "knobs", "meters", "transport", "buttons", "toolbar", "backgrounds" }
 local bld_load -- (opens the Persona Builder on a persona; set up with its page)
@@ -264,7 +267,9 @@ local removing, remove_finish -- (Settings > Remove ReaPersona: waiting for My R
 local install_shortcuts -- (REAPER closes, the shortcuts and your synced setup go in, REAPER opens again: set up with Setup)
 local ensure_new = false -- (a merged style needs its one-key action registered)
 local check_msg, toast, toast_until = "", "", 0
-local function say(text) toast, toast_until = tostring(text), reaper.time_precise() + 6 + 0.06 * #tostring(text) end
+local said -- (the last thing said: the screen-reader menu shows it in a message box)
+local function speak(text) if reaper.osara_outputMessage then reaper.osara_outputMessage(tostring(text)) end end -- (OSARA reads it out)
+local function say(text) toast, toast_until, said = tostring(text), reaper.time_precise() + 6 + 0.06 * #tostring(text), tostring(text); speak(text) end
 
 local function open_extra(x)
   local id = 0
@@ -856,33 +861,35 @@ local function choose_sync_folder()
   if rep then sync_next = reaper.time_precise() + 20 end
   say(rep and ("Syncing through " .. dir .. (rep.changed and (": " .. core.setup_summary(rep) .. " came in." .. ((rep.ext or 0) > 0 and (" " .. core.SETUP_RESTART) or "")) or ".")) or sync_err)
 end
+local function save_setup_file() -- (Settings, and the screen-reader menu)
+  local ok, p = reaper.JS_Dialog_BrowseForSaveFile and reaper.JS_Dialog_BrowseForSaveFile("Save your ReaPersona setup", res, "ReaPersona setup " .. os.date("%Y-%m-%d") .. ".reapersona-setup.json", "ReaPersona setup (*.json)\0*.json\0\0")
+  if not reaper.JS_Dialog_BrowseForSaveFile then say("Saving a file needs js_ReaScriptAPI (ReaPack).")
+  elseif ok == 1 and p ~= "" then
+    if not p:lower():match("%.json$") then p = p .. ".reapersona-setup.json" end
+    local done, why = core.export_setup(p)
+    say(done and ("Saved " .. p .. ". On the other computer: Settings > Load a file, or drop it on ReaPersona's window.") or ("Not saved: " .. tostring(why)))
+  end
+end
+local function load_setup_file()
+  local ok, p = reaper.GetUserFileNameForRead(res .. "/", "Load a ReaPersona setup", "json")
+  local fine, d = false, nil
+  if ok and p ~= "" then fine, d = pcall(core.json_decode, core.read(p) or "") end
+  if ok and p ~= "" and fine and type(d) == "table" and d.items and not core.confirm_setup(d, p:match("[^/\\]+$")) then ok = false end
+  if ok and p ~= "" then
+    local r, why = core.import_setup(p)
+    if r then
+      say("Loaded " .. core.setup_summary(r) .. "." .. ((r.ext or 0) > 0 and (" " .. core.SETUP_RESTART) or "") ..
+        (r.install and " Your personas with shortcuts of their own need them installed (Home)." or "") .. (r.skipped and (" Left alone (a file of yours doesn't parse): " .. r.skipped .. ".") or ""))
+    else say("Not loaded: " .. tostring(why)) end
+  end
+end
 local function settings_page()
   if card("set sync") then
     heading("Your other computers")
     muted("Your personas, presets and ReaPersona's settings, with Smooth Wheel Scroll's and ReaSmoothPlayhead's settings, in one file to take to another computer, or kept the same on all of them through a folder they share (Syncthing, Google Drive, Dropbox...). Themes, and where this computer's windows and dockers are, stay as they are.")
-    if ImGui.Button(ctx, "Save to a file...") then
-      local ok, p = reaper.JS_Dialog_BrowseForSaveFile and reaper.JS_Dialog_BrowseForSaveFile("Save your ReaPersona setup", res, "ReaPersona setup " .. os.date("%Y-%m-%d") .. ".reapersona-setup.json", "ReaPersona setup (*.json)\0*.json\0\0")
-      if not reaper.JS_Dialog_BrowseForSaveFile then say("Saving a file needs js_ReaScriptAPI (ReaPack).")
-      elseif ok == 1 and p ~= "" then
-        if not p:lower():match("%.json$") then p = p .. ".reapersona-setup.json" end
-        local done, why = core.export_setup(p)
-        say(done and ("Saved " .. p .. ". On the other computer: Settings > Load a file, or drop it on ReaPersona's window.") or ("Not saved: " .. tostring(why)))
-      end
-    end
+    if ImGui.Button(ctx, "Save to a file...") then save_setup_file() end
     ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "Load a file...") then
-      local ok, p = reaper.GetUserFileNameForRead(res .. "/", "Load a ReaPersona setup", "json")
-      local fine, d = false, nil
-      if ok and p ~= "" then fine, d = pcall(core.json_decode, core.read(p) or "") end
-      if ok and p ~= "" and fine and type(d) == "table" and d.items and not core.confirm_setup(d, p:match("[^/\\]+$")) then ok = false end
-      if ok and p ~= "" then
-        local r, why = core.import_setup(p)
-        if r then
-          say("Loaded " .. core.setup_summary(r) .. "." .. ((r.ext or 0) > 0 and (" " .. core.SETUP_RESTART) or "") ..
-            (r.install and " Your personas with shortcuts of their own need them installed (Home)." or "") .. (r.skipped and (" Left alone (a file of yours doesn't parse): " .. r.skipped .. ".") or ""))
-        else say("Not loaded: " .. tostring(why)) end
-      end
-    end
+    if ImGui.Button(ctx, "Load a file...") then load_setup_file() end
     ImGui.Dummy(ctx, 0, 4)
     local dir = core.sync_folder()
     if dir == "" then
@@ -1031,13 +1038,22 @@ local function settings_page()
     muted("Follow StudioSync uses StudioSync's colour choice when it's installed (Dark otherwise).")
     card_end()
   end
+  if card("set access") then -- (5.14: ReaImGui's window is pixels to a screen reader; the menu is REAPER's own)
+    heading("Screen readers")
+    muted("A screen reader (NVDA, JAWS or VoiceOver, through OSARA) can't read this window. ReaPersona's menu it can: REAPER's own menu with the main tasks, and the results in message boxes.")
+    if setting_row("##srmenu", "Open the menu instead of this window", reaper.GetExtState(SECTION, "screen reader") == "1",
+        "ReaPersona's action then opens the menu; its last item opens this window.") then
+      reaper.SetExtState(SECTION, "screen reader", reaper.GetExtState(SECTION, "screen reader") == "1" and "0" or "1", true)
+    end
+    card_end()
+  end
   if card("set remove") then -- (removed with ReaPack alone, its startup block, actions and settings stayed behind. Review, 5.9.4)
     heading("Remove ReaPersona")
-    muted("Puts My REAPER back, then takes out the startup block, ReaPersona's actions and its settings, and (with Python, REAPER restarting) its shortcut layers and toolbars. Your personas, presets and themes stay in their files. Then uninstall it in ReaPack.")
+    muted("Puts My REAPER back, then takes out the startup block, ReaPersona's actions and its settings, and (REAPER restarting; on a Mac or Linux only with Python) its shortcut layers and toolbars. Your personas, presets and themes stay in their files. Then uninstall it in ReaPack.")
     ImGui.BeginDisabled(ctx, removing ~= nil)
     if ImGui.Button(ctx, "Remove ReaPersona...") and reaper.MB("Take ReaPersona out of REAPER?\n\n" ..
         "- My REAPER comes back: your own shortcuts, theme, layout and settings\n- the startup block, ReaPersona's actions and its settings go\n" ..
-        (core.python() and "- REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap (backed up first), and REAPER opens again\n"
+        ((core.python() or reaper.GetOS():find("^Win")) and "- REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap (backed up first), and REAPER opens again\n"
           or "- without Python the shortcut layers stay in your keymap (they do nothing without ReaPersona)\n") ..
         "\nYour personas, presets and themes stay in their files. Last, uninstall ReaPersona in Extensions > ReaPack > Browse packages.", "ReaPersona: remove", 4) == 6 then
       reaper.SetExtState(SECTION, "follow projects", "0", true) -- (the project-following script stops)
@@ -1283,7 +1299,7 @@ end
 local function check_page()
   if card("check installed") then
     heading("Installed")
-    muted("Shortcut layers are written into REAPER's keymap by install_shortcuts.py, with REAPER closed (it reads its keymap at start). Run it after changing styles.json or importing a persona.")
+    muted("Shortcut layers go into REAPER's keymap with REAPER closed (it reads its keymap at start): Home > Install and restart, after changing styles.json or importing a persona.")
     for _, st in ipairs(styles) do
       if (st.alt or 0) > 0 then
         local n = installed[st.alt] or 0
@@ -1302,7 +1318,7 @@ local function check_page()
   if card("check install") then
     heading("Install the shortcuts")
     muted("REAPER reads its keymap when it starts, so the shortcut layers go in once, after adding or changing a persona. Two ways:")
-    ImGui.Bullet(ctx); ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, "With Python: close REAPER, run install_shortcuts.py in this folder, start REAPER. It also installs the personas' toolbars, and keeps a backup of your keymap.")
+    ImGui.Bullet(ctx); ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, "In one step: Home > Install and restart (on Windows, or anywhere with Python). REAPER closes, the layers and the personas' toolbars go in, your keymap is backed up first, and REAPER opens again. By hand: close REAPER, run install_shortcuts.py in this folder, start REAPER.")
     if ImGui.SmallButton(ctx, "Show the folder") then core.open_url(core.here) end
     ImGui.Bullet(ctx); ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, "Without Python: make a keymap file, then in REAPER's Actions window open Key Map > Import... and pick it (choose to merge, not replace). Toolbars aren't included: personas keep your own toolbar.")
     if ImGui.SmallButton(ctx, "Make the keymap file") then
@@ -1333,7 +1349,7 @@ local function check_page()
       end
       local na, nb = dump(0, "actions_main.tsv"), dump(32060, "actions_midi.tsv")
       -- (REAPER's own MIDI editor bindings for the styles' keys, for the My REAPER fallback: only readable before those keys are installed)
-      local d = midi_installed == 0 and (core.midi_defaults() .. " MIDI editor defaults saved; now close REAPER and run install_shortcuts.py.") or ""
+      local d = midi_installed == 0 and (core.midi_defaults() .. " MIDI editor defaults saved; now install the shortcuts (Home).") or ""
       check_msg = (#bad == 0 and "Everything resolves." or table.concat(bad, "\n")) .. string.format("\n(Action lists saved for validate.py: %d main, %d MIDI editor.) ", na, nb) .. d
     end
     ImGui.SameLine(ctx)
@@ -1453,9 +1469,11 @@ local function keymap_route() -- (no Python: a keymap file to import by hand)
     "3. Choose MERGE. (Replace would remove your own shortcuts.)\n\nToolbars need the Python install.", "ReaPersona: shortcuts", 0)
   reaper.Main_OnCommand(40605, 0)
 end
--- REAPER reads its keymap only when it starts: install_shortcuts.py waits for REAPER to close, installs, and starts it again.
+-- REAPER reads its keymap only when it starts: install_shortcuts.py waits for REAPER to close, installs, and starts it again. On Windows
+-- without Python the same install is planned here and a batch file swaps it in (core.stage_install, 5.14).
+local function one_button() return core.python() ~= nil or reaper.GetOS():find("^Win") ~= nil end -- (else: a keymap to import by hand)
 function install_shortcuts(remove) -- (remove: Remove ReaPersona, which has asked already: the lines come out instead)
-  if not core.python() then return keymap_route() end
+  if not one_button() then return keymap_route() end
   if not remove then
     if reaper.MB("REAPER closes (it asks first if anything is unsaved), the shortcuts install, and REAPER opens again: about 10 seconds.\n\n" ..
       "A backup of your keymap is made first.", "ReaPersona: install shortcuts", 1) ~= 1 then return end
@@ -1469,22 +1487,28 @@ function install_shortcuts(remove) -- (remove: Remove ReaPersona, which has aske
     exe = d:match("^(.-%.app)") or d .. "/REAPER.app"
     for _, a in ipairs({ d .. "/REAPER.app", d .. "/REAPER64.app" }) do if not d:match("%.app") and reaper.file_exists(a .. "/Contents/Info.plist") then exe = a; break end end
   end
-  local open = {} -- (the projects open now, reopened with REAPER)
+  local projects, open = {}, {} -- (the projects open now, reopened with REAPER)
   for i = 0, 50 do
     local p, fn = reaper.EnumProjects(i)
     if not p then break end
-    if fn ~= "" and not fn:find('"', 1, true) then open[#open + 1] = ' --open "' .. fn .. '"' end
+    if fn ~= "" and not fn:find('"', 1, true) then projects[#projects + 1] = fn; open[#open + 1] = ' --open "' .. fn .. '"' end
   end
   local cfg = reaper.get_ini_file():gsub("\\", "/") -- (-cfgfile users get REAPER back on the same configuration)
-  local setup = #core.restart_pending() > 0 and not remove and " --apply-setup" or "" -- (your setup from your other computers, waiting for a restart)
-  reaper.ExecProcess(core.py .. ' "' .. here .. '/install_shortcuts.py" --after-reaper-quits --relaunch "' .. exe .. '" --cfgfile "' .. cfg .. '"' .. (remove and " --remove" or "") .. setup .. table.concat(open), -1) -- (-1: don't wait)
+  if core.python() then
+    local setup = #core.restart_pending() > 0 and not remove and " --apply-setup" or "" -- (your setup from your other computers, waiting for a restart)
+    reaper.ExecProcess(core.py .. ' "' .. here .. '/install_shortcuts.py" --after-reaper-quits --relaunch "' .. exe .. '" --cfgfile "' .. cfg .. '"' .. (remove and " --remove" or "") .. setup .. table.concat(open), -1) -- (-1: don't wait)
+  else
+    local bat, why = core.stage_install({ remove = remove, pid = core.reaper_pid(), exe = exe, cfg = cfg, projects = projects })
+    if not bat then return reaper.MB("Nothing was installed: " .. tostring(why), "ReaPersona", 0) end
+    reaper.ExecProcess('cmd.exe /c ""' .. bat:gsub("/", "\\") .. '""', -1)
+  end
   os.remove(here .. "/install_cancelled")
   reaper.Main_OnCommand(40004, 0) -- (File: Quit, with REAPER's own save prompts)
   quit_check = reaper.time_precise() + 4 -- (REAPER still running 4 s after: the quit was cancelled, and the installer is told)
 end
 remove_finish = function() -- (Remove ReaPersona, once My REAPER is back) -> false: the window closes
   local done = core.uninstall()
-  local py = core.python() ~= nil
+  local py = one_button()
   reaper.MB(table.concat(done, "\n") .. "\n\n" .. (py and "Next: REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap, and REAPER opens again."
     or "Without Python the shortcut layers stay in your keymap; they do nothing without ReaPersona. The MIDI editor keys ReaPersona took over do nothing now: set them again in the Actions window if you used them.") ..
     "\n\nLast: Extensions > ReaPack > Browse packages, right-click ReaPersona > Uninstall.", "ReaPersona: removed", 0)
@@ -1526,6 +1550,27 @@ local function setup_page()
     if ImGui.SmallButton(ctx, "I'll pick later") then reaper.SetExtState(SECTION, "welcomed", "1", true) end
     card_end()
   end
+  if reaper.GetExtState(SECTION, "onboarded") == "" and card("first steps") then -- (5.14: the first run, step by step, until it's done or hidden)
+    heading("Getting started")
+    local have, want = shortcuts_state()
+    local steps = {
+      { core.current().id ~= "my_reaper", "1. Pick the DAW you're coming from", "Its shortcuts, look and feel, straight away. Back to My REAPER (top) puts yours back.", "Pick one", function() go("DAWs") end },
+      { have == want, "2. Install the shortcuts", "REAPER reads its keymap only when it starts: it closes, the persona layers go in (your keymap is backed up first) and it opens again.", "Install and restart", function() install_shortcuts() end },
+      { core.startup_on(), "3. Bring your persona back when REAPER starts", "One block in Scripts/__startup.lua.", "Add it", function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end },
+      { core.sync_folder() ~= "", "4. More than one computer? (optional)", "Save your setup to a file, or keep them the same through a shared folder.", "Set it up", function() go("Settings") end },
+    }
+    if ImGui.BeginTable(ctx, "first steps", 3, ImGui.TableFlags_SizingStretchProp) then
+      ImGui.TableSetupColumn(ctx, "state", ImGui.TableColumnFlags_WidthFixed, 56)
+      ImGui.TableSetupColumn(ctx, "what", ImGui.TableColumnFlags_WidthStretch)
+      ImGui.TableSetupColumn(ctx, "do", ImGui.TableColumnFlags_WidthFixed)
+      for i, s in ipairs(steps) do setup_row("step" .. i, s[1], s[2], s[3], not s[1] and s[4] or nil, s[5]) end
+      ImGui.EndTable(ctx)
+    end
+    if ImGui.SmallButton(ctx, "How it works (F1)##first") then go("Guide") end
+    ImGui.SameLine(ctx)
+    if ImGui.SmallButton(ctx, "Hide these steps##first") then reaper.SetExtState(SECTION, "onboarded", "1", true) end
+    card_end()
+  end
   if card("setup top") then
     heading("Set up ReaPersona")
     muted("What ReaPersona can use, whether it's there, and one click to get each. Drag files onto this window any time to add them: themes (.ReaperThemeZip, .ReaperTheme or the theme pack .zip as downloaded), toolbars (.ReaperMenu), keymaps (.ReaperKeyMap, become a persona of their own), and shared personas and presets.")
@@ -1553,7 +1598,7 @@ local function setup_page()
       local rp = reaper.ReaPack_BrowsePackages ~= nil
       setup_row("rp", rp, "ReaPack", "Installs the smooth playhead and keeps ReaPersona up to date.", not rp and "Get it" or nil, function() core.open_url("https://reapack.com/") end)
       local py = core.python()
-      setup_row("py", py ~= nil, "Python 3" .. (py and (" (" .. py .. ")") or ""), "Builds ReaPersona's themes and installs the shortcuts in one step (pip install pillow numpy).",
+      setup_row("py", py ~= nil, "Python 3" .. (py and (" (" .. py .. ")") or ""), "Builds ReaPersona's themes (pip install pillow numpy)" .. (reaper.GetOS():find("^Win") and "." or ", and installs the shortcuts in one step."),
         not py and "Get it" or nil, function() core.open_url("https://www.python.org/downloads/") end)
       if py then
         local libs = core.python_libs()
@@ -2109,8 +2154,54 @@ local GROUPS = { -- { name, what it's for, its pages (tabs), the tabs' labels }
   { "Shortcuts", "Every key of a persona, with REAPER's action for it.", { "Shortcuts" }, { "Shortcuts" } },
   { "Themes", "Your themes, getting more, adjusting the one in use, building one from others.", { "Themes", "Browse", "Adjust", "Merge" }, { "Your themes", "Get more", "Adjust", "Build one" } },
   { "Settings", "REAPER's and SWS's options in groups, what personas may change, a persona per project, ReaPersona's look.", { "Settings", "Tweaks" }, { "ReaPersona", "REAPER tweaks" } },
-  { "Help", "What's installed, checking the personas, repairs.", { "Check" }, { "Check and repair" } },
+  { "Help", "How ReaPersona works and what each page does, what's installed, checking the personas, repairs.", { "Guide", "Check" }, { "How it works", "Check and repair" } },
 }
+-- Help > How it works (5.14), also the screen-reader menu's Help: plain sentences, so the same text reads in a message box.
+local GUIDE = {
+  { "Getting started", {
+    "1. Pick the DAW you're coming from: Personas > DAWs, or the first card on Home. REAPER takes on its shortcuts, look and feel straight away. Back to My REAPER (top) puts your own setup back, exactly as it was.",
+    "2. Install the shortcuts: Home > Install and restart. REAPER reads its keymap only when it starts, so it closes (asking about anything unsaved), the persona layers go in and it opens again, in about 10 seconds. Do it again after adding or changing a persona.",
+    "3. Add the startup line on Home, so your persona's keys come back each time REAPER starts.",
+    "4. More than one computer? Settings > Your other computers: save your setup to a file, or keep them the same through a shared folder." } },
+  { "What each page does", {
+    "Home > Setup: the first steps, what ReaPersona can use and whether it's there (one click for each), importing from another DAW on this computer, and themes by other people. Drop theme, toolbar, keymap or persona files anywhere on the window to add them.",
+    "Personas > DAWs: each DAW's persona, with its keys, look and feel: Use it, or Try it. Your personas: the ones you saved or built, and your workflows. Persona Builder: stack blocks (a DAW's keys, its mouse, groups of REAPER settings, a theme) into a persona of your own.",
+    "Shortcuts: every key of a persona, with the REAPER action it runs.",
+    "Themes > Your themes: the theme for each persona. Get more: the REAPER Stash and ReaPack. Adjust: change the theme in use, live. Build one: a theme from parts of others.",
+    "Settings > ReaPersona: your other computers, what a persona may change, a persona per project, the screen-reader menu, this window's look, and removing ReaPersona. REAPER tweaks: REAPER's and SWS's options in groups.",
+    "Help > How it works: this page. Check and repair: what's installed, a check of every persona against this REAPER, and registering ReaPersona's actions again." } },
+  { "Keyboard", {
+    "Tab and Shift+Tab move between controls, the arrow keys move within a page, Enter or Space presses, and Escape closes a menu or clears the search.",
+    "Ctrl+K searches everything: personas, keys, settings and pages. F1 opens this page." } },
+  { "Screen readers", {
+    "This window is drawn by ReaImGui, which a screen reader can't read. ReaPersona's menu it can: REAPER's own menu with the main tasks (pick a persona, back to My REAPER, install the shortcuts, your other computers, this help), with each result in a message box and spoken by OSARA.",
+    "Turn it on in Settings > ReaPersona > Screen readers (with OSARA installed, ReaPersona asks the first time). ReaPersona's action then opens the menu; its last item opens this window." } },
+  { "Your own setup is safe", {
+    "A persona's keys sit in a shortcut layer of their own; keys it doesn't define fall through to yours, and Back to My REAPER puts back whatever a persona changed.",
+    "Every install backs up your keymap first, next to it in REAPER's resource folder (reaper-kb.ini.before-reapersona-...). The first backup, from before ReaPersona, is always kept.",
+    "On Windows without Python, the install is planned while REAPER runs and a small batch file swaps it in once REAPER has closed. If anything changed the keymap in between, nothing is swapped in and ReaPersona says so." } },
+}
+local function guide_text() -- (the whole guide as plain text)
+  local out = {}
+  for _, s in ipairs(GUIDE) do out[#out + 1] = s[1] .. "\n- " .. table.concat(s[2], "\n- ") end
+  return table.concat(out, "\n\n")
+end
+local function guide_page()
+  if card("guide top") then
+    heading("How ReaPersona works")
+    muted("ReaPersona makes REAPER feel like the DAW you're coming from: its shortcuts, look, feel and mouse, switched in one click, with your own setup always one click away.")
+    if ImGui.SmallButton(ctx, "Copy as plain text") then ImGui.SetClipboardText(ctx, guide_text()); say("The guide is on the clipboard.") end
+    ImGui.SetItemTooltip(ctx, "The whole guide as plain text, to paste anywhere or read with a screen reader.")
+    card_end()
+  end
+  for i, s in ipairs(GUIDE) do
+    if card("guide " .. i) then
+      heading(s[1])
+      for _, line in ipairs(s[2]) do ImGui.Bullet(ctx); ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, line) end
+      card_end()
+    end
+  end
+end
 local function group_of(pg) for _, g in ipairs(GROUPS) do for _, p in ipairs(g[3]) do if p == pg or (pg == "Styles" and p == "DAWs") then return g end end end return GROUPS[2] end
 local last_tab = {} -- (each group reopens on the tab you left it on)
 -- Search everything (top bar, Ctrl+K): styles, shortcuts in every style, where a DAW's feature is in REAPER, themes, settings, pages.
@@ -2276,6 +2367,7 @@ local function frame()
     local sel = core.by_id(selected) or styles[1]
     local want = reaper.GetExtState(SECTION, "page")
     if want ~= "" and want ~= page then page = want end
+    if ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows) and ImGui.IsKeyPressed(ctx, ImGui.Key_F1) then go("Guide") end
     top_bar(alt)
     trying_bar()
     if last_error then
@@ -2340,6 +2432,7 @@ local function frame()
           if card("adj out") then heading("Adjust is in its own window"); if ImGui.Button(ctx, "Bring it back here") then adjust_out = false end; card_end() end
         else adjust_page(core.current()) end -- (the theme you adjust is the one in use: its style gets the result)
       elseif page == "Merge" then merge_page(sel)
+      elseif page == "Guide" then guide_page()
       elseif page == "Check" then check_page() end
       ImGui.EndChild(ctx)
     end
@@ -2408,6 +2501,96 @@ local function loop()
     open = true
   end
   if open then reaper.defer(loop) end
+end
+-- ---------------------------------------------------------------- the screen-reader route (5.14)
+-- ReaImGui draws its window itself, so NVDA, JAWS or VoiceOver (through OSARA) read nothing in it. This is REAPER's own menu (gfx.showmenu),
+-- which they read, with the main tasks; every result comes in a message box, and OSARA speaks what say() says.
+local function show_menu(labels) -- -> the 1-based item picked (separators don't count), or 0
+  local x, y = reaper.GetMousePosition()
+  gfx.init("ReaPersona", 0, 0, 0, x, y)
+  gfx.x, gfx.y = 0, 0
+  local i = gfx.showmenu(table.concat(labels, "|"))
+  gfx.quit()
+  return i
+end
+local function status_text()
+  local cur, alt = core.current(), core.active_alt()
+  local have, want = shortcuts_state()
+  local t = { "Persona in use: " .. cur.name .. (in_use(cur, alt) and "" or " (its keys are off: pick it again)"),
+    "Shortcut layers installed: " .. have .. " of " .. want .. " personas" .. (have < want and " (install the shortcuts next)" or ""),
+    "Persona back at REAPER's start: " .. (core.startup_on() and "yes" or "no (add the startup line)"),
+    core.sync_folder() ~= "" and ("Syncing with your other computers through " .. core.sync_folder()) or "Not syncing with other computers." }
+  local pend = core.restart_pending()
+  if #pend > 0 then t[#t + 1] = "From your other computers, waiting for REAPER to restart: " .. table.concat(pend, ", ") end
+  return table.concat(t, "\n")
+end
+local function screen_reader_menu() -- -> true: open the window instead
+  local note = core.read(here .. "/last_install.txt")
+  if note then os.remove(here .. "/last_install.txt"); reaper.MB(note, "ReaPersona: the last install", 0) end
+  while true do
+    local cur = core.current()
+    local labels, acts = {}, {}
+    local function item(label, fn) labels[#labels + 1] = (label:gsub("^[#!><]+", ""):gsub("|", "/"):gsub("&", "&&")); acts[#acts + 1] = fn end
+    local function sep() labels[#labels + 1] = "" end
+    item("Persona in use: " .. cur.name .. ". What's installed", function() reaper.MB(status_text(), "ReaPersona", 0) end)
+    item("Pick a persona...", function()
+      local names, list = {}, {}
+      for _, st in ipairs(styles) do
+        list[#list + 1] = st
+        names[#names + 1] = (st == cur and "!" or "") .. (st.name:gsub("^[#!><]+", ""):gsub("|", "/"):gsub("&", "&&")) .. (st.user and " (yours)" or "")
+      end
+      local i = show_menu(names)
+      if list[i] then selected = list[i].id; use(list[i]) end
+    end)
+    if cur.id ~= "my_reaper" then item("Back to My REAPER", function() use(core.by_id("my_reaper")) end) end
+    local undo = last_style and last_style ~= cur.id and core.by_id(last_style)
+    if undo then item("Undo switch: back to " .. undo.name, function() use(undo) end) end
+    sep()
+    local have, want = shortcuts_state()
+    item((have < want and "Install" or "Reinstall") .. " the shortcuts (REAPER restarts)", "install")
+    if not core.startup_on() then item("Bring your persona back when REAPER starts (adds the startup line)", function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end) end
+    sep()
+    if core.sync_folder() ~= "" then item("Sync with your other computers now", function() sync_step(true) end)
+    else item("Keep your computers the same through a shared folder...", choose_sync_folder) end
+    item("Save your setup to a file...", save_setup_file)
+    item("Load a setup file...", load_setup_file)
+    if #core.restart_pending() > 0 then item("Apply what came from your other computers (REAPER restarts)", "install") end
+    sep()
+    item("How ReaPersona works", function() reaper.MB(guide_text(), "ReaPersona: how it works", 0) end)
+    item("Open ReaPersona's window", "window")
+    item("Open the window instead of this menu from now on", function()
+      reaper.SetExtState(SECTION, "screen reader", "0", true); say("ReaPersona opens its window from now on. Settings > Screen readers turns the menu back on.")
+    end)
+    local fn = acts[show_menu(labels)]
+    if not fn then return false end
+    if fn == "window" then return true end
+    if fn == "install" then install_shortcuts(); return false end
+    said = nil
+    fn()
+    if said then reaper.MB(said, "ReaPersona", 0) end
+    if reaper.GetExtState(SECTION, "screen reader") ~= "1" then return false end
+  end
+end
+if reaper.osara_outputMessage and reaper.GetExtState(SECTION, "screen reader") == "" then -- (OSARA installed: ask once)
+  reaper.SetExtState(SECTION, "screen reader", reaper.MB("OSARA is installed, so you may be using a screen reader. ReaPersona's window can't be read by one; its menu can.\n\n" ..
+    "Open the menu instead of the window each time? (The menu's last item, or Settings > Screen readers, changes this.)", "ReaPersona", 4) == 6 and "1" or "0", true)
+end
+local from_menu = reaper.GetExtState(SECTION, "screen reader") == "1"
+if from_menu and not screen_reader_menu() then
+  local function wait_quit() -- (the install's quit, cancelled: the batch step or the Python is told, as loop() does for the window)
+    if not quit_check then return end
+    if reaper.time_precise() < quit_check then return reaper.defer(wait_quit) end
+    quit_check = nil
+    core.write(here .. "/install_cancelled", "quit was cancelled\n")
+    reaper.MB("REAPER didn't close, so the shortcuts weren't installed.", "ReaPersona", 0)
+  end
+  wait_quit()
+  return
+end
+if from_menu then -- (the window from the menu: ReaImGui let go of the context made at the start while the menu was open, unused)
+  ctx = new_ctx()
+  font = ImGui.CreateFont("sans-serif"); ImGui.Attach(ctx, font)
+  bold = ImGui.CreateFont("sans-serif", ImGui.FontFlags_Bold); ImGui.Attach(ctx, bold)
 end
 local cmd = select(4, reaper.get_action_context()) -- (the picker's own action: lit on a toolbar while the window is open)
 if cmd and cmd ~= 0 then reaper.SetToggleCommandState(0, cmd, 1); reaper.RefreshToolbar2(0, cmd) end

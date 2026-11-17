@@ -1779,6 +1779,358 @@ function M.make_keymap() -- -> path of the .ReaperKeyMap, how many lines, what w
   M.write(p, table.concat(out, "\n") .. "\n")
   return p, #out, skipped
 end
+-- ---------------------------------------------------------------- the one-button install without Python (Windows, 5.14)
+-- install_shortcuts.py's run() and install_toolbars() in Lua, rule for rule (keep the two in step): planned while REAPER runs, from the
+-- keymap and menus as they are now. The new files wait in ReaPersona/install_staged next to a copy of each file as it was read, and a
+-- batch file (cmd, not PowerShell: PowerShell hangs at start while a network drive isn't answering) waits for this REAPER to close,
+-- swaps them in only if nothing changed them since, backs each up first, and starts REAPER again. Preferences from your other computers
+-- (pending/prefs.json) stay waiting for the Python route: REAPER writes reaper.ini as it quits, so they can't be planned beforehand.
+local KB_TAG, KB_OLD_TAG = "# ReaPersona", "# DAW Styles"
+local function words(l) local t = {}; for w in l:gmatch("%S+") do t[#t + 1] = w end return t end
+local function idstr(v) local i = math.tointeger(v); return i and string.format("%d", i) or tostring(v) end -- (40001, not 40001.0)
+local function lines_of(text) -- Python's text.replace("\r\n", "\n").split("\n"): exact lines, a last "" after a final newline
+  local t = {}
+  for l in ((text or ""):gsub("\r\n", "\n") .. "\n"):gmatch("([^\n]*)\n") do t[#t + 1] = l end
+  return t
+end
+local function splitlines(text) local t = lines_of(text); if #t > 0 and t[#t] == "" then t[#t] = nil end return t end
+function M.kb_slot(line) -- what a keymap line binds: "KEY flags key section", "SCR section id", "ACT section id"; or nil (pure)
+  local p = words(line)
+  if #p >= 5 and p[1] == "KEY" then return "KEY " .. p[2] .. " " .. p[3] .. " " .. p[5] end
+  if #p >= 4 and (p[1] == "SCR" or p[1] == "ACT") then return p[1] .. " " .. p[3] .. " " .. p[4] end
+end
+function M.kb_takeable(line, mine_scripts) -- as install_shortcuts.kb_takeable: whether another computer's keymap line may come in (pure)
+  local p = words(line)
+  if p[1] ~= "KEY" or #p < 5 then return true end
+  local cmd, sec = p[4], p[5]
+  if (sec:match("^%d+$") and tonumber(sec) >= 1 and tonumber(sec) <= 16) or cmd == "0" then return false end
+  local bare = cmd:gsub("^_+", "")
+  return not bare:match("^RS") or mine_scripts[bare] == true
+end
+function M.merge_kb(mine, theirs) -- this computer's keymap with the other computer's lines taken in (pure; LF)
+  local mine_scripts = {}
+  for _, l in ipairs(splitlines(mine)) do local p = words(l); if p[1] == "SCR" and #p > 3 then mine_scripts[p[4]] = true end end
+  local take, slots = {}, {}
+  for _, l in ipairs(splitlines(theirs)) do
+    if M.kb_slot(l) and not l:match("^SCR ") and M.kb_takeable(l, mine_scripts) then take[#take + 1] = l; slots[M.kb_slot(l)] = true end
+  end
+  local keep = {}
+  for _, l in ipairs(splitlines(mine)) do if not (M.kb_slot(l) and slots[M.kb_slot(l)]) then keep[#keep + 1] = l end end
+  while #keep > 0 and keep[#keep]:match("^%s*$") do keep[#keep] = nil end
+  for _, l in ipairs(take) do keep[#keep + 1] = l end
+  return table.concat(keep, "\n") .. "\n"
+end
+function M.merge_ini(mine, theirs) -- this computer's ini file with the other computer's sections taken in whole (pure; LF)
+  local function sections(text)
+    local order, secs, cur = {}, {}, nil
+    for _, l in ipairs(splitlines(text)) do
+      local name = l:match("^%[(.+)%]%s*$")
+      if name then cur = name; if not secs[cur] then secs[cur] = {}; order[#order + 1] = cur end
+      elseif cur and l:match("%S") then table.insert(secs[cur], l) end
+    end
+    return order, secs
+  end
+  local order, secs = sections(mine)
+  local t_order, t_secs = sections(theirs)
+  for _, n in ipairs(t_order) do if not secs[n] then order[#order + 1] = n end secs[n] = t_secs[n] end
+  local out = {}
+  for _, n in ipairs(order) do out[#out + 1] = "[" .. n .. "]\n"; for _, l in ipairs(secs[n]) do out[#out + 1] = l .. "\n" end end
+  return table.concat(out)
+end
+
+-- The keymap with every style's lines planned in (install_shortcuts.run, steps 1-3). Pure. kb: reaper-kb.ini's text; styles: styles.json's
+-- and user_styles.json's; scripts: scripts.json; manifest: installed.json's lines (or nil); old_fb: midi_fallback.json; defaults:
+-- midi_defaults.json (or nil). -> the new text, the lines written (installed.json), the MIDI fallback, how many added, warnings
+function M.kb_plan(kb, styles, scripts, manifest, old_fb, defaults, remove, no_midi, windows)
+  local warnings, plan, midi_specs = {}, {}, {}
+  scripts = scripts or {}
+  for _, st in ipairs(remove and {} or styles) do
+    local alt = tonumber(st.alt) or 0
+    for _, e in ipairs((alt >= 1 and alt <= 16) and (st.keys or {}) or {}) do
+      local spec, cmd, what = M.for_os(e[1]), e[2], e[3]
+      if spec then
+        local why
+        if type(cmd) == "string" and cmd:match("^script:") then
+          cmd = (scripts.main or {})[cmd:sub(8)]
+          if not cmd then why = "open"; warnings[#warnings + 1] = string.format("%s %s: open the ReaPersona picker once first (registers its actions)", st.name, spec) end
+        end
+        if not why then
+          if type(cmd) == "string" and cmd:match("^MAIN:") then if not M.encode(cmd:sub(6)) then why = "unknown key: " .. cmd:sub(6) end
+          elseif not (math.tointeger(cmd) or (type(cmd) == "string" and cmd ~= "" and not cmd:find("%s"))) then why = "bad command " .. tostring(cmd) end
+          local f, k = M.encode(spec)
+          if not f then why = why or ("unknown key: " .. spec) end
+          if why then warnings[#warnings + 1] = string.format("%s: skipped key %s (%s)", tostring(st.name), tostring(e[1]), why)
+          else plan[#plan + 1] = { f, k, idstr(cmd), alt, string.format("%s : %s : %s : %s", KB_TAG, st.name, spec, tostring(what)) } end
+        end
+      end
+    end
+    for _, mk in ipairs(st.midi_keys or {}) do
+      if type(mk) == "table" and type(mk[1]) == "string" and M.encode(mk[1]) then
+        midi_specs[mk[1]] = midi_specs[mk[1]] or {}
+        table.insert(midi_specs[mk[1]], st.name)
+      else warnings[#warnings + 1] = string.format("%s: skipped MIDI key %s", tostring(st.name), tostring(type(mk) == "table" and mk[1] or mk)) end
+    end
+  end
+  if no_midi or (defaults == nil and not remove) then -- (without REAPER's own MIDI editor defaults, a My REAPER key would lose what it did)
+    if not no_midi then warnings[#warnings + 1] = "MIDI editor keys: no midi_defaults.json yet (open REAPER, picker > Check), so they weren't installed" end
+    midi_specs = {}
+  end
+  old_fb = type(old_fb) == "table" and old_fb or {}
+  local eol = ((kb or ""):find("\r\n", 1, true) or ((kb or "") == "" and windows)) and "\r\n" or "\n"
+  local lines = lines_of(kb)
+  local man = nil
+  if type(manifest) == "table" then man = {}; for _, l in ipairs(manifest) do man[l] = true end end
+  local midi_cmds, midi_keys = {}, {}
+  for _, id in pairs(scripts.midi or {}) do midi_cmds[idstr(id)] = true end
+  for _, src in ipairs({ midi_specs, old_fb }) do
+    for spec in pairs(src) do local f, k = M.encode(tostring(spec)); if f then midi_keys[f .. " " .. k] = true end end
+  end
+  local function ours(line)
+    if line:find(KB_TAG, 1, true) or line:find(KB_OLD_TAG, 1, true) then return true end
+    local q = words(line)
+    if #q < 5 or q[1] ~= "KEY" then return false end
+    if q[5] == tostring(MIDI_SEC) then -- (a "0 ... DISABLED DEFAULT" line on one of our MIDI keys: REAPER wrote it when a key script moved)
+      return midi_cmds[q[4]] or (line:find("MIDI key", 1, true) and (line:find("Script: ReaPersona", 1, true) or line:find("Script: DAW Styles", 1, true)))
+        or (q[4] == "0" and midi_keys[q[2] .. " " .. q[3]]) or false
+    end
+    return man ~= nil and man[table.concat(q, " ", 2, 5)] == true
+  end
+  local kept = {}
+  for _, l in ipairs(lines) do if not ours(l) then kept[#kept + 1] = l end end
+  while #kept > 0 and kept[#kept] == "" do kept[#kept] = nil end
+  local fb_specs = {}
+  for spec in pairs(old_fb) do fb_specs[#fb_specs + 1] = tostring(spec) end
+  table.sort(fb_specs)
+  for _, spec in ipairs(fb_specs) do -- (your own MIDI editor lines a previous install moved aside)
+    local v = old_fb[spec]
+    if type(v) == "table" and type(v.line) == "string" and v.line ~= "" and not ours(v.line) then kept[#kept + 1] = v.line end
+  end
+  local added, written, fallback, yours = 0, {}, setmetatable({}, M.OBJECT), {}
+  for _, l in ipairs(kept) do local q = words(l); if q[1] == "KEY" and #q >= 5 then yours[q[2] .. " " .. q[3] .. " " .. q[5]] = true end end
+  for _, p in ipairs(plan) do
+    local f, k, cmd, alt, comment = table.unpack(p)
+    if not yours[f .. " " .. k .. " " .. alt] then -- (you rebound this key in the style's layer: yours stays)
+      if cmd:match("^MAIN:") then -- (what the Main section runs on that key now, so a style's Undo/Redo is still StudioSync's)
+        local mf, mk = M.encode(cmd:sub(6))
+        local found
+        for _, l in ipairs(kept) do
+          local q = words(l)
+          if #q >= 5 and q[1] == "KEY" and q[2] == tostring(mf) and q[3] == tostring(mk) and q[5] == "0" and q[4] ~= "0" then found = q[4]; break end
+        end
+        cmd = found or tostring(({ ["Ctrl+Z"] = 40029, ["Ctrl+Shift+Z"] = 40030 })[cmd:sub(6)] or 0)
+      end
+      kept[#kept + 1] = string.format("KEY %d %d %s %d\t\t %s", f, k, cmd, alt, comment)
+      written[#written + 1] = string.format("%d %d %s %d", f, k, cmd, alt)
+      added = added + 1
+    end
+  end
+  local specs = {}
+  for spec in pairs(midi_specs) do specs[#specs + 1] = spec end
+  table.sort(specs)
+  for _, spec in ipairs(specs) do
+    local cmd = (scripts.midi or {})[spec]
+    if not cmd then warnings[#warnings + 1] = "MIDI " .. spec .. ": open the ReaPersona picker once first (registers the MIDI key scripts)"
+    else
+      local f, k = M.encode(spec)
+      for n = #kept, 1, -1 do
+        local q = words(kept[n])
+        if #q >= 5 and q[1] == "KEY" and q[2] == tostring(f) and q[3] == tostring(k) and q[5] == tostring(MIDI_SEC) and not ours(kept[n]) then
+          fallback[spec] = { cmd = q[4], line = kept[n] }
+          table.remove(kept, n)
+        end
+      end
+      if not fallback[spec] and defaults and defaults[spec] then fallback[spec] = { cmd = idstr(defaults[spec]) } end -- (REAPER's built-in binding: kb.ini only holds changes)
+      kept[#kept + 1] = string.format("KEY %d %d %s %d\t\t %s : MIDI editor : %s : %s", f, k, idstr(cmd), MIDI_SEC, KB_TAG, spec, table.concat(midi_specs[spec], ", "))
+      added = added + 1
+    end
+  end
+  return (table.concat(kept, "\n") .. "\n"):gsub("\n", eol), written, fallback, added, warnings
+end
+
+-- reaper-menu.ini with each style's toolbars in their slots (install_shortcuts.install_toolbars). Pure. read_toolbar(file) -> a .ReaperMenu's
+-- text from toolbars/, or nil. -> the new text, how many written
+function M.menu_plan(menu, styles, remove, read_toolbar, warnings)
+  local eol = (menu or ""):find("\r\n", 1, true) and "\r\n" or "\n"
+  local secs = { { nil, {} } }
+  for _, l in ipairs(lines_of(menu)) do
+    if l:match("^%[") and l:match("%]%s*$") then secs[#secs + 1] = { l:match("^%s*(.-)%s*$"), {} } else table.insert(secs[#secs][2], l) end
+  end
+  local function ours(body) for _, l in ipairs(body) do if l:match("^title=ReaPersona") or l:match("^title=DAW Styles") then return true end end end
+  for n = #secs, 1, -1 do if secs[n][1] and secs[n][1]:match("^%[Floating") and ours(secs[n][2]) then table.remove(secs, n) end end
+  local written = 0
+  for _, st in ipairs(remove and {} or styles) do
+    for _, kind in ipairs({ { "toolbar_slot", "toolbar_file", "toolbar", "[Floating toolbar %d]", "" },
+                            { "midi_toolbar_slot", "midi_toolbar_file", "midi_toolbar", "[Floating MIDI toolbar %d]", " piano roll" } }) do
+      local slot, file, list = math.tointeger(st[kind[1]]), st[kind[2]], st[kind[3]]
+      if slot and slot ~= 0 and (file or list) then
+        local h, body = string.format(kind[4], slot), nil
+        local text = file and read_toolbar(file)
+        local taken = false
+        for _, s in ipairs(secs) do if s[1] == h then for _, l in ipairs(s[2]) do if l:match("^item_") then taken = true end end end end
+        if file and not text then warnings[#warnings + 1] = string.format("%s: toolbars/%s isn't here (from its theme pack), so it keeps your toolbar", st.name, file)
+        elseif taken then warnings[#warnings + 1] = string.format("%s already holds one of your toolbars: %s's not written", h, st.name)
+        else
+          body = {}
+          if file then
+            local on = false
+            for _, l in ipairs(splitlines(text)) do
+              if l:match("^%[") then if on then break end on = true
+              elseif on and l ~= "" and not l:match("^title=") then body[#body + 1] = l end
+            end
+          else
+            for i, it in ipairs(list) do
+              if it == -1 then body[#body + 1] = string.format("item_%d=-1", i - 1)
+              else
+                if it[3] then body[#body + 1] = string.format("icon_%d=%s", i - 1, idstr(it[3])) end
+                body[#body + 1] = string.format("item_%d=%s %s", i - 1, idstr(it[1]), idstr(it[2]))
+              end
+            end
+          end
+          body[#body + 1] = "title=ReaPersona: " .. st.name .. kind[5]
+          body[#body + 1] = ""
+          for n = #secs, 1, -1 do if secs[n][1] == h then table.remove(secs, n) end end
+          secs[#secs + 1] = { h, body }
+          written = written + 1
+        end
+      end
+    end
+  end
+  local out = {}
+  for _, s in ipairs(secs) do if s[1] then out[#out + 1] = s[1] end for _, l in ipairs(s[2]) do out[#out + 1] = l end end
+  while #out > 0 and out[#out] == "" do out[#out] = nil end
+  return (table.concat(out, "\n") .. "\n"):gsub("\n", eol), written
+end
+
+function M.pid_from_tasklist(out, title) -- `tasklist /V /FO CSV /NH` rows for reaper.exe -> this REAPER's process id (by its main window's title), or nil (pure)
+  local rows, hit = {}, nil
+  for line in (out or ""):gmatch("[^\r\n]+") do
+    local pid = line:match('^"[^"]*","(%d+)"')
+    if pid then rows[#rows + 1] = { pid, line:match('"([^"]*)"%s*$') } end
+  end
+  if #rows == 1 then return rows[1][1] end
+  for _, r in ipairs(rows) do if title and r[2] == title then if hit then return nil end hit = r[1] end end -- (two with that title: can't tell)
+  return hit
+end
+function M.reaper_pid()
+  local title = reaper.JS_Window_GetTitle and reaper.JS_Window_GetTitle(reaper.GetMainHwnd()) or nil
+  return M.pid_from_tasklist(reaper.ExecProcess('tasklist /V /FO CSV /NH /FI "IMAGENAME eq reaper.exe"', 15000), title)
+end
+
+-- Plan the install and write the batch step. o: { remove, no_midi, pid, exe, cfg, projects = {...}, stamp }. Nothing of REAPER's is
+-- touched here: the batch file does that once REAPER has closed. -> the batch file's path, or nil + why
+function M.stage_install(o)
+  local function slurp(p) local f = io.open(p, "rb"); if not f then return nil end local t = f:read("a"); f:close(); return t end
+  local dir = M.here .. "/install_staged"
+  reaper.RecursiveCreateDirectory(dir, 0)
+  reaper.EnumerateFiles(dir, -1)
+  local old = {}
+  for i = 0, 200 do local f = reaper.EnumerateFiles(dir, i); if not f then break end old[#old + 1] = f end
+  for _, f in ipairs(old) do os.remove(dir .. "/" .. f) end -- (a plan from before that never ran)
+  local styles = M.load_json(M.here .. "/styles.json")
+  local user = M.load_json(M.here .. "/user_styles.json")
+  local scripts = M.load_json(M.here .. "/scripts.json")
+  local man = M.load_json(M.here .. "/installed.json")
+  local old_fb = M.load_json(M.here .. "/midi_fallback.json")
+  for _, v in ipairs({ { "styles.json", styles }, { "user_styles.json", user }, { "scripts.json", scripts }, { "installed.json", man }, { "midi_fallback.json", old_fb } }) do
+    if not v[2] then return nil, v[1] .. " doesn't parse, so nothing was installed (a copy of it is next to it)" end
+  end
+  styles = styles.styles or {}
+  for _, s in ipairs(user.styles or {}) do styles[#styles + 1] = s end
+  local defaults = reaper.file_exists(M.here .. "/midi_defaults.json") and M.load_json(M.here .. "/midi_defaults.json") or nil
+  local status, moves, deletes = {}, {}, {}
+  local pend = {}
+  for _, name in ipairs({ "reaper-kb.ini", "reaper-mouse.ini", "reaper-menu.ini", "reaper-screensets.ini" }) do
+    pend[name] = not o.remove and slurp(M.here .. "/pending/" .. name) or nil
+    if pend[name] then deletes[#deletes + 1] = M.here .. "/pending/" .. name; status[#status + 1] = "took in " .. name .. " from your other computers (yours backed up first)" end
+  end
+  local function eol_of(t) return (t or ""):find("\r\n", 1, true) and "\r\n" or "\n" end
+  local function merged(name, live, fn) if not pend[name] then return live end return (fn(live or "", pend[name]):gsub("\n", eol_of(live))) end
+  local windows = reaper.GetOS():find("^Win") ~= nil
+  local kb_live = slurp(res .. "/reaper-kb.ini")
+  local kb, written, fallback, added, warnings = M.kb_plan(merged("reaper-kb.ini", kb_live, M.merge_kb), styles, scripts, man.lines, old_fb, defaults, o.remove, o.no_midi, windows)
+  local menu_live = slurp(res .. "/reaper-menu.ini")
+  local menu, tb = M.menu_plan(merged("reaper-menu.ini", menu_live, M.merge_ini) or "", styles, o.remove, function(f)
+    if f:find("..", 1, true) then return nil end return slurp(M.here .. "/toolbars/" .. f) end, warnings)
+  moves[#moves + 1] = { "reaper-kb.ini", kb_live, kb, "rotate" }
+  moves[#moves + 1] = { "reaper-menu.ini", menu_live, menu, "rotate" }
+  for _, name in ipairs({ "reaper-mouse.ini", "reaper-screensets.ini" }) do
+    if pend[name] then local live = slurp(res .. "/" .. name); moves[#moves + 1] = { name, live, merged(name, live, M.merge_ini), "sync" } end
+  end
+  status[#status + 1] = string.format("%s %d toolbar(s)", o.remove and "removed ReaPersona toolbars;" or "wrote", tb)
+  for _, w in ipairs(warnings) do status[#status + 1] = "skipped: " .. w end
+  if reaper.file_exists(M.here .. "/pending/prefs.json") and not o.remove then
+    status[#status + 1] = "REAPER's preferences from your other computers still wait: putting them in needs Python (REAPER writes them as it quits)"
+  end
+  -- The batch file. Paths in Windows form, % doubled (cmd reads it as a variable even inside quotes); UTF-8 (chcp 65001) for names like ChiliØ.
+  local function w(p) return '"' .. p:gsub("/", "\\"):gsub("%%", "%%%%") .. '"' end
+  local stamp = o.stamp or os.date("%Y%m%d-%H%M%S")
+  local b = { "@echo off", "chcp 65001 >nul", "rem ReaPersona: the shortcut install without Python, written by reapersona_core.lua (M.stage_install). It waits for",
+    "rem REAPER to close, swaps the staged files in if nothing changed the originals since they were read, and starts REAPER again.", "set n=0", ":wait" }
+  local cancel = M.here .. "/install_cancelled"
+  b[#b + 1] = "if exist " .. w(cancel) .. " goto cancelled"
+  local sys = '"%SystemRoot%\\System32\\' -- (Windows' own tools by full path: Git's find on the PATH is another program)
+  if o.pid then b[#b + 1] = sys .. 'tasklist.exe" /FI "PID eq ' .. o.pid .. '" /NH 2>nul | ' .. sys .. 'find.exe" " ' .. o.pid .. ' " >nul || goto closed'
+  else b[#b + 1] = sys .. 'tasklist.exe" /FI "IMAGENAME eq reaper.exe" /NH 2>nul | ' .. sys .. 'find.exe" /i "reaper.exe" >nul || goto closed' end -- shortcut: any REAPER counts when this one's id wasn't found
+  for _, l in ipairs({ "set /a n+=1", "if %n% geq 180 goto notclosed", sys .. 'ping.exe" -n 2 127.0.0.1 >nul', "goto wait", ":closed" }) do b[#b + 1] = l end -- (180 x 1 s: REAPER may be asking whether to save)
+  local swaps, backup_of = {}, {}
+  for i, m in ipairs(moves) do
+    local name, live, new, kind = m[1], m[2], m[3], m[4]
+    local dst = res .. "/" .. name
+    if live == new and name ~= "reaper-kb.ini" then goto next_move end -- (unchanged menus: nothing to check or swap)
+    if not M.write(dir .. "/" .. i .. ".new", new) then return nil, "couldn't write in " .. dir end
+    if live then
+      M.write(dir .. "/" .. i .. ".seen", live)
+      b[#b + 1] = sys .. 'fc.exe" /b ' .. w(dst) .. " " .. w(dir .. "/" .. i .. ".seen") .. " >nul 2>&1 || goto changed"
+      local base = name .. ".before-reapersona-" .. (kind == "sync" and "sync-" or "")
+      local bk, n = res .. "/" .. base .. stamp, 1
+      while reaper.file_exists(bk) do n = n + 1; bk = res .. "/" .. base .. stamp .. "-" .. n end
+      backup_of[name] = bk
+      swaps[#swaps + 1] = "copy /y " .. w(dst) .. " " .. w(bk) .. " >nul || goto failed"
+      if kind == "rotate" then -- (install_shortcuts.backup_of: the first backup, your keymap before ReaPersona, and the newest 4 are kept)
+        local have = {}
+        reaper.EnumerateFiles(res, -1)
+        for j = 0, 100000 do
+          local f = reaper.EnumerateFiles(res, j)
+          if not f then break end
+          if f:sub(1, #name + 19) == name .. ".before-reapersona-" then have[#have + 1] = f end
+        end
+        table.sort(have)
+        for j = 2, #have - 3 do swaps[#swaps + 1] = "del " .. w(res .. "/" .. have[j]) .. " 2>nul" end
+      end
+    else b[#b + 1] = "if exist " .. w(dst) .. " goto changed" end
+    swaps[#swaps + 1] = "copy /y " .. w(dir .. "/" .. i .. ".new") .. " " .. w(dst .. ".tmp") .. " >nul || goto failed"
+    swaps[#swaps + 1] = "move /y " .. w(dst .. ".tmp") .. " " .. w(dst) .. " >nul || goto failed"
+    ::next_move::
+  end
+  for _, own in ipairs({ { "midi_fallback.json", M.json_encode(fallback) .. "\n" }, { "installed.json", M.json_encode({ lines = written }) .. "\n" } }) do
+    if not M.write(dir .. "/" .. own[1], own[2]) then return nil, "couldn't write in " .. dir end
+    swaps[#swaps + 1] = "copy /y " .. w(dir .. "/" .. own[1]) .. " " .. w(M.here .. "/" .. own[1]) .. " >nul || goto failed"
+  end
+  status[#status + 1] = string.format("%s %d shortcut(s); backup: %s", o.remove and "removed ReaPersona," or "installed", added, backup_of["reaper-kb.ini"] or "(none: there was no keymap yet)")
+  local st_file = M.here .. "/last_install.txt"
+  M.write(dir .. "/ok.txt", table.concat(status, "\n") .. "\n")
+  M.write(dir .. "/changed.txt", "not installed: REAPER's keymap or menus changed after ReaPersona read them, so nothing was swapped in. Press Install again.\n")
+  M.write(dir .. "/failed.txt", "not installed: a file couldn't be written (your keymap was backed up first, next to reaper-kb.ini)\n")
+  M.write(dir .. "/notclosed.txt", "REAPER didn't close, so the shortcuts weren't installed.\n")
+  for _, l in ipairs(swaps) do b[#b + 1] = l end
+  for _, p in ipairs(deletes) do b[#b + 1] = "del " .. w(p) .. " 2>nul" end
+  for _, l in ipairs({ "copy /y " .. w(dir .. "/ok.txt") .. " " .. w(st_file) .. " >nul", "goto relaunch",
+    ":changed", "copy /y " .. w(dir .. "/changed.txt") .. " " .. w(st_file) .. " >nul", "goto relaunch",
+    ":failed", "copy /y " .. w(dir .. "/failed.txt") .. " " .. w(st_file) .. " >nul", "goto relaunch",
+    ":notclosed", "copy /y " .. w(dir .. "/notclosed.txt") .. " " .. w(st_file) .. " >nul", "goto done",
+    ":cancelled", "del " .. w(cancel) .. " 2>nul", "goto done", ":relaunch" }) do b[#b + 1] = l end
+  if o.exe then
+    local args = (o.cfg and reaper.file_exists(o.cfg)) and (" -cfgfile " .. w(o.cfg)) or ""
+    for _, p in ipairs(o.projects or {}) do args = args .. " " .. w(p) end
+    b[#b + 1] = 'start "" ' .. w(o.exe) .. args
+  end
+  b[#b + 1] = ":done"
+  b[#b + 1] = "(goto) 2>nul & rmdir /s /q " .. w(dir) -- (the folder goes, this file with it: cmd stops reading it there)
+  local bat = dir .. "/install.cmd"
+  if not M.write(bat, table.concat(b, "\r\n") .. "\r\n") then return nil, "couldn't write " .. bat end
+  return bat
+end
+
 function M.toolbar_installed(section) -- is [Floating toolbar N] / [Floating MIDI toolbar N] one of ours in reaper-menu.ini?
   local t = M.read(res .. "/reaper-menu.ini") or ""
   local body = M.ini_section(t, section)

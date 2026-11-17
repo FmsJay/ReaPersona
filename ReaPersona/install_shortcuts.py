@@ -373,6 +373,7 @@ def apply_setup():
 
 
 def run(remove=False, no_midi=False):
+    # (reapersona_core.lua ports this and install_toolbars as kb_plan, menu_plan and stage_install, the install on Windows without Python: keep the two in step)
     if reaper_running():
         sys.exit("Close REAPER first: it reads its keymap only when it starts.")
     scripts = json.load(open(os.path.join(HERE, "scripts.json"), encoding="utf-8")) if os.path.exists(os.path.join(HERE, "scripts.json")) else {}

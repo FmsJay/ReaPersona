@@ -441,6 +441,56 @@ for _, id in ipairs({ "mixing", "mastering", "video" }) do
   assert(st and #st.feel > 0, id)
 end
 assert(core.synced_setting("inputs preset_x") == false, "each computer's inputs stay on it")
+-- 12. The install without Python (5.14): install_shortcuts.py's rules in Lua, and the batch step run for real (Windows).
+-- (the same checks as install_shortcuts.py's own asserts)
+assert(core.merge_kb("KEY 1 65 40001 0\nSCR 4 0 RSaa \"Custom: a\" a.lua\nKEY 1 66 40002 0\n", "KEY 1 65 40099 0\nACT 0 0 \"x\" \"y\" 1\n") ==
+  "SCR 4 0 RSaa \"Custom: a\" a.lua\nKEY 1 66 40002 0\nKEY 1 65 40099 0\nACT 0 0 \"x\" \"y\" 1\n")
+local kmine = "SCR 4 0 RSaa \"Custom: a\" a.lua\nKEY 9 90 _RSmine 0\n"
+assert(core.merge_kb(kmine, "KEY 9 90 _RSzz 0\nKEY 9 90 0 0\nKEY 1 70 40001 3\nKEY 1 71 _RSaa 0\n") == kmine .. "KEY 1 71 _RSaa 0\n", "another computer's script ids, off keys and persona layers stay out")
+assert(core.merge_ini("[a]\nx=1\n[b]\ny=2\n", "[b]\ny=3\n[c]\nz=4\n") == "[a]\nx=1\n[b]\ny=3\n[c]\nz=4\n")
+local pst = { { name = "A", alt = 3, keys = { { "Ctrl+Shift+L", 40001, "x" }, { "Ctrl+Z", "MAIN:Ctrl+Z", "Undo" }, { "Q", "script:next", "n" }, { "Bogus+Q", 1, "bad" } },
+  midi_keys = { { "Ctrl+M", "x" } } } }
+local pscripts = { main = { next = "_RSnext" }, midi = { ["Ctrl+M"] = "_RSmidiM" } }
+local pkb = "KEY 9 90 _RSundo 0\r\nKEY 13 76 40099 3\r\nKEY 9 77 40500 32060\r\nKEY 1 65 40001 5\t\t # ReaPersona : old\r\n"
+local nkb, nwritten, nfb, nadded, nwarn = core.kb_plan(pkb, pst, pscripts, nil, {}, {}, false, false, true)
+assert(nkb:find("KEY 13 76 40099 3", 1, true) and not nkb:find("40001 3", 1, true), "a key you rebound in the layer stays yours")
+assert(nkb:find("KEY 9 90 _RSundo 3", 1, true), "MAIN: takes what the Main section runs on that key (StudioSync's Undo)")
+assert(nkb:find("KEY 1 81 _RSnext 3", 1, true) and nkb:find("KEY 9 77 _RSmidiM 32060", 1, true))
+assert(nfb["Ctrl+M"].cmd == "40500" and not nkb:find("40500", 1, true), "your MIDI editor line moves into midi_fallback.json")
+assert(not nkb:find("40001 5", 1, true) and nadded == 3 and #nwritten == 2 and #nwarn == 1 and nwarn[1]:find("Bogus", 1, true))
+assert(not nkb:gsub("\r\n", ""):find("\n"), "CRLF kept")
+assert(select(5, core.kb_plan(pkb, pst, pscripts, nil, {}, nil))[2]:find("midi_defaults", 1, true), "no MIDI keys without REAPER's MIDI defaults")
+local rkb = core.kb_plan(nkb, pst, pscripts, nwritten, nfb, {}, true)
+assert(rkb == "KEY 9 90 _RSundo 0\r\nKEY 13 76 40099 3\r\nKEY 9 77 40500 32060\r\n", "remove: only ReaPersona's lines go, your MIDI line comes back: " .. rkb)
+local warns = {}
+local nmenu, ntb = core.menu_plan("[Floating toolbar 5]\nitem_0=1 x\ntitle=ReaPersona: Old\n[Floating toolbar 6]\nitem_0=9 mine\n[Main toolbar]\nitem_0=40001 Play\n",
+  { { name = "A", toolbar_slot = 5, toolbar = { { 40001, "Play" }, -1, { 40002, "Stop", "icon.png" } } }, { name = "B", toolbar_slot = 6, toolbar = { { 1, "a" } } },
+    { name = "C", toolbar_slot = 7, toolbar_file = "missing.ReaperMenu" } }, false, function() return nil end, warns)
+assert(ntb == 1 and #warns == 2 and nmenu == "[Floating toolbar 6]\nitem_0=9 mine\n[Main toolbar]\nitem_0=40001 Play\n\n[Floating toolbar 5]\nitem_0=40001 Play\nitem_1=-1\nicon_2=icon.png\nitem_2=40002 Stop\ntitle=ReaPersona: A\n", nmenu)
+assert(core.menu_plan(nmenu, {}, true, nil, {}) == "[Floating toolbar 6]\nitem_0=9 mine\n[Main toolbar]\nitem_0=40001 Play\n", "remove takes only ReaPersona's toolbars")
+local tl = '0\n"reaper.exe","100","Console","1","9 K","Running","x","0:00:01","REAPER v7 - a.rpp"\n"reaper.exe","200","Console","1","9 K","Running","x","0:00:01","REAPER v7 - b.rpp"\n'
+assert(core.pid_from_tasklist(tl, "REAPER v7 - b.rpp") == "200" and core.pid_from_tasklist(tl, "nope") == nil and core.pid_from_tasklist(tl:match("^0\n[^\n]+\n"), nil) == "100")
+if win then -- (the staged install, swapped in by its batch file: a process id that isn't running = REAPER has closed)
+  write(tmp .. "/styles.json", '{"styles": [{"id": "a", "name": "A", "alt": 3, "keys": [["Ctrl+Shift+L", 40001, "x"]], "toolbar_slot": 5, "toolbar": [[40001, "Play"]]}]}')
+  write(tmp .. "/reaper-kb.ini", "KEY 1 65 40001 0\r\n")
+  write(tmp .. "/reaper-kb.ini.before-reapersona-20200101-000000", "first\r\n")
+  for i = 1, 5 do write(tmp .. "/reaper-kb.ini.before-reapersona-2025010" .. i .. "-000000", "x") end
+  local bat = assert(core.stage_install({ pid = "999999", stamp = "20260101-000000" }))
+  assert(read(bat):find("chcp 65001", 1, true) and not read(tmp .. "/reaper-kb.ini"):find("40001 3", 1, true), "nothing of REAPER's is touched before it closes")
+  os.execute('cmd /c ""' .. bat:gsub("/", "\\") .. '""')
+  local after = read(tmp .. "/reaper-kb.ini")
+  assert(after:find("KEY 13 76 40001 3", 1, true) and after:find("KEY 1 65 40001 0", 1, true), after)
+  assert(read(tmp .. "/reaper-kb.ini.before-reapersona-20260101-000000") == "KEY 1 65 40001 0\r\n", "backed up first")
+  assert(read(tmp .. "/reaper-kb.ini.before-reapersona-20200101-000000") and not read(tmp .. "/reaper-kb.ini.before-reapersona-20250102-000000")
+    and read(tmp .. "/reaper-kb.ini.before-reapersona-20250103-000000"), "the first backup and the newest 4 kept")
+  assert(read(tmp .. "/reaper-menu.ini"):find("title=ReaPersona: A", 1, true) and read(tmp .. "/installed.json"):find("13 76 40001 3", 1, true))
+  assert(read(tmp .. "/last_install.txt"):find("installed 1 shortcut", 1, true) and not reaper.file_exists(tmp .. "/install_staged/install.cmd"))
+  -- a keymap changed after it was read: nothing swapped in, and you're told
+  bat = assert(core.stage_install({ pid = "999999", stamp = "20260101-000001", remove = true }))
+  write(tmp .. "/reaper-kb.ini", after .. "KEY 1 66 40002 0\r\n")
+  os.execute('cmd /c ""' .. bat:gsub("/", "\\") .. '""')
+  assert(read(tmp .. "/reaper-kb.ini") == after .. "KEY 1 66 40002 0\r\n" and read(tmp .. "/last_install.txt"):find("changed", 1, true))
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")
