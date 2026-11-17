@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.14.0
+-- @version 5.15.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -254,6 +254,7 @@ end
 local selected, filter, pfilter = reaper.GetExtState(SECTION, "style"), "", ""
 local page = reaper.GetExtState(SECTION, "page") ~= "" and reaper.GetExtState(SECTION, "page") or "DAWs" -- (the page you were on)
 local search_q, search_focus = "", false -- (search everything: top bar, Ctrl+K)
+local MOD = (reaper.GetOS():find("^OSX") or reaper.GetOS():find("^mac")) and "Cmd" or "Ctrl" -- (what ImGui's Ctrl is called on this computer)
 local function go(pg) -- (a screen reader with OSARA hears the page's name)
   page = pg; search_q = ""; reaper.SetExtState(SECTION, "page", pg, false)
   if reaper.osara_outputMessage then reaper.osara_outputMessage(pg == "Guide" and "How it works" or pg) end
@@ -268,7 +269,8 @@ local install_shortcuts -- (REAPER closes, the shortcuts and your synced setup g
 local ensure_new = false -- (a merged style needs its one-key action registered)
 local check_msg, toast, toast_until = "", "", 0
 local said -- (the last thing said: the screen-reader menu shows it in a message box)
-local function speak(text) if reaper.osara_outputMessage then reaper.osara_outputMessage(tostring(text)) end end -- (OSARA reads it out)
+local menu_mode = false -- (the screen-reader menu is open: results go in a message box, which the screen reader reads)
+local function speak(text) if reaper.osara_outputMessage and not menu_mode then reaper.osara_outputMessage(tostring(text)) end end -- (OSARA reads it out)
 local function say(text) toast, toast_until, said = tostring(text), reaper.time_precise() + 6 + 0.06 * #tostring(text), tostring(text); speak(text) end
 
 local function open_extra(x)
@@ -292,10 +294,12 @@ local function install_ext(key)
   reaper.MB(ok and (x.name .. " is installed. Restart REAPER to load it (REAPER loads extensions when it starts).")
     or ("Couldn't install " .. x.name .. ": " .. tostring(why)), "ReaPersona", 0)
 end
-local last_style -- (the style before the last switch: Undo switch goes back to it)
+local last_style = reaper.GetExtState(SECTION, "last style") -- (the persona before the last switch: Undo switch goes back to it; kept, so
+-- closing the window or the menu doesn't lose it. Review, 5.14)
+if last_style == "" then last_style = nil end
 local function use(st)
   local was = core.current()
-  if was and was.id ~= st.id then last_style = was.id end
+  if was and was.id ~= st.id then last_style = was.id; reaper.SetExtState(SECTION, "last style", was.id, true) end
   -- (a theme on trial gives way to the persona's, but the one it was trying over is what this persona had: leaving My REAPER
   -- mid-trial kept the trial theme as My REAPER's own. Review, 5.9.3)
   if trying and trying.back then reaper.OpenColorThemeFile(themes_dir .. trying.back) end
@@ -458,6 +462,10 @@ local function detail(sel, alt)
     heading(sel.name, 24)
     if on then ImGui.SameLine(ctx, 0, 12); pill("In use", solid(col)) end
     muted(sel.description or "")
+    if MOD == "Cmd" then -- (a Mac: keys macOS keeps, which never reach REAPER)
+      local taken = core.mac_taken(sel.keys)
+      if #taken > 0 then muted("macOS keeps these for itself, so they don't reach REAPER unless you turn them off in System Settings > Keyboard > Keyboard Shortcuts: " .. table.concat(taken, ", ") .. ".") end
+    end
     if (sel.alt or 0) > 0 and not installed[sel.alt] then
       ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.YELLOW)
       ImGui.TextWrapped(ctx, "Its shortcuts aren't installed yet: Home > Shortcut layers > Install and restart.")
@@ -504,10 +512,13 @@ local function detail(sel, alt)
     if sel.project then -- (a workflow)
       ImGui.SameLine(ctx)
       if ImGui.Button(ctx, "New project with it") then
-        if not on then use(sel) end
-        reaper.Main_OnCommand(40859, 0) -- (a new tab, so nothing open is replaced)
-        local done = core.apply_project(sel)
-        say("A new project with " .. sel.name .. (#done > 0 and (": " .. table.concat(done, ", ")) or "") .. ".")
+        -- (a new tab without the default template, whose tracks would stop the workflow's; this tab if it's still untouched. Review, 5.14)
+        if not core.fresh_project(0) then reaper.Main_OnCommand(41929, 0) end
+        if not on then use(sel)
+        else
+          local done = core.apply_project(sel)
+          say("A new project with " .. sel.name .. (#done > 0 and (": " .. table.concat(done, ", ")) or "") .. ".")
+        end
       end
       ImGui.SetItemTooltip(ctx, "Opens a new project tab set up by this workflow.")
       if on and reaper.CountTracks(0) > 0 then
@@ -1042,7 +1053,7 @@ local function settings_page()
     heading("Screen readers")
     muted("A screen reader (NVDA, JAWS or VoiceOver, through OSARA) can't read this window. ReaPersona's menu it can: REAPER's own menu with the main tasks, and the results in message boxes.")
     if setting_row("##srmenu", "Open the menu instead of this window", reaper.GetExtState(SECTION, "screen reader") == "1",
-        "ReaPersona's action then opens the menu; its last item opens this window.") then
+        "ReaPersona's action then opens the menu. The action 'ReaPersona - screen-reader menu' opens it either way.") then
       reaper.SetExtState(SECTION, "screen reader", reaper.GetExtState(SECTION, "screen reader") == "1" and "0" or "1", true)
     end
     card_end()
@@ -1500,7 +1511,7 @@ function install_shortcuts(remove) -- (remove: Remove ReaPersona, which has aske
   else
     local bat, why = core.stage_install({ remove = remove, pid = core.reaper_pid(), exe = exe, cfg = cfg, projects = projects })
     if not bat then return reaper.MB("Nothing was installed: " .. tostring(why), "ReaPersona", 0) end
-    reaper.ExecProcess('cmd.exe /c ""' .. bat:gsub("/", "\\") .. '""', -1)
+    reaper.ExecProcess('cmd.exe /c ""' .. bat:gsub("/", "\\") .. '""', -2) -- (-2: minimized, so it isn't closed halfway by mistake)
   end
   os.remove(here .. "/install_cancelled")
   reaper.Main_OnCommand(40004, 0) -- (File: Quit, with REAPER's own save prompts)
@@ -1535,7 +1546,7 @@ end
 local function setup_page()
   if reaper.GetExtState(SECTION, "welcomed") == "" and card("welcome") then -- (the first run: pick your DAW, it's in use straight away)
     heading("Which DAW are you coming from?", 20)
-    muted("Pick it and REAPER takes on its shortcuts, look and layout. You can switch any time, and Back to My REAPER puts everything back.")
+    muted("Pick it and REAPER takes on its look and layout now, and its shortcuts once they're installed (Getting started, below). You can switch any time, and Back to My REAPER puts everything back.")
     local n = 0
     for _, st in ipairs(styles) do
       if st.kind ~= "theme" and (st.alt or 0) > 0 and not st.user and not st.preset and st.id ~= "base_reaper" then
@@ -1550,14 +1561,18 @@ local function setup_page()
     if ImGui.SmallButton(ctx, "I'll pick later") then reaper.SetExtState(SECTION, "welcomed", "1", true) end
     card_end()
   end
+  local have0, want0 = shortcuts_state()
+  if reaper.GetExtState(SECTION, "onboarded") == "" and core.current().id ~= "my_reaper" and have0 == want0 and core.startup_on() then
+    reaper.SetExtState(SECTION, "onboarded", "1", true) -- (steps 1-3 done: the card goes; step 4 is optional. Review, 5.14)
+  end
   if reaper.GetExtState(SECTION, "onboarded") == "" and card("first steps") then -- (5.14: the first run, step by step, until it's done or hidden)
     heading("Getting started")
-    local have, want = shortcuts_state()
+    local have, want = have0, want0
     local steps = {
-      { core.current().id ~= "my_reaper", "1. Pick the DAW you're coming from", "Its shortcuts, look and feel, straight away. Back to My REAPER (top) puts yours back.", "Pick one", function() go("DAWs") end },
+      { core.current().id ~= "my_reaper", "1. Pick the DAW you're coming from", "Its look and feel straight away, and its shortcuts once they're installed (step 2). Back to My REAPER (top) puts yours back.", "Pick one", function() go("DAWs") end },
       { have == want, "2. Install the shortcuts", "REAPER reads its keymap only when it starts: it closes, the persona layers go in (your keymap is backed up first) and it opens again.", "Install and restart", function() install_shortcuts() end },
       { core.startup_on(), "3. Bring your persona back when REAPER starts", "One block in Scripts/__startup.lua.", "Add it", function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end },
-      { core.sync_folder() ~= "", "4. More than one computer? (optional)", "Save your setup to a file, or keep them the same through a shared folder.", "Set it up", function() go("Settings") end },
+      { core.sync_folder() ~= "" and true or "optional", "4. More than one computer? (optional)", "Save your setup to a file, or keep them the same through a shared folder.", "Set it up", function() go("Settings") end },
     }
     if ImGui.BeginTable(ctx, "first steps", 3, ImGui.TableFlags_SizingStretchProp) then
       ImGui.TableSetupColumn(ctx, "state", ImGui.TableColumnFlags_WidthFixed, 56)
@@ -2159,23 +2174,23 @@ local GROUPS = { -- { name, what it's for, its pages (tabs), the tabs' labels }
 -- Help > How it works (5.14), also the screen-reader menu's Help: plain sentences, so the same text reads in a message box.
 local GUIDE = {
   { "Getting started", {
-    "1. Pick the DAW you're coming from: Personas > DAWs, or the first card on Home. REAPER takes on its shortcuts, look and feel straight away. Back to My REAPER (top) puts your own setup back, exactly as it was.",
+    "1. Pick the DAW you're coming from: Personas > DAWs, or the first card on Home. REAPER takes on its look and feel straight away, and its shortcuts once they're installed (step 2). Back to My REAPER (top) puts your own setup back, exactly as it was.",
     "2. Install the shortcuts: Home > Install and restart. REAPER reads its keymap only when it starts, so it closes (asking about anything unsaved), the persona layers go in and it opens again, in about 10 seconds. Do it again after adding or changing a persona.",
     "3. Add the startup line on Home, so your persona's keys come back each time REAPER starts.",
     "4. More than one computer? Settings > Your other computers: save your setup to a file, or keep them the same through a shared folder." } },
   { "What each page does", {
     "Home > Setup: the first steps, what ReaPersona can use and whether it's there (one click for each), importing from another DAW on this computer, and themes by other people. Drop theme, toolbar, keymap or persona files anywhere on the window to add them.",
-    "Personas > DAWs: each DAW's persona, with its keys, look and feel: Use it, or Try it. Your personas: the ones you saved or built, and your workflows. Persona Builder: stack blocks (a DAW's keys, its mouse, groups of REAPER settings, a theme) into a persona of your own.",
+    "Personas > DAWs: each DAW's persona, with its keys, look and feel: Use it, its cheat sheet, and a new project like it. Your personas: the ones you saved or built, and your workflows. Persona Builder: stack blocks (a DAW's keys, its mouse, groups of REAPER settings, a theme) into a persona of your own.",
     "Shortcuts: every key of a persona, with the REAPER action it runs.",
     "Themes > Your themes: the theme for each persona. Get more: the REAPER Stash and ReaPack. Adjust: change the theme in use, live. Build one: a theme from parts of others.",
     "Settings > ReaPersona: your other computers, what a persona may change, a persona per project, the screen-reader menu, this window's look, and removing ReaPersona. REAPER tweaks: REAPER's and SWS's options in groups.",
     "Help > How it works: this page. Check and repair: what's installed, a check of every persona against this REAPER, and registering ReaPersona's actions again." } },
   { "Keyboard", {
     "Tab and Shift+Tab move between controls, the arrow keys move within a page, Enter or Space presses, and Escape closes a menu or clears the search.",
-    "Ctrl+K searches everything: personas, keys, settings and pages. F1 opens this page." } },
+    "Ctrl+K (Cmd+K on a Mac) searches everything: personas, keys, settings and pages, when the window is wide enough to show the search box. F1 opens this page." } },
   { "Screen readers", {
-    "This window is drawn by ReaImGui, which a screen reader can't read. ReaPersona's menu it can: REAPER's own menu with the main tasks (pick a persona, back to My REAPER, install the shortcuts, your other computers, this help), with each result in a message box and spoken by OSARA.",
-    "Turn it on in Settings > ReaPersona > Screen readers (with OSARA installed, ReaPersona asks the first time). ReaPersona's action then opens the menu; its last item opens this window." } },
+    "This window is drawn by ReaImGui, which a screen reader can't read. ReaPersona's menu it can: a menu at the mouse pointer with the main tasks (pick a persona, back to My REAPER, undo a switch, save what you're using, a new project with a workflow, install the shortcuts, your other computers, the cheat sheet, this help), with each result in a message box.",
+    "The action 'ReaPersona - screen-reader menu' (Actions list) always opens it. To have ReaPersona's own action open the menu too, say yes when ReaPersona asks (with OSARA installed), or use the menu's item for it. 'Open ReaPersona's window' opens this window once." } },
   { "Your own setup is safe", {
     "A persona's keys sit in a shortcut layer of their own; keys it doesn't define fall through to yours, and Back to My REAPER puts back whatever a persona changed.",
     "Every install backs up your keymap first, next to it in REAPER's resource folder (reaper-kb.ini.before-reapersona-...). The first backup, from before ReaPersona, is always kept.",
@@ -2307,14 +2322,14 @@ local function top_bar(alt)
   ImGui.SetCursorPosY(ctx, y0 + 13)
   local col = accent_of(cur)
   pill(cur.name .. (in_use(cur, alt) and "" or "  (keys off)"), solid(col))
-  if not in_use(cur, alt) then ImGui.SetItemTooltip(ctx, "Its shortcut layer isn't on (REAPER restarted?): Use it again, or run 'ReaPersona - restore last style'.") end
+  if not in_use(cur, alt) then ImGui.SetItemTooltip(ctx, "Its shortcut layer isn't on (REAPER restarted?): Use it again, or add the startup line on Home so it comes back each time REAPER starts.") end
   local w = ImGui.GetWindowWidth(ctx)
   if w > 760 then -- (search, Ctrl+K; on a narrow window it's left out of the bar)
     ImGui.SameLine(ctx, 0, 16)
     ImGui.SetCursorPosY(ctx, y0 + 8)
     if ImGui.IsKeyChordPressed(ctx, ImGui.Mod_Ctrl | ImGui.Key_K) or search_focus then ImGui.SetKeyboardFocusHere(ctx); search_focus = false end
     ImGui.SetNextItemWidth(ctx, math.min(260, w - ImGui.GetCursorPosX(ctx) - 320))
-    local _, q = ImGui.InputTextWithHint(ctx, "##search", "Search everything (Ctrl+K)", search_q)
+    local _, q = ImGui.InputTextWithHint(ctx, "##search", "Search everything (" .. MOD .. "+K)", search_q)
     search_q = q
   end
   if search_q ~= "" and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then search_q = "" end
@@ -2524,7 +2539,8 @@ local function status_text()
   if #pend > 0 then t[#t + 1] = "From your other computers, waiting for REAPER to restart: " .. table.concat(pend, ", ") end
   return table.concat(t, "\n")
 end
-local function screen_reader_menu() -- -> true: open the window instead
+local function screen_reader_menu(once) -- -> true: open the window instead. once: opened by 'ReaPersona - screen-reader menu'
+  menu_mode = true
   local note = core.read(here .. "/last_install.txt")
   if note then os.remove(here .. "/last_install.txt"); reaper.MB(note, "ReaPersona: the last install", 0) end
   while true do
@@ -2545,6 +2561,21 @@ local function screen_reader_menu() -- -> true: open the window instead
     if cur.id ~= "my_reaper" then item("Back to My REAPER", function() use(core.by_id("my_reaper")) end) end
     local undo = last_style and last_style ~= cur.id and core.by_id(last_style)
     if undo then item("Undo switch: back to " .. undo.name, function() use(undo) end) end
+    item("Save what I'm using as a persona...", save_preset_prompt)
+    if cur.project then
+      item("New project with " .. cur.name, function()
+        if not core.fresh_project(0) then reaper.Main_OnCommand(41929, 0) end
+        local done = core.apply_project(cur)
+        say("A new project with " .. cur.name .. (#done > 0 and (": " .. table.concat(done, ", ")) or "") .. ".")
+      end)
+      if reaper.CountTracks(0) > 0 then
+        item("Keep this project's track inputs for " .. cur.name .. " on this computer", function()
+          local n = core.keep_inputs(cur.id)
+          say("Kept the inputs of " .. n .. " track" .. (n == 1 and "" or "s") .. ": new projects with " .. cur.name .. " on this computer get them.")
+        end)
+      end
+    end
+    item("Cheat sheet for " .. cur.name .. " (opens in your browser)", function() local p, why = core.cheat_sheet(cur); if p then core.open_url(p) else say(why) end end)
     sep()
     local have, want = shortcuts_state()
     item((have < want and "Install" or "Reinstall") .. " the shortcuts (REAPER restarts)", "install")
@@ -2558,9 +2589,15 @@ local function screen_reader_menu() -- -> true: open the window instead
     sep()
     item("How ReaPersona works", function() reaper.MB(guide_text(), "ReaPersona: how it works", 0) end)
     item("Open ReaPersona's window", "window")
-    item("Open the window instead of this menu from now on", function()
-      reaper.SetExtState(SECTION, "screen reader", "0", true); say("ReaPersona opens its window from now on. Settings > Screen readers turns the menu back on.")
-    end)
+    if reaper.GetExtState(SECTION, "screen reader") == "1" then
+      item("ReaPersona's own action opens the window from now on", function()
+        reaper.SetExtState(SECTION, "screen reader", "0", true); say("ReaPersona's action opens its window from now on. The action 'ReaPersona - screen-reader menu' still opens this menu.")
+      end)
+    else
+      item("ReaPersona's own action opens this menu from now on", function()
+        reaper.SetExtState(SECTION, "screen reader", "1", true); say("ReaPersona's action opens this menu from now on.")
+      end)
+    end
     local fn = acts[show_menu(labels)]
     if not fn then return false end
     if fn == "window" then return true end
@@ -2568,15 +2605,17 @@ local function screen_reader_menu() -- -> true: open the window instead
     said = nil
     fn()
     if said then reaper.MB(said, "ReaPersona", 0) end
-    if reaper.GetExtState(SECTION, "screen reader") ~= "1" then return false end
+    if not once and reaper.GetExtState(SECTION, "screen reader") ~= "1" then return false end
   end
 end
 if reaper.osara_outputMessage and reaper.GetExtState(SECTION, "screen reader") == "" then -- (OSARA installed: ask once)
   reaper.SetExtState(SECTION, "screen reader", reaper.MB("OSARA is installed, so you may be using a screen reader. ReaPersona's window can't be read by one; its menu can.\n\n" ..
-    "Open the menu instead of the window each time? (The menu's last item, or Settings > Screen readers, changes this.)", "ReaPersona", 4) == 6 and "1" or "0", true)
+    "Open the menu instead of the window each time? (The action 'ReaPersona - screen-reader menu' opens it either way.)", "ReaPersona", 4) == 6 and "1" or "0", true)
 end
-local from_menu = reaper.GetExtState(SECTION, "screen reader") == "1"
-if from_menu and not screen_reader_menu() then
+local once = reaper.GetExtState(SECTION, "menu once") == "1" -- (the action 'ReaPersona - screen-reader menu': the menu, whatever the setting)
+reaper.DeleteExtState(SECTION, "menu once", false)
+local from_menu = once or reaper.GetExtState(SECTION, "screen reader") == "1"
+if from_menu and not screen_reader_menu(once) then
   local function wait_quit() -- (the install's quit, cancelled: the batch step or the Python is told, as loop() does for the window)
     if not quit_check then return end
     if reaper.time_precise() < quit_check then return reaper.defer(wait_quit) end
@@ -2587,6 +2626,7 @@ if from_menu and not screen_reader_menu() then
   wait_quit()
   return
 end
+menu_mode = false
 if from_menu then -- (the window from the menu: ReaImGui let go of the context made at the start while the menu was open, unused)
   ctx = new_ctx()
   font = ImGui.CreateFont("sans-serif"); ImGui.Attach(ctx, font)

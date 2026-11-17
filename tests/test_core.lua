@@ -460,6 +460,12 @@ assert(nfb["Ctrl+M"].cmd == "40500" and not nkb:find("40500", 1, true), "your MI
 assert(not nkb:find("40001 5", 1, true) and nadded == 3 and #nwritten == 2 and #nwarn == 1 and nwarn[1]:find("Bogus", 1, true))
 assert(not nkb:gsub("\r\n", ""):find("\n"), "CRLF kept")
 assert(select(5, core.kb_plan(pkb, pst, pscripts, nil, {}, nil))[2]:find("midi_defaults", 1, true), "no MIDI keys without REAPER's MIDI defaults")
+-- OSARA's keys stay OSARA's (review 5.14): its Main-section Ctrl+Shift+L and MIDI-editor Ctrl+M keep their actions, with a warning
+local okb, _, _, oadded, owarn = core.kb_plan("KEY 13 76 _OSARA_REPORT 0\nKEY 9 77 _OSARA_MIDI 32060\n", pst, pscripts, nil, {}, {}, false, false, false)
+assert(not okb:find("40001 3", 1, true) and not okb:find("_RSmidiM", 1, true) and okb:find("_OSARA_MIDI 32060", 1, true) and oadded == 2, okb)
+assert(owarn[#owarn]:find("kept OSARA's keys: 2", 1, true), table.concat(owarn, ";"))
+local taken = core.mac_taken({ { "Ctrl+Space", 1, "x" }, { "win:Ctrl+H", 1, "x" }, { "mac:Ctrl+M", 1, "x" }, { "Alt+Ctrl+D", 1, "x" }, { "Ctrl+J", 1, "x" } })
+assert(#taken == 3 and taken[1]:find("Cmd+M", 1, true) and taken[3]:find("Spotlight", 1, true), table.concat(taken, ";"))
 local rkb = core.kb_plan(nkb, pst, pscripts, nwritten, nfb, {}, true)
 assert(rkb == "KEY 9 90 _RSundo 0\r\nKEY 13 76 40099 3\r\nKEY 9 77 40500 32060\r\n", "remove: only ReaPersona's lines go, your MIDI line comes back: " .. rkb)
 local warns = {}

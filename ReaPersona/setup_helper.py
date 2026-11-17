@@ -87,8 +87,15 @@ def install(res, listfile):
 
 
 def self_test():
-    import tempfile
+    import shutil, tempfile
     d = tempfile.mkdtemp()
+    try:
+        _self_test(d)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)  # (it ran on every call and left a folder in TEMP each time. Review 5.14)
+
+
+def _self_test(d):
     os.makedirs(os.path.join(d, "ReaPack", "cache"))
     with open(os.path.join(d, "ReaPack", "cache", "R.xml"), "w") as f:
         f.write('<index><category name="FX"><reapack name="a.ext"><version name="1"><source platform="win64">u</source></version></reapack>'

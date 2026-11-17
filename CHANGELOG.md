@@ -1,5 +1,18 @@
 # Changelog
 
+## 5.15.0
+Fixes from a three-reviewer pass over 5.13 and 5.14:
+- **Screen readers:** a new action, *ReaPersona - screen-reader menu*, always opens the menu, so turning it off can't lock anyone out. The menu also saves what you're using, opens a new project with a workflow, keeps a workflow's inputs and opens the cheat sheet. Results are no longer spoken twice. The menu setting stays on each computer instead of syncing.
+- **OSARA's keys stay OSARA's:** installing the shortcuts never puts a persona key over a key OSARA uses (main section or MIDI editor), and says how many it left out.
+- **Workflows are safer:** a workflow sets up only a new project nothing has been done in (untitled, unchanged, no items, markers, tempo changes or master FX), and REAPER asks before anything would be replaced. *New project with it* opens a tab without the default project template, so the workflow isn't skipped, and no longer sets up two tabs. The project goes in before the persona's settings, so a template no longer resets them.
+- **Undo switch** survives closing the window or the menu.
+- **Install without Python:** your own MIDI editor keys are saved before the new keymap goes in; a sync that arrives while REAPER quits waits for the next install instead of being dropped; a missing styles.json stops the install instead of removing every persona; the batch window starts minimized.
+- **Backups:** sync backups no longer push the newest install backup out of the four kept.
+- **Plug-in and render presets no longer sync** (5.13.0 added them): each computer has its own copy of those files, so the newest whole file could replace another computer's presets. None were lost.
+- **Personas:** Cubase and Nuendo's Nudge Cursor moves by a grid division; their Cut time and fast wind keys say what they do in REAPER; workspaces are Alt+keypad 1-9. Nuendo's description says where it differs from Cubase. Pro Tools and Pro Tools Intro: clip groups are Ctrl+Alt+G/U, and the Tab to Transient and pre-roll notes match their keys.
+- **On a Mac** a persona's page lists its keys macOS keeps for itself (Cmd+Space, Cmd+H, Cmd+M, F11, Cmd+Option+D).
+- Getting started goes once its three steps are done (the fourth is optional); help, README and tooltips match what ReaPersona does. Workflow starters: voiceover has pre-roll on record, live looping keeps FX running while stopped, mixing has solo in front, music turns the click on.
+
 ## 5.14.0
 - **Install the shortcuts on Windows without Python.** Home > Install and restart now works with no Python: ReaPersona plans the install inside REAPER (the same rules as install_shortcuts.py, which stays the route where Python is) and a small batch file waits for REAPER to close, swaps the new keymap and toolbars in, backs your keymap up first and opens REAPER again. If anything changed the keymap between the plan and REAPER closing, nothing is swapped in and ReaPersona says so. Another computer's script keys are still never taken. Preferences from your other computers still need Python (REAPER writes them as it quits). Remove ReaPersona also takes the shortcut layers out without Python on Windows.
 - **A menu for screen readers.** ReaImGui's window is invisible to NVDA, JAWS and VoiceOver, so ReaPersona has a menu in REAPER's own menus with the main tasks: what's installed, pick a persona, back to My REAPER, undo the switch, install the shortcuts, sync or save and load your setup, and its help. Results come in message boxes, and OSARA speaks them and the page names in the window. Turn it on in Settings > ReaPersona > Screen readers; with OSARA installed ReaPersona asks the first time.

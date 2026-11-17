@@ -232,7 +232,8 @@ def backup_of(path):
         name = "%s-%d" % (stamp, n)
     shutil.copy2(path, name)
     folder, base = os.path.split(path)
-    old = sorted(f for f in os.listdir(folder) if f.startswith(base + ".before-reapersona-"))
+    old = sorted(f for f in os.listdir(folder) if f.startswith(base + ".before-reapersona-")
+                 and not f.startswith(base + ".before-reapersona-sync-"))  # (sync backups sort last and pushed out the one just made. Review 5.14)
     for f in old[1:-4]:  # (the oldest is the one from before ReaPersona ever changed anything: never removed)
         try:
             os.remove(os.path.join(folder, f))
@@ -457,8 +458,14 @@ def run(remove=False, no_midi=False):
     # 3. The new lines.
     added, written, fallback = 0, [], {}
     yours = {" ".join(l.split()[1:3] + l.split()[4:5]) for l in kept if key_of(l)}  # ("flags key section" of lines that stay)
+    # OSARA's keys stay OSARA's: a persona key over one took a screen-reader user's navigation and reports away (review 5.14)
+    osara = {" ".join(l.split()[1:3] + l.split()[4:5]) for l in kept if key_of(l) and l.split()[3].startswith("_OSARA")}
+    skipped = 0
     for f, k, cmd, alt, comment in plan:
         if "%d %d %d" % (f, k, alt) in yours:  # (you rebound this key in the style's layer: yours stays)
+            continue
+        if "%d %d 0" % (f, k) in osara:
+            skipped += 1
             continue
         if isinstance(cmd, str) and cmd.startswith("MAIN:"):
             cmd = main_command(kept, cmd[5:], {"Ctrl+Z": 40029, "Ctrl+Shift+Z": 40030}.get(cmd[5:], 0))
@@ -470,6 +477,9 @@ def run(remove=False, no_midi=False):
         if not cmd:
             warnings.append("MIDI %s: open the ReaPersona picker once first (registers the MIDI key scripts)" % spec); continue
         f, k = encode(spec)
+        if "%d %d %d" % (f, k, MIDI) in osara:
+            skipped += 1
+            continue
         for l in list(kept):
             p = l.split()
             if len(p) >= 5 and p[0] == "KEY" and p[1] == str(f) and p[2] == str(k) and p[4] == str(MIDI) and not ours(l):
@@ -479,6 +489,9 @@ def run(remove=False, no_midi=False):
             fallback[spec] = {"cmd": str(defaults[spec])}
         kept.append("KEY %d %d %s %d\t\t %s : MIDI editor : %s : %s" % (f, k, cmd, MIDI, TAG, spec, ", ".join(midi_specs[spec])))
         added += 1
+
+    if skipped:
+        warnings.append("kept OSARA's keys: %d persona key(s) left out" % skipped)
 
     # 4. Write: your moved MIDI editor lines first (midi_fallback.json), then the keymap, then the list of what was written.
     write_atomic(FALLBACK, json.dumps(fallback, indent=1).encode("utf-8"))
