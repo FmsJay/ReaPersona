@@ -290,7 +290,7 @@ for _, w in ipairs(core.WORKFLOWS) do assert(core.build_style(w.blocks(), w.name
 
 -- 10. Advanced syncing (5.11): what stays this computer's, file identity, the shared keymap and ini files, and seeding per kind.
 assert(core.pref_synced("autosaveint", "5") and core.pref_synced("projsrate", "48000") and core.pref_synced("reccfg", "63616C66"))
-for _, k in ipairs({ "wnd_x", "mixwnd_vis", "lastproject", "projecttab3", "vstpath64", "midiins_cs", "dockermode2", "workthreads", "defrecpath", "csurf_0", "zoom", "toolbar:header" }) do
+for _, k in ipairs({ "adjrecmanlatin", "adjrecmanlatout", "wnd_x", "mixwnd_vis", "lastproject", "projecttab3", "vstpath64", "midiins_cs", "dockermode2", "workthreads", "defrecpath", "csurf_0", "zoom", "toolbar:header" }) do
   assert(not core.pref_synced(k, "1"), k .. " stays this computer's")
 end
 assert(not core.pref_synced("render_pattern_0", "J:\\Music\\x") and not core.pref_synced("foo", "/Users/chilio/x"), "a path in the value stays too")

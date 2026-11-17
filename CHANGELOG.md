@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.11.4
+- An audio interface's recording latency offsets and buffer sizes stay each computer's own when REAPER's preferences sync (one computer's offset would shift every recording on another).
+
+
 ## 5.11.3
 - **A ReaPack repository that comes from another computer never installs everything in it.** 5.11.2 added it "as ReaPack is set here", and where ReaPack installs new packages by itself, a whole repository came in; its packages now come one by one (Install them), only the ones your other computers have.
 - StudioSync's per-computer tab scripts (its old BandSync name too) aren't synced as your scripts.

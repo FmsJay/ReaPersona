@@ -2616,7 +2616,7 @@ local PREF_HERE = { "_x$", "_y$", "_w$", "_h$", "_ew$", "_eh$", "_dx$", "_dy$", 
   "colwid", "_div", "^last", "recent", "projecttab", "path", "dir$", "^mf_", "^midiins", "^midiouts", "^midilat", "^midiinflag", "^csurf",
   "^docker", "^dockheight", "fullscreenrect", "^splash", "^multinst", "^hwfx", "^vst", "^lv2", "^clap", "^au_", "workthreads", "renderthreads",
   "^prefs", "^pspage", "^config", "screensetwnd", "^audio", "^asio", "^wasapi", "^dsound", "^coreaudio", "^waveout", "^alsa", "^jack", "^pulse", "^ks_",
-  "font", "uiscale", "retina", "hidpi",
+  "font", "uiscale", "retina", "hidpi", "^adjrec", "lat[io][nu]t?$", "latency", "^bsize", "^bufsize", -- (an interface's latency offsets, buffers)
   "hwout", "^zoom$", "^vzoom", "^toppane", "^langpack", "tmpl", "^lastproj", ":", "^ccresettab", "^insertmtracklast", "^errnowarn" }
 function M.pref_synced(k, v) -- (pure)
   local low = k:lower()
