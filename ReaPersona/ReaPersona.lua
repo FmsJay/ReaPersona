@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.12.0
+-- @version 5.12.1
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -398,10 +398,15 @@ local function save_preset_prompt()
   local ok, name = reaper.GetUserInputs("Save as a persona", 1, "Name,extrawidth=160,separator=\n", (cur.preset and cur.name or (cur.name .. " (mine)")))
   name = ok and name:gsub("^%s+", ""):gsub("%s+$", "") or ""
   if name == "" then return end
-  local st, why = core.save_preset(name)
+  local pj, n = core.project_now()
+  local wf = reaper.MB("Make " .. name .. " a workflow too?\n\nYes: a new, empty project with it gets this project's sample rate (" .. core.khz(pj.srate) .. ")" ..
+    (n > 0 and (" and " .. pj.tracks_name .. " (" .. (reaper.CountSelectedTracks(0) > 0 and "the selected ones" or "all of them") .. ", with their FX and routing, not their items)") or "") ..
+    ".\nNo: just the shortcuts, theme, layout and settings, as now.", "ReaPersona: save", 3)
+  if wf == 2 then return end
+  local st, why = core.save_preset(name, wf == 6)
   if not st then return say("Not saved: " .. tostring(why)) end
   selected = st.id
-  say("Saved " .. name .. ": it's in your list.")
+  say("Saved " .. name .. ": it's in your list" .. (wf == 6 and ", and new projects with it start like this one." or "."))
 end
 
 -- The grid of cards (or a list of chips, for a narrow window). Double-click uses one.
@@ -834,68 +839,6 @@ local function choose_sync_folder()
   say(rep and ("Syncing through " .. dir .. (rep.changed and (": " .. core.setup_summary(rep) .. " came in." .. ((rep.ext or 0) > 0 and (" " .. core.SETUP_RESTART) or "")) or ".")) or sync_err)
 end
 local function settings_page()
-  if card("set aspects") then
-    heading("What a persona may change")
-    muted("Switch off what you'd rather keep as it is, whatever persona you use. Takes effect the next time you use a persona; what a persona already changed is still put back when you switch away.")
-    for i, a in ipairs(core.ASPECTS) do
-      if setting_row("##asp" .. i, a[2], core.aspect_on(a[1])) then reaper.SetExtState(SECTION, "aspect " .. a[1], core.aspect_on(a[1]) and "0" or "1", true) end
-    end
-    card_end()
-  end
-  if card("set actions") then
-    heading("REAPER's Actions list")
-    muted("ReaPersona opens from Extensions > ReaPersona, View > ReaPersona or the Actions list. Switching persona from a key or a toolbar button needs its actions there: a key or button already using one keeps it either way.")
-    if setting_row("##allact", "Every ReaPersona action in REAPER's Actions list", core.all_actions()) then
-      reaper.SetExtState(SECTION, "all actions", core.all_actions() and "0" or "1", true)
-      core.ensure_scripts()
-    end
-    card_end()
-  end
-  if card("set projects") then
-    heading("A persona per project")
-    muted("Give a project its persona with 'Use for this project' on the persona's page; it's saved in the project. With this on, opening that project or switching to its tab switches persona, and the Builder's REAPER settings blocks make each project's workflow its own.")
-    if setting_row("##follow", "Switch persona with the project", core.follow_on()) then
-      reaper.SetExtState(SECTION, "follow projects", core.follow_on() and "0" or "1", true)
-      if core.follow_on() then core.start_following() end
-    end
-    local def = core.by_id(reaper.GetExtState(SECTION, "project default"))
-    ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Projects without one"); ImGui.SameLine(ctx)
-    ImGui.SetNextItemWidth(ctx, 260 * UI)
-    if ImGui.BeginCombo(ctx, "##projdef", def and ("switch to " .. def.name) or "keep the persona in use") then
-      if ImGui.Selectable(ctx, "keep the persona in use", not def) then reaper.SetExtState(SECTION, "project default", "", true) end
-      for _, st in ipairs(styles) do
-        if ImGui.Selectable(ctx, "switch to " .. st.name .. "##pd" .. st.id, def == st) then reaper.SetExtState(SECTION, "project default", st.id, true) end
-      end
-      ImGui.EndCombo(ctx)
-    end
-    if core.follow_on() and not core.startup_on() then
-      ImGui.TextColored(ctx, C.YELLOW, "Add the startup line (Home) so this keeps working after REAPER restarts.")
-    end
-    card_end()
-  end
-  if card("set playback") then
-    heading("Smooth playhead, scrolling and zoom")
-    muted("Most DAWs glide their playhead and zoom smoothly; REAPER steps. These two extensions add that. The DAW personas that feel that way recommend them.")
-    for key, x in pairs(core.EXTENSIONS) do
-      local state = core.extension_state(key)
-      if state == "on" or state == "off" then
-        if x.toggle then
-          if setting_row("##ext" .. key, x.name, state == "on", x.why) then reaper.Main_OnCommand(reaper.NamedCommandLookup(x.toggle), 0); core.forget() end
-        else ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, x.name .. ": installed") end
-        if x.settings then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Settings##set" .. key) then reaper.Main_OnCommand(reaper.NamedCommandLookup(x.settings), 0) end end
-      elseif state == "restart" then
-        ImGui.AlignTextToFramePadding(ctx); ImGui.TextColored(ctx, C.YELLOW, x.name .. ": installed, restart REAPER to load it")
-      else
-        ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, x.name .. ": not installed")
-        ImGui.SameLine(ctx)
-        if core.can_install(key) then
-          if primary("Install##inst" .. key) then install_ext(key) end
-        else muted("(" .. (x.where or "no download known") .. ")") end
-      end
-      ImGui.SetItemTooltip(ctx, x.why)
-    end
-    card_end()
-  end
   if card("set sync") then
     heading("Your other computers")
     muted("Your personas, presets and ReaPersona's settings, with Smooth Wheel Scroll's and ReaSmoothPlayhead's settings, in one file to take to another computer, or kept the same on all of them through a folder they share (Syncthing, Google Drive, Dropbox...). Themes, and where this computer's windows and dockers are, stay as they are.")
@@ -989,6 +932,68 @@ local function settings_page()
           end
         end
       end
+    end
+    card_end()
+  end
+  if card("set aspects") then
+    heading("What a persona may change")
+    muted("Switch off what you'd rather keep as it is, whatever persona you use. Takes effect the next time you use a persona; what a persona already changed is still put back when you switch away.")
+    for i, a in ipairs(core.ASPECTS) do
+      if setting_row("##asp" .. i, a[2], core.aspect_on(a[1])) then reaper.SetExtState(SECTION, "aspect " .. a[1], core.aspect_on(a[1]) and "0" or "1", true) end
+    end
+    card_end()
+  end
+  if card("set actions") then
+    heading("REAPER's Actions list")
+    muted("ReaPersona opens from Extensions > ReaPersona, View > ReaPersona or the Actions list. Switching persona from a key or a toolbar button needs its actions there: a key or button already using one keeps it either way.")
+    if setting_row("##allact", "Every ReaPersona action in REAPER's Actions list", core.all_actions()) then
+      reaper.SetExtState(SECTION, "all actions", core.all_actions() and "0" or "1", true)
+      core.ensure_scripts()
+    end
+    card_end()
+  end
+  if card("set projects") then
+    heading("A persona per project")
+    muted("Give a project its persona with 'Use for this project' on the persona's page; it's saved in the project. With this on, opening that project or switching to its tab switches persona, and the Builder's REAPER settings blocks make each project's workflow its own.")
+    if setting_row("##follow", "Switch persona with the project", core.follow_on()) then
+      reaper.SetExtState(SECTION, "follow projects", core.follow_on() and "0" or "1", true)
+      if core.follow_on() then core.start_following() end
+    end
+    local def = core.by_id(reaper.GetExtState(SECTION, "project default"))
+    ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Projects without one"); ImGui.SameLine(ctx)
+    ImGui.SetNextItemWidth(ctx, 260 * UI)
+    if ImGui.BeginCombo(ctx, "##projdef", def and ("switch to " .. def.name) or "keep the persona in use") then
+      if ImGui.Selectable(ctx, "keep the persona in use", not def) then reaper.SetExtState(SECTION, "project default", "", true) end
+      for _, st in ipairs(styles) do
+        if ImGui.Selectable(ctx, "switch to " .. st.name .. "##pd" .. st.id, def == st) then reaper.SetExtState(SECTION, "project default", st.id, true) end
+      end
+      ImGui.EndCombo(ctx)
+    end
+    if core.follow_on() and not core.startup_on() then
+      ImGui.TextColored(ctx, C.YELLOW, "Add the startup line (Home) so this keeps working after REAPER restarts.")
+    end
+    card_end()
+  end
+  if card("set playback") then
+    heading("Smooth playhead, scrolling and zoom")
+    muted("Most DAWs glide their playhead and zoom smoothly; REAPER steps. These two extensions add that. The DAW personas that feel that way recommend them.")
+    for key, x in pairs(core.EXTENSIONS) do
+      local state = core.extension_state(key)
+      if state == "on" or state == "off" then
+        if x.toggle then
+          if setting_row("##ext" .. key, x.name, state == "on", x.why) then reaper.Main_OnCommand(reaper.NamedCommandLookup(x.toggle), 0); core.forget() end
+        else ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, x.name .. ": installed") end
+        if x.settings then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Settings##set" .. key) then reaper.Main_OnCommand(reaper.NamedCommandLookup(x.settings), 0) end end
+      elseif state == "restart" then
+        ImGui.AlignTextToFramePadding(ctx); ImGui.TextColored(ctx, C.YELLOW, x.name .. ": installed, restart REAPER to load it")
+      else
+        ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, x.name .. ": not installed")
+        ImGui.SameLine(ctx)
+        if core.can_install(key) then
+          if primary("Install##inst" .. key) then install_ext(key) end
+        else muted("(" .. (x.where or "no download known") .. ")") end
+      end
+      ImGui.SetItemTooltip(ctx, x.why)
     end
     card_end()
   end
@@ -1509,6 +1514,15 @@ local function setup_page()
     if primary("Set up everything") then setup_all() end
     card_end()
   end
+  if card("setup computers") then -- (another computer of yours: its setup in one click, or kept the same through a folder. 5.12.1)
+    heading("Your other computers")
+    local syncing = core.sync_folder() ~= ""
+    muted(syncing and ("Syncing through " .. core.sync_folder() .. ": your personas, presets and settings stay the same on every computer that uses this folder.")
+      or "Using ReaPersona on another computer too? Load the setup you saved there, or keep them the same through a shared folder (Syncthing, Google Drive, Dropbox...).")
+    if ImGui.Button(ctx, "Save, load or sync your setup##home") then go("Settings") end
+    ImGui.SetItemTooltip(ctx, "Settings > ReaPersona: Save to a file, Load a file, and syncing through a folder, at the top.")
+    card_end()
+  end
   if card("setup core") then
     heading("ReaPersona")
     if ImGui.BeginTable(ctx, "setup", 3, ImGui.TableFlags_SizingStretchProp | ImGui.TableFlags_RowBg) then
@@ -1859,9 +1873,9 @@ local function block_card(i, b, list, blocks)
     if b.kind == "project" then
       ImGui.SetNextItemWidth(ctx, 170 * UI)
       local sr = tonumber(b.srate) or 0
-      if ImGui.BeginCombo(ctx, "Sample rate##psr", sr > 0 and ((sr / 1000) .. " kHz") or "Leave as it is") then
+      if ImGui.BeginCombo(ctx, "Sample rate##psr", sr > 0 and (core.khz(sr)) or "Leave as it is") then
         if ImGui.Selectable(ctx, "Leave as it is", sr == 0) then b.srate = 0 end
-        for _, r in ipairs(core.SRATES) do if ImGui.Selectable(ctx, (r / 1000) .. " kHz", sr == r) then b.srate = r end end
+        for _, r in ipairs(core.SRATES) do if ImGui.Selectable(ctx, core.khz(r), sr == r) then b.srate = r end end
         ImGui.EndCombo(ctx)
       end
       ImGui.SetItemTooltip(ctx, "A new (still empty) project gets this sample rate, and the audio device follows it when it can.")
@@ -2065,7 +2079,7 @@ local GROUPS = { -- { name, what it's for, its pages (tabs), the tabs' labels }
   { "Personas", "Make REAPER feel like another DAW, your own personas, and the Persona Builder.", { "DAWs", "Presets", "Builder" }, { "DAWs", "Your personas", "Persona Builder" } },
   { "Shortcuts", "Every key of a persona, with REAPER's action for it.", { "Shortcuts" }, { "Shortcuts" } },
   { "Themes", "Your themes, getting more, adjusting the one in use, building one from others.", { "Themes", "Browse", "Adjust", "Merge" }, { "Your themes", "Get more", "Adjust", "Build one" } },
-  { "Settings", "REAPER's and SWS's options in groups, what personas may change, a persona per project, ReaPersona's look.", { "Tweaks", "Settings" }, { "REAPER tweaks", "ReaPersona" } },
+  { "Settings", "REAPER's and SWS's options in groups, what personas may change, a persona per project, ReaPersona's look.", { "Settings", "Tweaks" }, { "ReaPersona", "REAPER tweaks" } },
   { "Help", "What's installed, checking the personas, repairs.", { "Check" }, { "Check and repair" } },
 }
 local function group_of(pg) for _, g in ipairs(GROUPS) do for _, p in ipairs(g[3]) do if p == pg or (pg == "Styles" and p == "DAWs") then return g end end end return GROUPS[2] end

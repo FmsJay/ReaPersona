@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.12.1
+- **Make a workflow by setting it up and saving it.** Save what I'm using... now asks "Make it a workflow too?": yes takes this project's sample rate and its tracks (the selected ones, or all; with their FX and routing, not their items) into the persona, so a new, empty project with it starts the same way. It goes to your other computers with your other personas.
+- **Your other computers is easier to find:** first on Settings, which now opens on ReaPersona's own settings (REAPER tweaks second), and a card on Home.
+- Sample rates read "48 kHz", not "48.0 kHz".
+
 ## 5.12.0
 Keys from a review of the DAW personas, each checked against the maker's own documentation (and cited in the persona's docs list):
 - **Fixed:** Live's Ctrl+Shift+C is Copy Time in Arrangement View, not Capture MIDI (Live gives Capture MIDI no default key; the Ableton toolbar's button still runs it), so ReaPersona no longer takes the key. Logic's B is now the Browser and Y Smart Controls, as Apple's current key list has them (its O and F browser keys are gone). FL Studio's piano roll Quick quantize is Ctrl+Q on Windows. Audacity's Ctrl+D makes a new track holding only the selection, as Audacity's Duplicate does.

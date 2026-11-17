@@ -472,6 +472,12 @@ function M.preset_style(p)
       "'s layout, toolbar and feel, and the theme " .. tostring(p.theme) .. "."
   end
   st.extras, st.tips, st.description_base = base.extras, base.tips, base.description
+  if type(p.project) == "table" then -- (a workflow: a new project's sample rate and starter tracks)
+    st.project = { srate = tonumber(p.project.srate) or 0, tracks = type(p.project.tracks) == "string" and p.project.tracks or "",
+      tracks_name = tostring(p.project.tracks_name or ""), wset = tonumber(p.project.wset) or 0 }
+    st.description = st.description .. " A new project with it gets " .. ((st.project.srate > 0) and (M.khz(st.project.srate)) or "its sample rate") ..
+      (st.project.tracks ~= "" and (" and " .. st.project.tracks_name) or "") .. "."
+  end
   return st
 end
 local function load_presets()
@@ -482,7 +488,14 @@ local function load_presets()
   return list
 end
 load_presets()
-function M.save_preset(name) -- -> the new preset (as a style)
+function M.project_now() -- this project as a workflow's project part: its sample rate and its tracks (FX and routing, no items)
+  local text, n = M.selected_tracks_text()
+  local sr = math.floor(reaper.GetSetProjectInfo(0, "PROJECT_SRATE", 0, false) + 0.5)
+  if reaper.GetSetProjectInfo(0, "PROJECT_SRATE_USE", 0, false) ~= 1 then local _, d = reaper.GetAudioDeviceInfo("SRATE"); sr = math.floor((tonumber(d) or sr) + 0.5) end
+  local pn = reaper.GetProjectName(0, ""):gsub("%.[Rr][Pp][Pp]$", "")
+  return { srate = sr, tracks = n > 0 and text or "", tracks_name = n > 0 and (n .. " track" .. (n == 1 and "" or "s") .. " from " .. (pn ~= "" and pn or "an unsaved project")) or "", wset = 0 }, n
+end
+function M.save_preset(name, with_project) -- -> the new preset (as a style). with_project: this project's rate and tracks for new projects
   local base = M.current()
   if base.preset then base = M.by_id(base.base) or M.styles[1] end
   local feel, seen = {}, {}
@@ -521,7 +534,7 @@ function M.save_preset(name) -- -> the new preset (as a style)
   end
   local list = load_presets()
   local p = { id = M.new_id("preset_"), name = name, base = base.id, saved = os.date("%Y-%m-%d"), feel = feel,
-              theme = M.loaded_theme() or M.theme_for(base) }
+              theme = M.loaded_theme() or M.theme_for(base), project = with_project and M.project_now() or nil }
   list[#list + 1] = p
   local ok, why = M.save_json(PRESETS, { presets = list })
   if not ok then return nil, why end
@@ -1271,11 +1284,12 @@ end
 -- (View > Screensets). The sample rate and tracks go into a project that's still empty, never one with your work in it; the window set
 -- loads every time.
 M.SRATES = { 44100, 48000, 88200, 96000, 176400, 192000 }
+function M.khz(sr) return string.format("%g kHz", (tonumber(sr) or 0) / 1000) end -- (48000 -> "48 kHz", 44100 -> "44.1 kHz"; pure)
 M.WSET_LOAD = 40454 -- "Screenset: Load window set #01" (#01-#10: 40454-40463)
 function M.project_entries(b) -- a project block's lines, for the Builder (pure)
   local out = {}
   local sr = tonumber(b.srate) or 0
-  if sr > 0 then out[#out + 1] = { slot = "project srate", kind = "project", label = "Sample rate " .. (sr / 1000) .. " kHz (a new project)", value = { srate = sr } } end
+  if sr > 0 then out[#out + 1] = { slot = "project srate", kind = "project", label = "Sample rate " .. M.khz(sr) .. " (a new project)", value = { srate = sr } } end
   if type(b.tracks) == "string" and b.tracks ~= "" then
     local n = select(2, b.tracks:gsub("<TRACK", ""))
     out[#out + 1] = { slot = "project tracks", kind = "project", label = "Starter tracks: " .. ((b.tracks_name or "") ~= "" and b.tracks_name or (n .. " track" .. (n == 1 and "" or "s"))) .. " (a new project)",
@@ -1333,7 +1347,7 @@ function M.device_rate(sr)
     if now() == sr then return nil end
   end
   local d = now()
-  return " (but the audio device stays at " .. (d and ((d / 1000) .. " kHz") or "its own rate") .. ": set it in Preferences > Audio > Device)"
+  return " (but the audio device stays at " .. (d and (M.khz(d)) or "its own rate") .. ": set it in Preferences > Audio > Device)"
 end
 function M.apply_project(st) -- the persona's project part, in the project in front. -> what it did (for the window to say)
   local p, done = st and st.project, {}
@@ -1343,7 +1357,7 @@ function M.apply_project(st) -- the persona's project part, in the project in fr
   if sr > 0 and empty and reaper.CountTracks(0) == 0 and (reaper.GetSetProjectInfo(0, "PROJECT_SRATE", 0, false) ~= sr or reaper.GetSetProjectInfo(0, "PROJECT_SRATE_USE", 0, false) ~= 1) then
     reaper.GetSetProjectInfo(0, "PROJECT_SRATE", sr, true)
     reaper.GetSetProjectInfo(0, "PROJECT_SRATE_USE", 1, true) -- (REAPER mixes at the project's rate, not the device's)
-    done[#done + 1] = "sample rate " .. (sr / 1000) .. " kHz" .. (M.device_rate(sr) or "")
+    done[#done + 1] = "sample rate " .. M.khz(sr) .. (M.device_rate(sr) or "")
   end
   if type(p.tracks) == "string" and p.tracks ~= "" and empty and reaper.CountTracks(0) == 0 then
     local f = M.here .. "/_starter.RTrackTemplate"
