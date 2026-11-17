@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.11.2
+- **Syncing REAPER's preferences can't crash REAPER any more.** 5.11.0-5.11.1 set them live through SWS, guessing each one's type; SWS reports whole-number preferences as doubles too, so some were written into memory too small for them, and REAPER crashed seconds later. Preferences now wait for REAPER's restart (Apply) and go into reaper.ini, which REAPER reads itself.
+- **Syncing doesn't hold REAPER up.** The sync state and the other computers' files stay in memory while they're unchanged, and nothing is written when nothing changed: a look takes milliseconds instead of a second with every advanced part on. REAPER's own parts sync when the window has been open 10 seconds, on Sync now and every 30 minutes; at REAPER's start, 10 seconds after it opens.
+- Switching an advanced part on with "take theirs" forgets what this computer knew of it, so your other computers' versions really win that time.
+
 ## 5.11.1
 Fixes from four reviews of 5.10-5.11 (DAW coverage, settings and use cases, correctness and data safety, cross-platform and UX):
 - **Syncing is safe against what it takes in.** Every item from your sync folder or a setup file passes the same checks as what goes out: it can't switch on syncing or point it elsewhere, set REAPER's paths, or put files outside FX chains/templates, Scripts/Effects and ColorThemes (never `__startup.lua`); file content is checked against its hash. A setup file dropped on the window, or loaded, says what it holds and asks first.

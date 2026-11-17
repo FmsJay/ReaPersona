@@ -643,8 +643,8 @@ function M.restore_last()
   set_toggles(st and (st.base or st.id))
   if M.watch_on() then M.start_following() end -- (a persona per project, or a workflow's new projects: the action that follows project tabs)
   pcall(M.upgrade_startup)
-  M.sync_tick(true) -- (what your other computers changed while this one was off; REAPER's own parts a little later, so starting stays quick)
-  local at = reaper.time_precise() + 15
+  -- (what your other computers changed while this one was off: 10 seconds after the start, so REAPER isn't held up opening)
+  local at = reaper.time_precise() + 10
   local function later() if reaper.time_precise() < at then return reaper.defer(later) end M.sync_tick() end
   reaper.defer(later)
 end
@@ -2449,14 +2449,15 @@ function M.sync_merge(state, mine, skip, theirs, now, seed) -- (pure; seed: a ti
   -- (a change here is always later than what it replaces, even after a computer with a clock ahead wrote a time from the future; and an
   -- incoming time is never believed beyond a day ahead. Review 5.11, H4)
   local function later_than(st) return math.max(now, (st and tonumber(st.t) or 0) + 1) end
+  local changes = 0
   for item, v in pairs(mine) do
     local h, st = M.json_encode(v), state[item]
-    if not st then state[item] = { t = seed_of(item), h = h, v = v }
-    elseif st.del or st.h ~= h then state[item] = { t = later_than(st), h = h, v = v } end
+    if not st then state[item] = { t = seed_of(item), h = h, v = v }; changes = changes + 1
+    elseif st.del or st.h ~= h then state[item] = { t = later_than(st), h = h, v = v }; changes = changes + 1 end
   end
   for item, st in pairs(state) do
     local k = kind(item)
-    if not st.del and mine[item] == nil and GONE_KINDS[k] and not skip[k] then state[item] = { t = later_than(st), h = "", del = true } end
+    if not st.del and mine[item] == nil and GONE_KINDS[k] and not skip[k] then state[item] = { t = later_than(st), h = "", del = true }; changes = changes + 1 end
   end
   local best = {}
   for _, f in ipairs(theirs) do
@@ -2481,10 +2482,11 @@ function M.sync_merge(state, mine, skip, theirs, now, seed) -- (pure; seed: a ti
     if (not st or r.t > st.t or (r.t == st.t and h > (st.h or ""))) and not (st and st.h == h and (st.del or false) == (r.del or false)) then
       if not (r.del and (not st or st.del)) then out[#out + 1] = { item = item, v = (not r.del) and r.v or nil, was = st } end
       state[item] = { t = r.t, h = h, v = r.v, del = r.del }
+      changes = changes + 1
     end
   end
   table.sort(out, function(a, b) return a.item < b.item end)
-  return out
+  return out, changes
 end
 -- Items into this computer's files and ExtState. A file of yours that doesn't parse is never written over: its items wait (they're
 -- put back in the state, so they're tried again once it's fixed). -> { personas, presets, recipes, settings, ext = counts, install =
@@ -2582,8 +2584,8 @@ M.SETUP_RESTART = "Smooth Wheel Scroll and ReaSmoothPlayhead read their settings
 -- (James, 5.11: "all settings and defaults ... and even additional scripts and other things that are used ... as an advanced feature
 -- checkbox ... all my settings saved and loadable across devices including mac (install anything it's missing)".) Each part is switched
 -- on in Settings (ExtState "sync advanced", a list of ids), on each computer: a part that's off is neither sent nor taken there.
---   pref     REAPER's preferences (reaper.ini's [REAPER] keys), set live through SWS where REAPER has them as config variables; the rest
---            wait for REAPER's next restart. Never this computer's: window places, recent files, paths, audio and MIDI devices, dockers.
+--   pref     REAPER's preferences (reaper.ini's [REAPER] keys), written into reaper.ini when REAPER restarts (Apply). Never this computer's:
+--            window places, recent files, paths, audio and MIDI devices, dockers.
 --   xstate   other scripts' settings (their ExtState), but not ones that hold this computer's paths or StudioSync's machine state.
 --   ini      the keymap, mouse modifiers, menus and toolbars, window sets: merged (never replaced) into this computer's when REAPER
 --            restarts (Apply, like installing shortcuts). The keymap keeps this computer's script registrations and ReaPersona's lines.
@@ -2593,7 +2595,7 @@ M.SETUP_RESTART = "Smooth Wheel Scroll and ReaSmoothPlayhead read their settings
 --   repo/pkg ReaPack's repositories, and its packages: the ones another computer has and this one doesn't are offered (Install).
 -- Files travel by content: <folder>/blobs/<hash>, written once, read by the others. Deleting a file doesn't delete it elsewhere.
 M.ADVANCED = {
-  { id = "prefs", name = "REAPER's preferences", kinds = { "pref" }, tip = "Everything in Preferences that isn't this computer's own (paths, audio and MIDI devices, window places, recent files): set straight away where REAPER allows, the rest at its next start." },
+  { id = "prefs", name = "REAPER's preferences", kinds = { "pref" }, tip = "Everything in Preferences that isn't this computer's own (paths, audio and MIDI devices, window places, recent files): taken in when REAPER restarts (Apply)." },
   { id = "xstate", name = "Other scripts' settings", kinds = { "xstate" }, tip = "What your other scripts and extensions remember in REAPER (their ExtState), apart from file paths and StudioSync's own." },
   { id = "keys", name = "Shortcuts, mouse, menus and toolbars", kinds = { "ini" }, tip = "Your keymap, mouse modifiers, menus and toolbars, merged into this computer's when REAPER restarts (Apply). Window sets stay each computer's: they hold its screens' places." },
   { id = "templates", name = "FX chains and templates", kinds = { "tpl" }, tip = "FX chains, track templates, project templates, MIDI note names and key map files." },
@@ -2868,16 +2870,12 @@ local function pend_pref(k, v)
   return M.save_json(p, setmetatable(d, M.OBJECT))
 end
 M.ADVANCED_APPLY = {
+  -- (Preferences are never written into REAPER's memory: SWS's double getter also answers for int variables, so a type guessed from it
+  -- wrote 8 bytes into 4-byte ones and the laptop's REAPER crashed seconds later (5.11.1, found the next night). They wait for the restart
+  -- and go into reaper.ini, which REAPER reads itself.)
   pref = function(k, v)
     if not v then return true end
-    if reaper.get_config_var_string and reaper.get_config_var_string(k) and reaper.SNM_GetIntConfigVar and reaper.SNM_GetDoubleConfigVar then
-      local ok, n = false, tonumber(v)
-      local INT, DBL = -987654, -987654.25
-      if n and reaper.SNM_GetDoubleConfigVar(k, DBL) ~= DBL then ok = reaper.SNM_SetDoubleConfigVar(k, n) -- (a double)
-      elseif n and math.tointeger(n) and reaper.SNM_GetIntConfigVar(k, INT) ~= INT then ok = reaper.SNM_SetIntConfigVar(k, math.tointeger(n)) end -- (an int)
-      if ok then return true end
-    end
-    return pend_pref(k, v) and true or false -- (not one a script can set, or not of a type known for sure: at REAPER's next start)
+    return pend_pref(k, v) and true or false
   end,
   xstate = function(rest, v)
     local sec, key = rest:match("^([^|]+)|(.+)$")
@@ -3001,6 +2999,15 @@ end
 -- send nothing the rest of the time), read from every other computer. Looked at when REAPER starts, while the window is open and when
 -- it closes. Another computer's file that doesn't parse (half-synced, or edited by hand) is skipped and left as it is.
 local SYNC_STATE = M.here .. "/sync_state.json"
+-- (Kept in memory between looks while the window is open: the state and the other computers' files, decoded again only when they change on
+-- disk, and nothing written when nothing changed. With every advanced part on, the state is megabytes: reading and writing it every 20 s
+-- held REAPER up for a second.)
+local mem = { others = {} }
+local function file_sig(path)
+  if not reaper.JS_File_Stat then return nil end
+  local ok, size, _, mtime = reaper.JS_File_Stat(path)
+  return ok == 0 and (size .. "|" .. tostring(mtime)) or nil
+end
 function M.sync_folder() return reaper.GetExtState(M.SECTION, "sync folder") end
 local function sync_file_name()
   local kept = reaper.GetExtState(M.SECTION, "sync file")
@@ -3023,9 +3030,15 @@ function M.sync_others(dir) -- -> the other computers' files: { name, d (decoded
     local f = reaper.EnumerateFiles(dir, i)
     if not f then break end
     if f:match("%.reapersona%-sync%.json$") and f ~= own then
-      local ok, d = pcall(M.json_decode, M.read(dir .. "/" .. f) or "")
-      if ok and type(d) == "table" and d.reapersona_sync and type(d.items) == "table" then out[#out + 1] = { name = f, d = d }
-      else out[#out + 1] = { name = f, bad = true } end
+      local sig = file_sig(dir .. "/" .. f)
+      local c = mem.others[dir .. "/" .. f]
+      if sig and c and c.sig == sig then out[#out + 1] = c.entry
+      else
+        local ok, d = pcall(M.json_decode, M.read(dir .. "/" .. f) or "")
+        local entry = (ok and type(d) == "table" and d.reapersona_sync and type(d.items) == "table") and { name = f, d = d } or { name = f, bad = true }
+        out[#out + 1] = entry
+        mem.others[dir .. "/" .. f] = sig and { sig = sig, entry = entry } or nil
+      end
     end
   end
   return out
@@ -3035,10 +3048,13 @@ end
 function M.sync_now(start)
   local dir = M.sync_folder():gsub("[/\\]+$", "")
   if dir == "" then return nil, "no sync folder chosen" end
-  local state = M.load_json(SYNC_STATE)
+  local ssig = file_sig(SYNC_STATE)
+  local state = (ssig and mem.state_sig == ssig and mem.state) or M.load_json(SYNC_STATE)
   if not state then return nil, "sync_state.json doesn't parse (a copy is next to it): fix or delete it, then sync again" end
   state.items = type(state.items) == "table" and state.items or {}
   sig_cache = type(state.sigs) == "table" and state.sigs or {}
+  state.sigs = sig_cache
+  local nsigs = 0; for _ in pairs(sig_cache) do nsigs = nsigs + 1 end
   local now, first = os.time(), next(state.items) == nil
   local others = M.sync_others(dir)
   local theirs = {}
@@ -3049,22 +3065,31 @@ function M.sync_now(start)
     seed = { }
     for k in pairs(state.seed0) do if not skip[k] then seed[k] = 0 end end
   end
-  local todo = M.sync_merge(state.items, mine, skip, theirs, now, seed)
-  if type(state.seed0) == "table" then for k in pairs(state.seed0) do if not skip[k] then state.seed0[k] = nil end end end
+  local todo, changes = M.sync_merge(state.items, mine, skip, theirs, now, seed)
+  if type(state.seed0) == "table" then for k in pairs(state.seed0) do if not skip[k] then state.seed0[k] = nil; changes = changes + 1 end end end
   local rep = apply_items(todo)
   for _, a in ipairs(rep.failed) do state.items[a.item] = a.was end
   rep.others, rep.changed = others, #todo > #rep.failed
+  local nsigs2 = 0; for _ in pairs(sig_cache) do nsigs2 = nsigs2 + 1 end
+  local path = dir .. "/" .. sync_file_name()
+  local bad = {}
+  for _, o in ipairs(others) do if o.bad then bad[#bad + 1] = o.name end end
+  for _, f in ipairs(M.sync_bad or {}) do bad[#bad + 1] = "your " .. f .. " (it doesn't parse: a copy is next to it; fix it to sync it again)" end
+  if changes == 0 and #todo == 0 and nsigs2 == nsigs and ssig and mem.own_sig and file_sig(path) == mem.own_sig then -- (nothing changed: nothing written)
+    mem.state, mem.state_sig = state, ssig
+    reaper.SetExtState(M.SECTION, "sync last", os.time() .. "|" .. M.setup_summary(rep) .. (#bad > 0 and ("|skipped " .. table.concat(bad, ", ")) or ""), true)
+    if not M.quick then pcall(M.tidy_blobs, dir, state.items, others) end
+    return rep
+  end
   local items = setmetatable({}, M.OBJECT)
   for item, st in pairs(state.items) do items[item] = st.del and { t = st.t, del = true } or { t = st.t, v = st.v } end
   local text = M.json_encode({ reapersona_sync = 1, computer = M.computer(), items = items }) .. "\n"
   local keep = setmetatable({}, M.OBJECT) -- (kept before the folder is written: what came in is never sent back as a change of this computer's)
   for item, st in pairs(state.items) do keep[item] = st end
   M.save_json(SYNC_STATE, { items = keep, sigs = setmetatable(sig_cache or {}, M.OBJECT), seed0 = state.seed0 })
-  local path = dir .. "/" .. sync_file_name()
+  mem.state, mem.state_sig = state, file_sig(SYNC_STATE)
   if M.read(path) ~= text and not M.write(path, text) then return nil, "couldn't write in " .. dir .. " (is the folder there, and its drive connected?)" end
-  local bad = {}
-  for _, o in ipairs(others) do if o.bad then bad[#bad + 1] = o.name end end
-  for _, f in ipairs(M.sync_bad or {}) do bad[#bad + 1] = "your " .. f .. " (it doesn't parse: a copy is next to it; fix it to sync it again)" end
+  mem.own_sig = file_sig(path)
   reaper.SetExtState(M.SECTION, "sync last", os.time() .. "|" .. M.setup_summary(rep) .. (#bad > 0 and ("|skipped " .. table.concat(bad, ", ")) or ""), true)
   if not M.quick then pcall(M.tidy_blobs, dir, state.items, others) end
   return rep
@@ -3092,6 +3117,7 @@ end
 function M.start_sync(dir, start) -- the folder chosen: -> the first sync's report, or nil + why
   reaper.SetExtState(M.SECTION, "sync folder", dir, true)
   os.remove(SYNC_STATE) -- (a new folder: every item seen afresh, as `start` says)
+  mem = { others = {} }
   local rep, why = M.sync_now(start)
   if not rep then M.stop_sync() end
   return rep, why
@@ -3099,6 +3125,7 @@ end
 function M.stop_sync()
   reaper.DeleteExtState(M.SECTION, "sync folder", true)
   os.remove(SYNC_STATE)
+  mem = { others = {} }
 end
 function M.advanced_join(id, theirs) -- an advanced part switched on: with theirs, what your other computers have wins the first time
   M.set_advanced(id, true)
@@ -3106,8 +3133,14 @@ function M.advanced_join(id, theirs) -- an advanced part switched on: with their
   local state = M.load_json(SYNC_STATE)
   if not state then return end
   state.seed0 = type(state.seed0) == "table" and state.seed0 or setmetatable({}, M.OBJECT)
-  for _, a in ipairs(M.ADVANCED) do if a.id == id then for _, k in ipairs(a.kinds) do state.seed0[k] = true end end end
-  -- (items of that kind already known here keep their time: only ones seen for the first time get 0)
+  for _, a in ipairs(M.ADVANCED) do
+    if a.id == id then
+      for _, k in ipairs(a.kinds) do
+        state.seed0[k] = true
+        for item in pairs(state.items or {}) do if item:sub(1, #k + 1) == k .. " " then state.items[item] = nil end end -- (seen afresh: theirs win)
+      end
+    end
+  end
   M.save_json(SYNC_STATE, state)
 end
 function M.sync_tick(quick) -- (REAPER's start, and the window's loop: quiet, a problem goes to errors.log. quick: not the advanced parts)

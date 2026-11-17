@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.11.1
+-- @version 5.11.2
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -794,12 +794,12 @@ local function setting_row(id, label, on, tip)
   return clicked
 end
 -- Your other computers (5.10): the folder you pick, the first sync (whose setup wins), and a look every 20 s while the window is open.
-local sync_next, sync_err, sync_seen, sync_full = 0, nil, "", 0
+local sync_next, sync_err, sync_seen, sync_full = 0, nil, "", reaper.time_precise() + 10 -- (the window opens without waiting for REAPER's own parts)
 local function sync_step(now) -- (now: Sync now pressed, so the result is said. The advanced parts every 5 minutes, or on Sync now)
   if core.sync_folder() == "" then return end
   sync_next = reaper.time_precise() + 20
   core.quick = not (now or reaper.time_precise() >= sync_full)
-  if not core.quick then sync_full = reaper.time_precise() + 300 end
+  if not core.quick then sync_full = reaper.time_precise() + 1800 end -- (REAPER's own parts: on opening, Sync now and every 30 minutes)
   local ok, rep, why = pcall(core.sync_now)
   core.quick = nil
   if not ok then why, rep = rep, nil end

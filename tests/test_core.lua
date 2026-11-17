@@ -404,6 +404,11 @@ assert(not it["ini reaper-kb.ini"], "and not while a persona is in use (it chang
 set_ext("ReaPersona", "sync advanced", "")
 set_ext("ReaPersona", "sync folder", "")
 
+-- Preferences never go into REAPER's memory (5.11.2: a type guessed from SWS's getters corrupted int variables and crashed REAPER):
+-- they wait in pending/prefs.json for the restart.
+core.ADVANCED_APPLY.pref("autosaveint", "7")
+assert(core.json_decode(read(tmp .. "/pending/prefs.json")).autosaveint == "7", "a preference waits for the restart")
+os.remove(tmp .. "/pending/prefs.json")
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")
