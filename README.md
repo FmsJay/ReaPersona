@@ -20,9 +20,11 @@ A **persona** is everything REAPER feels like: shortcuts, theme, layout, mouse b
   - Where the transport sits.
   - The mixer docked or in its own window, with the master on the left or right, and insert/send slots.
   - The Media Explorer docked where that DAW keeps its browser: left for Live, FL and Reason; right for Logic, Cubase, Studio One, Bitwig and Cakewalk; its own window for Pro Tools.
+- **Mouse.**
+  - The wheel as that DAW has it: scrolling and zooming with its modifiers (Shift+wheel scrolls sideways in Studio One, Reason, Live and Audacity; Ctrl+wheel zooms in Cubase, Reason and FL; Alt+wheel zooms in Pro Tools), each from the maker's documentation.
+  - Drags and clicks such as Pro Tools' Smart Tool (top half selects, bottom half moves), Cubase's Alt+click split, Studio One's Ctrl+Alt slip, Alt+drag stretching in Logic, Bitwig and Audacity, and FL Studio's right-click delete.
 - **Feel.**
   - Snap, ripple and follow-playhead.
-  - Mouse behaviours such as Pro Tools' Smart Tool (top half selects, bottom half moves) and FL Studio's right-click delete.
   - Loop range and overlapping clips the way each DAW does them.
   - The MIDI editor docked or floating, as in that DAW (applied the next time a MIDI editor is open).
   - The smooth playhead and smooth scroll/zoom extensions, which DAW personas recommend and offer to install.
@@ -59,7 +61,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
 - **New project like <DAW>:** each persona's page starts a project with that DAW's usual tracks, buses and sends (REAPER's own plugins).
 
 - **Persona Builder:** drag blocks into a stack and see what each one sets as you go, then *Try it* or *Save*.
-  - Blocks: a DAW's shortcuts, its layout and feel, or just one part of it (Ableton's mouse feel, Pro Tools' mixer layout, Logic's transport position...); REAPER settings groups (playback and scrolling, editing, recording, view, colours and icons, automation, mixer), each set the way you want; any theme; a colour.
+  - Blocks: a DAW's shortcuts, its layout and feel, its mouse, or just one part of it (Ableton's mouse, Pro Tools' mixer layout, Logic's transport position...); REAPER settings groups (playback and scrolling, editing, recording, view, colours and icons, automation, mixer), each set the way you want; any theme; a colour.
   - Where two blocks set the same thing, the lower one wins, and the one that loses shows "replaced by" in its block. Untick any line in a block to leave just that out.
   - One DAW's shortcuts are ready straight away. Shortcuts from several DAWs get a layer of their own, installed with one click (REAPER restarts).
   - *Build on this* on any persona's page starts from it; *Edit in the Builder* reopens one you built.
@@ -73,6 +75,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
 - **REAPER tweaks** (Settings): about 60 of REAPER's and SWS's options in groups, switched live: playback and scrolling, editing, recording (count-in, recording over items, lanes), view, colours and icons (SWS auto-colour, auto icons and layouts), automation and mixer. *Add to the Builder* turns a group, as you've set it, into a block of a persona.
 - **Theme adjuster:** pops out into its own window; REAPER's own Theme Adjuster is one click away.
 
+- **Your other computers** (Settings): *Save to a file* puts your personas, presets, ReaPersona's settings and the smooth scroll/zoom and playhead extensions' settings in one file; *Load a file* (or dropping it on the window) takes them in on another computer. Or pick a folder your computers share (Syncthing, Google Drive, Dropbox...) on each of them: each computer keeps its own file there, and the newest change to each persona or setting wins. Themes, and where each computer's windows sit, stay as they are.
 - **Save what I'm using:** the persona in use the way you like it, with its theme, layout and settings, saved under a name. You can share it as a file.
 - **Themes:** every theme on your computer. *Try* wears one for 20 seconds (keep it or it goes back), *Use* applies one on its own, *Add to...* makes it one of any persona's theme versions.
 - **Theme versions:** each persona's page shows all its theme versions as buttons (Pro Tools has nine), with *Get it* links for the ones you don't have yet. Click one to make it that persona's theme.

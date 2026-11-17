@@ -2,7 +2,7 @@
 -- folder of its own (tests/_tmp-..., removed at the end), so nothing else in the repo or in a REAPER is written. Asserts only: silence and "ok" means it passed.
 -- Run from the repo root with Lua 5.4:   lua tests/test_core.lua
 -- or, without Lua (Windows), with lupa:  python -c "import lupa.lua54 as l; l.LuaRuntime().execute(open('tests/test_core.lua').read())"
--- (Added for the left-over items of the 2026-11-16 review, 5.9.3: one check per new piece of logic.)
+-- (Added for the left-over items of the 2026-11-16 review, 5.9.3: one check per new piece of logic. 5.10: the Mouse block and syncing.)
 
 local function read(p) local f = io.open(p, "rb"); if not f then return nil end local t = f:read("a"); f:close(); return t end
 local function write(p, t) local f = assert(io.open(p, "wb")); f:write(t); f:close() end
@@ -12,7 +12,7 @@ os.execute(win and ('mkdir "' .. tmp:gsub("/", "\\") .. '"') or ("mkdir -p '" ..
 write(tmp .. "/reapersona_core.lua", assert(read("ReaPersona/reapersona_core.lua"), "run this from the repo root"))
 write(tmp .. "/styles.json", read("ReaPersona/styles.json"))
 
-local ext = {}
+local ext, listing = {}, {}
 reaper = setmetatable({ -- (only what loading the engine and these checks touch)
   GetResourcePath = function() return tmp end,
   GetOS = function() return "Win64" end,
@@ -23,6 +23,16 @@ reaper = setmetatable({ -- (only what loading the engine and these checks touch)
   NamedCommandLookup = function() return 0 end,
   GetToggleCommandState = function() return -1 end,
   time_precise = os.clock,
+  EnumerateFiles = function(d, i) -- (a folder's files, listed once until asked again with -1, as REAPER does)
+    if i < 0 then listing[d] = nil; return end
+    if not listing[d] then
+      listing[d] = {}
+      local p = io.popen(win and ('dir /b /a-d "' .. d:gsub("/", "\\") .. '" 2>nul') or ("ls -p '" .. d .. "' 2>/dev/null | grep -v /"))
+      for l in p:lines() do listing[d][#listing[d] + 1] = l end
+      p:close()
+    end
+    return listing[d][i + 1]
+  end,
 }, { __index = function(_, k) return function() end end })
 local function load_core() return dofile(tmp .. "/reapersona_core.lua") end
 local core = load_core()
@@ -107,6 +117,143 @@ for _, spec in ipairs({ "Mousewheel", "Ctrl+Mousewheel", "Alt+Shift+Mousewheel",
   assert(core.decode(core.encode(spec)) == spec, "round trip: " .. spec)
 end
 
-for _, f2 in ipairs({ "reapersona_core.lua", "styles.json", "user_styles.json" }) do os.remove(tmp .. "/" .. f2) end
-os.execute(win and ('rmdir "' .. tmp:gsub("/", "\\") .. '"') or ("rmdir '" .. tmp .. "'")) -- (empty by now: rmdir leaves it if not)
+-- 6. The mouse in the Persona Builder (5.10): a DAW block's mouse part, and a Mouse block that takes over the whole mouse above it.
+local A = { id = "t_a", name = "A", alt = 15, keys = { { "Ctrl+Z", 40029, "Undo" }, { "Mousewheel", 989, "Scroll" }, { "Alt+Mousewheel", 990, "Zoom" } },
+  feel = { { "mouse", "MM_CTX_ITEM", 4, "Copy item", "Alt+drag copies" }, { "toggle", 1157, 1, "Snap on" } } }
+local B = { id = "t_b", name = "B", alt = 16, keys = { { "Ctrl+Y", 40030, "Redo" }, { "Mousewheel", 988, "Scroll sideways" }, { "Ctrl+Mousewheel", 990, "Zoom" } },
+  feel = { { "mouse", "MM_CTX_ITEM", 2, "Copy item", "Ctrl+drag copies" } } }
+core.styles[#core.styles + 1] = A
+core.styles[#core.styles + 1] = B
+assert(core.is_wheel("Ctrl+Mousewheel") and core.is_wheel("win:Alt+HorizWheel") and not core.is_wheel("Ctrl+M") and not core.is_wheel(nil))
+local mb = core.new_block("mouse", "t_b")
+assert(mb.kind == "mouse" and core.block_title(mb) == "B: Mouse")
+assert(core.new_block("daw", "t_a").mouse == true, "a new DAW block has its mouse")
+local function built(blocks)
+  local st = assert(core.build_style(blocks, "T", "built_t"))
+  local keys, mice, toggles = {}, {}, 0
+  for _, k in ipairs(st.keys) do keys[k[1]] = k[2] end
+  for _, f in ipairs(st.feel) do if f[1] == "mouse" then mice[#mice + 1] = f[3] else toggles = toggles + 1 end end
+  return keys, mice, toggles
+end
+local keys, mice, toggles = built({ core.new_block("daw", "t_a"), mb })
+assert(keys["Ctrl+Z"] == 40029 and keys["Mousewheel"] == 988 and keys["Ctrl+Mousewheel"] == 990, "A's keys with B's wheel")
+assert(keys["Alt+Mousewheel"] == nil, "nothing of A's wheel is left under B's mouse")
+assert(#mice == 1 and mice[1] == 2 and toggles == 1, "B's drags, A's snap")
+keys = built({ mb, core.new_block("daw", "t_a") }) -- (a DAW block below the mouse block: the lower one wins, line by line)
+assert(keys["Mousewheel"] == 989 and keys["Alt+Mousewheel"] == 990 and keys["Ctrl+Mousewheel"] == 990)
+local nomouse = core.new_block("daw", "t_a"); nomouse.mouse = false
+keys, mice = built({ nomouse })
+assert(keys["Ctrl+Z"] and not keys["Mousewheel"] and #mice == 0, "the mouse part off: no wheel, no drags")
+keys, mice = built({ { kind = "daw", id = "t_a", keys = true } }) -- (a block saved before 5.10: the wheel with the keys, drags with the feel)
+assert(keys["Mousewheel"] == 989 and #mice == 0)
+assert(core.keys_layer({ core.new_block("daw", "t_a") }) == "borrow")
+assert(core.keys_layer({ core.new_block("daw", "t_a"), core.new_block("mouse", "t_a") }) == "borrow", "its own mouse again is still its keys")
+assert(core.keys_layer({ core.new_block("daw", "t_a"), mb }) == "own", "another DAW's wheel: a layer of their own")
+assert(core.keys_layer({ nomouse }) == "own", "the wheel left out")
+assert(core.keys_layer({ mb }) == "own", "a mouse alone, on your own keys")
+local _, ids = core.keys_layer({ core.new_block("daw", "t_a"), mb })
+assert(#ids == 2 and ids[1] == "t_a" and ids[2] == "t_b")
+table.remove(core.styles); table.remove(core.styles)
+-- Every built-in persona's wheel keys encode, and no wheel combination is bound twice for one system.
+for _, st in ipairs(core.styles) do
+  local seen = {}
+  for _, k in ipairs(st.keys or {}) do
+    if core.is_wheel(k[1]) then
+      local sys, plain = k[1]:match("^(%a%a%a):(.+)$")
+      plain = plain or k[1]
+      assert(core.wheel_code(plain), st.id .. ": " .. k[1])
+      for _, s in ipairs(sys and { sys } or { "win", "mac" }) do
+        local c = s .. " " .. select(2, core.wheel_code(plain))
+        assert(not seen[c], st.id .. ": " .. k[1] .. " twice")
+        seen[c] = true
+      end
+    end
+  end
+end
+
+-- 7. Syncing through a folder: per item the newest change wins; deleting one of yours deletes it elsewhere; bad input is left out.
+local state = {}
+local out = core.sync_merge(state, { ["setting look"] = "Dark" }, {}, {}, 100, 100)
+assert(#out == 0 and state["setting look"].t == 100)
+out = core.sync_merge(state, { ["setting look"] = "Dark" }, {}, { { items = { ["setting look"] = { t = 200, v = "Light" } } } }, 300, 300)
+assert(#out == 1 and out[1].item == "setting look" and out[1].v == "Light" and state["setting look"].t == 200, "a newer change elsewhere wins")
+out = core.sync_merge(state, { ["setting look"] = "Light" }, {}, { { items = { ["setting look"] = { t = 150, v = "Dark" } } } }, 310, 310)
+assert(#out == 0 and state["setting look"].t == 200, "an older one doesn't (and taking theirs isn't a change of mine)")
+out = core.sync_merge(state, { ["setting look"] = "Pink" }, {}, { { items = { ["setting look"] = { t = 250, v = "Dark" } } } }, 320, 320)
+assert(#out == 0 and state["setting look"].v == "Pink" and state["setting look"].t == 320, "changed here since: mine is newer")
+out = core.sync_merge(state, { ["setting look"] = "Pink" }, {}, { { items = { ["setting look"] = { t = 320, v = "Dark" } } } }, 330, 330)
+assert(#out == 0, "the same time keeps this computer's")
+state = {}
+out = core.sync_merge(state, { ["setting look"] = "Dark", ["persona p1"] = { id = "p1" } }, {},
+  { { items = { ["setting look"] = { t = 5, v = "Light" } } } }, 400, 0)
+assert(#out == 1 and out[1].v == "Light", "joining with 'take theirs': theirs wins")
+assert(state["persona p1"].t == 0, "and what only this computer has goes to them")
+state = { ["persona p1"] = { t = 10, h = "x", v = { id = "p1" } }, ["setting look"] = { t = 10, h = '"Dark"', v = "Dark" } }
+core.sync_merge(state, { ["setting look"] = "Dark" }, { persona = true }, {}, 500, 500)
+assert(not state["persona p1"].del, "a file that doesn't parse deletes nothing")
+core.sync_merge(state, { ["setting look"] = "Dark" }, {}, {}, 500, 500)
+assert(state["persona p1"].del and state["persona p1"].t == 500, "deleted here")
+state = { ["persona p2"] = { t = 10, h = core.json_encode({ id = "p2" }), v = { id = "p2" } } }
+out = core.sync_merge(state, { ["persona p2"] = { id = "p2" } }, {}, { { items = { ["persona p2"] = { t = 600, del = true } } } }, 700, 700)
+assert(#out == 1 and out[1].item == "persona p2" and out[1].v == nil, "deleted on another computer since")
+out = core.sync_merge({}, {}, {}, { { items = { ["setting look"] = { t = 9, v = { "a table" } }, ["persona x"] = { t = 9, v = "text" },
+  ["evil x"] = { t = 9, v = "y" }, ["setting text size"] = { v = "15" }, [1] = { t = 9, v = "z" } } } }, 800, 800)
+assert(#out == 0, "wrong types, unknown kinds and items without a time are left out")
+out = core.sync_merge({}, {}, {}, { { items = { ["ext SmoothWheelScroll|window"] = { t = 1, v = "144" } } },
+  { items = { ["ext SmoothWheelScroll|window"] = { t = 2, v = "200" } } } }, 900, 900)
+assert(#out == 1 and out[1].v == "200", "the newest of several computers")
+assert(core.synced_setting("look") and core.synced_setting("theme pro_tools") and core.synced_setting("aspect mouse"))
+assert(not core.synced_setting("style") and not core.synced_setting("docker top") and not core.synced_setting("sync folder") and not core.synced_setting("orig"))
+assert(core.setup_summary({ personas = 2, settings = 1, ext = 3 }) == "2 personas, 1 setting and extension settings")
+assert(core.setup_summary({}) == "nothing new")
+
+-- 8. A setup file and a shared folder, end to end, in the test folder.
+local function set_ext(s, k, v) ext[s .. "/" .. k] = v end
+write(tmp .. "/reaper-extstate.ini", "[ReaPersona]\nstyle=pro_tools\nlook=Dark\ndocker top=14\n[SmoothWheelScroll]\nwindow=200.000000\npos=772 84\n")
+set_ext("ReaPersona", "style", "pro_tools"); set_ext("ReaPersona", "look", "Dark"); set_ext("ReaPersona", "docker top", "14")
+set_ext("SmoothWheelScroll", "window", "200.000000"); set_ext("SmoothWheelScroll", "pos", "772 84")
+write(tmp .. "/user_styles.json", '{"styles": [{"id": "built_m", "name": "Mixing", "kind": "built", "keys_from": "logic"}]}')
+write(tmp .. "/presets.json", '{"presets": [{"id": "preset_1", "name": "Late night", "base": "logic"}]}')
+core = load_core()
+local items = core.setup_items()
+assert(items["setting look"] == "Dark" and items["persona built_m"].name == "Mixing" and items["preset preset_1"].name == "Late night")
+assert(items["ext SmoothWheelScroll|window"] == "200.000000")
+assert(items["setting style"] == nil and items["setting docker top"] == nil and items["ext SmoothWheelScroll|pos"] == nil, "this computer's own state stays")
+assert(core.export_setup(tmp .. "/setup.json"))
+set_ext("ReaPersona", "look", "Light"); set_ext("SmoothWheelScroll", "window", "100")
+write(tmp .. "/user_styles.json", '{"styles": []}')
+local r = assert(core.import_setup(tmp .. "/setup.json"))
+assert(ext["ReaPersona/look"] == "Dark" and ext["SmoothWheelScroll/window"] == "200.000000" and ext["SmoothWheelScroll/pos"] == "772 84")
+assert(r.personas == 1 and core.by_id("built_m") and core.by_id("built_m").keys == core.by_id("logic").keys, "the persona is back, on Logic's layer")
+write(tmp .. "/user_styles.json", "{broken")
+r = assert(core.import_setup(tmp .. "/setup.json"))
+assert(read(tmp .. "/user_styles.json") == "{broken" and r.skipped == "persona", "a file of yours that doesn't parse is never written over")
+assert(core.import_setup({ items = {} }) == nil, "not a setup file")
+write(tmp .. "/user_styles.json", '{"styles": [{"id": "built_m", "name": "Mixing", "kind": "built", "keys_from": "logic"}]}')
+core = load_core()
+-- The folder: this computer's file written, another computer's newer change taken, one that doesn't parse skipped and left alone.
+local share = tmp .. "/share"
+os.execute(win and ('mkdir "' .. share:gsub("/", "\\") .. '"') or ("mkdir -p '" .. share .. "'"))
+set_ext("ReaPersona", "sync folder", share)
+r = assert(core.sync_now())
+local mine = core.sync_file_name()
+local sent = core.json_decode(assert(read(share .. "/" .. mine), "this computer's file"))
+assert(sent.reapersona_sync == 1 and sent.items["setting look"].v == "Dark" and sent.items["persona built_m"].v.name == "Mixing")
+write(share .. "/LAPTOP-1234.reapersona-sync.json", core.json_encode({ reapersona_sync = 1, computer = "LAPTOP", items = {
+  ["ext SmoothWheelScroll|window"] = { t = os.time() + 60, v = "250.000000" }, ["persona built_m"] = { t = os.time() + 60, del = true } } }))
+write(share .. "/MAC-9.reapersona-sync.json", "{half a file")
+r = assert(core.sync_now())
+assert(ext["SmoothWheelScroll/window"] == "250.000000", "the laptop's smooth zoom came in")
+assert(not core.by_id("built_m") and not read(tmp .. "/user_styles.json"):find("built_m"), "deleted there, deleted here")
+assert(r.changed and #r.others == 2 and read(share .. "/MAC-9.reapersona-sync.json") == "{half a file")
+assert(ext["ReaPersona/sync last"]:find("skipped MAC%-9"), "and said")
+local before = read(share .. "/" .. mine)
+r = assert(core.sync_now())
+assert(not r.changed and read(share .. "/" .. mine) == before, "nothing new: nothing written")
+assert(core.json_decode(before).items["persona built_m"].del, "the deletion goes on to the other computers")
+core.stop_sync()
+assert(core.sync_folder() == "" and not read(tmp .. "/sync_state.json"))
+
+assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
+os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")

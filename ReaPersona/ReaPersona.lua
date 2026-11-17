@@ -1,14 +1,15 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.9.5
+-- @version 5.10.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
---   such as snap, the transport and mixer layout, where the Media Explorer docks, and mouse behaviours such as Pro Tools' Smart Tool),
+--   such as snap, the transport and mixer layout, where the Media Explorer docks), its mouse (wheel scrolling and zooming, and drags
+--   such as Pro Tools' Smart Tool),
 --   a toolbar and MIDI editor keys. Keys a persona doesn't define fall through to your own shortcuts; whatever a persona changes is put
 --   back when you switch, so My REAPER is always your own setup. Base REAPER is REAPER as it ships. The Persona Builder stacks blocks
---   (a DAW's keys or one part of its feel, REAPER settings groups, a theme, a colour) into a persona of your own, and a project can keep
---   its own persona. Every DAW key is that DAW's default from its maker's documentation (styles.json). Adjust changes the theme in use
+--   (a DAW's keys, its mouse or one part of its feel, REAPER settings groups, a theme, a colour) into a persona of your own, and a project
+--   can keep its own persona. Your personas and settings go to your other computers as a file or through a shared folder. Every DAW key is that DAW's default from its maker's documentation (styles.json). Adjust changes the theme in use
 --   live; Build one makes a theme from several. Needs ReaImGui, SWS and js_ReaScriptAPI.
 --   The look follows StudioSync's when it's installed (Settings picks one otherwise).
 if not reaper.ImGui_GetBuiltinPath then return reaper.MB("This needs ReaImGui: Extensions > ReaPack > Browse packages > ReaImGui.", "ReaPersona", 0) end
@@ -787,6 +788,43 @@ local function setting_row(id, label, on, tip)
   if tip then ImGui.SetItemTooltip(ctx, tip) end
   return clicked
 end
+-- Your other computers (5.10): the folder you pick, the first sync (whose setup wins), and a look every 20 s while the window is open.
+local sync_next, sync_err, sync_seen = 0, nil, ""
+local function sync_step(now) -- (now: Sync now pressed, so the result is said)
+  if core.sync_folder() == "" then return end
+  sync_next = reaper.time_precise() + 20
+  local ok, rep, why = pcall(core.sync_now)
+  if not ok then why, rep = rep, nil end
+  sync_err = not rep and ("Couldn't sync: " .. tostring(why)) or nil
+  if not rep then if now then say(sync_err) end return end
+  local names = {}
+  for _, o in ipairs(rep.others) do if o.d then names[#names + 1] = tostring(o.d.computer or o.name) end end -- (one that doesn't parse: its own line)
+  sync_seen = table.concat(names, ", ")
+  if rep.changed or now then
+    say((rep.changed and ("From your other computers: " .. core.setup_summary(rep) .. ".") or "Up to date.") ..
+      ((rep.ext or 0) > 0 and (" " .. core.SETUP_RESTART) or "") .. (rep.install and " New shortcuts need installing (Home)." or ""))
+  end
+end
+local function choose_sync_folder()
+  if not reaper.JS_Dialog_BrowseForFolder then say("Choosing a folder needs js_ReaScriptAPI (ReaPack).") return end
+  local ok, dir = reaper.JS_Dialog_BrowseForFolder("A folder your computers share (Syncthing, Google Drive...)", core.sync_folder() ~= "" and core.sync_folder() or res)
+  if ok ~= 1 or dir == "" then return end
+  dir = dir:gsub("\\", "/"):gsub("/+$", "")
+  local names = {}
+  for _, o in ipairs(core.sync_others(dir)) do names[#names + 1] = o.d and tostring(o.d.computer or o.name) or o.name end
+  local start
+  if #names > 0 then
+    local r = reaper.MB("The folder already has the ReaPersona setup of " .. table.concat(names, ", ") .. ".\n\n" ..
+      "Yes: take theirs here. Where both have the same persona or setting, theirs wins; what only this computer has goes to them.\n" ..
+      "No: this computer's setup wins and goes to them.\nCancel: don't sync.", "ReaPersona: sync", 3)
+    if r == 2 then return end
+    start = r == 6 and "theirs" or "mine"
+  end
+  local rep, why = core.start_sync(dir, start)
+  sync_err = not rep and ("Couldn't sync: " .. tostring(why)) or nil
+  if rep then sync_next = reaper.time_precise() + 20 end
+  say(rep and ("Syncing through " .. dir .. (rep.changed and (": " .. core.setup_summary(rep) .. " came in." .. ((rep.ext or 0) > 0 and (" " .. core.SETUP_RESTART) or "")) or ".")) or sync_err)
+end
 local function settings_page()
   if card("set aspects") then
     heading("What a persona may change")
@@ -847,6 +885,50 @@ local function settings_page()
         else muted("(" .. (x.where or "no download known") .. ")") end
       end
       ImGui.SetItemTooltip(ctx, x.why)
+    end
+    card_end()
+  end
+  if card("set sync") then
+    heading("Your other computers")
+    muted("Your personas, presets and ReaPersona's settings, with Smooth Wheel Scroll's and ReaSmoothPlayhead's settings, in one file to take to another computer, or kept the same on all of them through a folder they share (Syncthing, Google Drive, Dropbox...). Themes, and where this computer's windows and dockers are, stay as they are.")
+    if ImGui.Button(ctx, "Save to a file...") then
+      local ok, p = reaper.JS_Dialog_BrowseForSaveFile and reaper.JS_Dialog_BrowseForSaveFile("Save your ReaPersona setup", res, "ReaPersona setup " .. os.date("%Y-%m-%d") .. ".reapersona-setup.json", "ReaPersona setup (*.json)\0*.json\0\0")
+      if not reaper.JS_Dialog_BrowseForSaveFile then say("Saving a file needs js_ReaScriptAPI (ReaPack).")
+      elseif ok == 1 and p ~= "" then
+        if not p:lower():match("%.json$") then p = p .. ".reapersona-setup.json" end
+        local done, why = core.export_setup(p)
+        say(done and ("Saved " .. p .. ". On the other computer: Settings > Load a file, or drop it on ReaPersona's window.") or ("Not saved: " .. tostring(why)))
+      end
+    end
+    ImGui.SameLine(ctx)
+    if ImGui.Button(ctx, "Load a file...") then
+      local ok, p = reaper.GetUserFileNameForRead(res .. "/", "Load a ReaPersona setup", "json")
+      if ok and p ~= "" then
+        local r, why = core.import_setup(p)
+        if r then
+          say("Loaded " .. core.setup_summary(r) .. "." .. ((r.ext or 0) > 0 and (" " .. core.SETUP_RESTART) or "") ..
+            (r.install and " Your personas with shortcuts of their own need them installed (Home)." or "") .. (r.skipped and (" Left alone (a file of yours doesn't parse): " .. r.skipped .. ".") or ""))
+        else say("Not loaded: " .. tostring(why)) end
+      end
+    end
+    ImGui.Dummy(ctx, 0, 4)
+    local dir = core.sync_folder()
+    if dir == "" then
+      ImGui.Text(ctx, "Keep them the same through a shared folder")
+      muted("Pick a folder your computers share, here and then on each of the others. Each computer keeps its own file in it; the newest change to each persona or setting wins. ReaPersona looks when REAPER starts and while its window is open.")
+      if primary("Choose a folder...") then choose_sync_folder() end
+    else
+      ImGui.TextWrapped(ctx, "Syncing through " .. dir)
+      local t, what, skipped = reaper.GetExtState(SECTION, "sync last"):match("^(%d+)|([^|]*)|?(.*)$")
+      if t then muted("Last looked " .. os.date("%H:%M", tonumber(t)) .. " (" .. what .. ")" .. (sync_seen ~= "" and ("; with " .. sync_seen) or ""))
+      else muted("Not synced yet.") end
+      if skipped and skipped ~= "" then ImGui.TextColored(ctx, C.YELLOW, "Skipped (doesn't parse, left as it is): " .. skipped:gsub("^skipped ", "")) end
+      if sync_err then ImGui.TextColored(ctx, C.YELLOW, sync_err) end
+      if ImGui.Button(ctx, "Sync now") then sync_step(true) end
+      ImGui.SameLine(ctx)
+      if ImGui.Button(ctx, "Change folder...") then choose_sync_folder() end
+      ImGui.SameLine(ctx)
+      if ImGui.Button(ctx, "Stop syncing") then core.stop_sync(); sync_err, sync_seen = nil, ""; say("Not syncing any more. Your setup here stays as it is.") end
     end
     card_end()
   end
@@ -1122,7 +1204,8 @@ local function check_page()
     for _, st in ipairs(styles) do
       if (st.alt or 0) > 0 then
         local n = installed[st.alt] or 0
-        status_line(n >= #st.keys, string.format("%s  (alt-%d): %d of %d keys", st.name, st.alt, n, #st.keys))
+        local want = #core.keys_here(st.keys) -- (a key for the other system isn't installed here)
+        status_line(n >= want, string.format("%s  (alt-%d): %d of %d keys", st.name, st.alt, n, want))
       end
     end
     local specs = {}
@@ -1245,7 +1328,7 @@ local function get_url(u)
 end
 local function shortcuts_state()
   local want, have = 0, 0
-  for _, st in ipairs(styles) do if (st.alt or 0) > 0 then want = want + 1; if installed[st.alt] then have = have + 1 end end end
+  for _, st in ipairs(styles) do if (st.alt or 0) > 0 then want = want + 1; if (installed[st.alt] or 0) >= #core.keys_here(st.keys) then have = have + 1 end end end
   return have, want
 end
 function try_theme(th)
@@ -1602,14 +1685,18 @@ local function bld_palette()
     ImGui.EndCombo(ctx)
   end
   flow_start()
-  chip("Everything", function() return core.new_block("daw", cur.id) end, "Its shortcuts, its layout and feel, and its theme. Each part can be switched off in the block.")
+  chip("Everything", function() return core.new_block("daw", cur.id) end, "Its shortcuts, its layout and feel, its theme and its mouse. Each part can be switched off in the block.")
   if #(cur.keys or {}) > 0 then
-    chip("Shortcuts", function() local b = core.new_block("daw", cur.id); b.feel, b.theme = false, false; return b end, "Only its keys (and MIDI editor keys).")
+    chip("Shortcuts", function() local b = core.new_block("daw", cur.id); b.feel, b.theme, b.mouse = false, false, false; return b end, "Only its keys (and MIDI editor keys), not its mouse wheel.")
   end
   local has = {}
   for _, f in ipairs(cur.feel or {}) do has[core.aspect_of(f)] = true end
+  for _, k in ipairs(core.keys_here(cur.keys)) do if core.is_wheel(k[1]) then has.mouse = true end end
+  if has.mouse then
+    chip("Mouse", function() return core.new_block("mouse", cur.id) end, "Its mouse wheel (scrolling and zooming, with its modifiers) and its drags and clicks. Put it below another DAW's block to use that DAW with this one's mouse.")
+  end
   for _, x in ipairs(core.ASPECTS) do
-    if has[x[1]] then chip(x[4], function() return core.new_block("feel", cur.id, x[1]) end, x[2]) end
+    if has[x[1]] and x[1] ~= "mouse" then chip(x[4], function() return core.new_block("feel", cur.id, x[1]) end, x[2]) end
   end
   local tv, seen = {}, {} -- (its theme versions on this computer: each one a block)
   for _, th in ipairs(cur.themes or { cur.theme }) do if th and not seen[th] and reaper.file_exists(themes_dir .. th) then seen[th] = true; tv[#tv + 1] = th end end
@@ -1679,9 +1766,12 @@ local function block_card(i, b, list, blocks)
     ImGui.SameLine(ctx)
     if ImGui.SmallButton(ctx, "Remove") then bld_act = { "remove", i } end
     if b.kind == "daw" then
-      for _, part in ipairs({ { "keys", "Shortcuts" }, { "feel", "Layout and feel" }, { "theme", "Theme" } }) do
-        local ch, v = ImGui.Checkbox(ctx, part[2], b[part[1]] and true or false)
+      for _, part in ipairs({ { "keys", "Shortcuts" }, { "feel", "Layout and feel" }, { "theme", "Theme" }, { "mouse", "Mouse" } }) do
+        local on = b[part[1]] and true or false
+        if part[1] == "mouse" and b.mouse == nil then on = b.keys and b.feel and true or false end -- (a block from before 5.10)
+        local ch, v = ImGui.Checkbox(ctx, part[2], on)
         if ch then b[part[1]] = v end
+        if part[1] == "mouse" then ImGui.SetItemTooltip(ctx, "Its mouse wheel (scrolling and zooming) and its drags and clicks.") end
         ImGui.SameLine(ctx)
       end
       ImGui.NewLine(ctx)
@@ -1709,12 +1799,14 @@ local function block_card(i, b, list, blocks)
       end
     else
       local shown = 0
-      for _, e in ipairs(list) do if e.kind ~= "key" and e.kind ~= "midi" then entry_line(e, blocks, b); shown = shown + 1 end end
+      local inline = b.kind == "mouse" -- (a mouse block: its wheel keys with its drags, not folded away)
+      for _, e in ipairs(list) do if inline or (e.kind ~= "key" and e.kind ~= "midi") then entry_line(e, blocks, b); shown = shown + 1 end end
+      if inline then keys = 0 end
       if keys > 0 and ImGui.TreeNode(ctx, keys .. " shortcuts##keys") then
         for _, e in ipairs(list) do if e.kind == "key" or e.kind == "midi" then entry_line(e, blocks, b) end end
         ImGui.TreePop(ctx)
       end
-      if shown == 0 and keys == 0 then muted(b.kind == "feel" and "Nothing of this kind in that DAW." or "Nothing switched on.") end
+      if shown == 0 and keys == 0 then muted((b.kind == "feel" or b.kind == "mouse") and "Nothing of this kind in that DAW." or "Nothing switched on.") end
     end
     ImGui.PopTextWrapPos(ctx)
     ImGui.EndChild(ctx)
@@ -1726,7 +1818,7 @@ end
 local function builder_page()
   if card("bld make") then
     heading(bld.id and ("Editing " .. bld.name) or "Persona Builder")
-    muted("Stack blocks into a persona: a DAW's shortcuts, another's mouse feel or mixer layout, REAPER settings, a theme, a colour. Each block shows what it sets; untick a line to leave it out. Where two blocks set the same thing, the lower one wins.")
+    muted("Stack blocks into a persona: a DAW's shortcuts, another's mouse or mixer layout, REAPER settings, a theme, a colour. Each block shows what it sets; untick a line to leave it out. Where two blocks set the same thing, the lower one wins, and a Mouse block takes over the whole mouse from the blocks above it.")
     local layer, ids = core.keys_layer(bld.blocks, bld.id) -- (some of one DAW's keys left out: a layer of their own. Review, 5.9.4)
     local daws = {}
     for _, id in ipairs(ids) do daws[#daws + 1] = core.by_id(id).name end
@@ -2137,6 +2229,7 @@ end
 local errors_in_a_row = 0
 local function loop()
   trial_over()
+  if reaper.time_precise() > sync_next and core.sync_folder() ~= "" then sync_step() end
   if quit_check and reaper.time_precise() > quit_check then
     quit_check = nil
     core.write(here .. "/install_cancelled", "quit was cancelled\n")
@@ -2164,6 +2257,7 @@ local cmd = select(4, reaper.get_action_context()) -- (the picker's own action: 
 if cmd and cmd ~= 0 then reaper.SetToggleCommandState(0, cmd, 1); reaper.RefreshToolbar2(0, cmd) end
 reaper.atexit(function()
   if trying then trying.ends = 0; trial_over() end -- (a theme on trial goes back when the window closes)
+  pcall(core.sync_tick) -- (what you changed while it was open, to your other computers)
   if cmd and cmd ~= 0 then reaper.SetToggleCommandState(0, cmd, 0); reaper.RefreshToolbar2(0, cmd) end
 end)
 pcall(core.upgrade_startup) -- (now too, not only at REAPER's start: updated and removed in one session left the old block. Review, 5.9.4)

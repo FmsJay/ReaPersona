@@ -1,5 +1,5 @@
 {
-  "_about": "ReaPersona. Each style: a shortcut layer (Main alt-N) + a theme + 'feel' (settings and mouse behaviours, put back when you switch away) + MIDI editor keys. Keys not listed fall through to your own shortcuts. Every key is the DAW's default from its maker's documentation (docs). keys: [key, REAPER command id | named id | 'MAIN:<key>' (whatever your Main section runs there) | 'script:<DAW Styles action>', what the DAW calls it]. midi_keys: [key, REAPER MIDI editor action name (or a list run in order), what the DAW calls it, times to run]. feel: ['toggle', command, wanted state, what] or ['mouse', context, modifier flag (1 Shift, 2 Ctrl, 4 Alt), REAPER behaviour, what]. Change keys here, then run install_shortcuts.py with REAPER closed. feel also takes ['dock', window, side, shown, what]; recommends lists extensions (core.EXTENSIONS); kind 'theme' puts a style on the Themes page.",
+  "_about": "ReaPersona. Each style: a shortcut layer (Main alt-N) + a theme + 'feel' (settings and mouse behaviours, put back when you switch away) + MIDI editor keys. Keys not listed fall through to your own shortcuts. Every key is the DAW's default from its maker's documentation (docs). keys: [key, REAPER command id | named id | 'MAIN:<key>' (whatever your Main section runs there) | 'script:<DAW Styles action>', what the DAW calls it]. midi_keys: [key, REAPER MIDI editor action name (or a list run in order), what the DAW calls it, times to run]. feel: ['toggle', command, wanted state, what] or ['mouse', context, modifier flag (1 Shift, 2 Ctrl, 4 Alt, 8 Win/Control), REAPER behaviour, what]. Change keys here, then run install_shortcuts.py with REAPER closed. feel also takes ['dock', window, side, shown, what]; recommends lists extensions (core.EXTENSIONS); kind 'theme' puts a style on the Themes page. The mouse wheel is a key ('Shift+Mousewheel', 'Ctrl+HorizWheel'): REAPER's wheel actions measured in REAPER 7.86 go wheel-down = scroll down (989), scroll left (988; 977 goes right), zoom out (990, 1000), so a DAW's Shift+wheel scroll is 977.",
   "styles": [
     {
       "id": "my_reaper",
@@ -43,7 +43,9 @@
         ["Left", 40104, "Move cursor left one pixel"],
         ["Right", 40105, "Move cursor right one pixel"],
         ["Mousewheel", 990, "Zoom horizontally"],
-        ["Ctrl+Alt+Mousewheel", 989, "Scroll vertically"]
+        ["Ctrl+Alt+Mousewheel", 989, "Scroll vertically"],
+        ["Ctrl+Mousewheel", 1000, "Zoom vertically"],
+        ["Alt+Mousewheel", 988, "Scroll horizontally"]
       ],
       "feel": [
         ["radio", [41603, 41604, 41605, 41606, 41608], 41603, "Transport under the arrange view (REAPER's default; Ctrl+Alt+T hides it)"],
@@ -130,7 +132,12 @@
         "Pro_Tools_Utimate.ReaperThemeZip"
       ],
       "description": "Avid Pro Tools (Windows keys). Space starts and stops and goes back to where you started, Ctrl+Space records, Enter returns to the start, Ctrl+E separates, Ctrl+H heals, Ctrl+= swaps Edit and Mix, R/T zoom (Commands Keyboard Focus). Smart Tool: the top half of a clip selects a range, the bottom half moves it. Playlists are REAPER's fixed lanes, with Pro Tools' comping keys. Memory locations: period, number, Enter on the keypad.",
-      "docs": ["https://resources.avid.com/SupportFiles/PT/Pro_Tools_Shortcuts_2025.10.pdf"],
+      "docs": [
+        "https://resources.avid.com/SupportFiles/PT/Pro_Tools_Shortcuts_2025.10.pdf",
+        "https://www.avid.com/pro-tools/user-guide/zoom",
+        "https://www.avid.com/pro-tools/user-guide/edit-modes",
+        "https://www.avid.com/pro-tools/user-guide/smart-tool"
+      ],
       "keys": [
         ["Space", 40044, "Start/stop playback"],
         ["Ctrl+Space", 1013, "Start record"],
@@ -193,7 +200,8 @@
         ["Ctrl+K", 41819, "Pre/post-roll on/off"],
         ["Alt+Shift+Z", 40211, "Retrospective MIDI record"],
         ["Ctrl+Shift+E", 40200, "Insert silence"],
-        ["Ctrl+U", 40315, "Strip silence..."]
+        ["Ctrl+U", 40315, "Strip silence..."],
+        ["Alt+Mousewheel", 990, "Zoom in and out horizontally (Option+wheel on a Mac)"]
       ],
       "midi_keys": [
         ["Up", "Edit: Move notes up one semitone", "Transpose up one semitone"],
@@ -229,7 +237,9 @@
         ["mouse", "MM_CTX_ITEM", 0, "Select time", "Smart Tool: dragging the top half of a clip selects a range"],
         ["mouse", "MM_CTX_ITEMLOWER", 0, "Move item ignoring time selection", "Smart Tool: dragging the bottom half moves the clip"],
         ["mouse", "MM_CTX_ITEMLOWER", 4, "Copy item", "Alt+drag on the bottom half copies the clip"],
-        ["midi_dock", 0, "The MIDI Editor opens in its own window (applied when a MIDI editor is open)"]
+        ["midi_dock", 0, "The MIDI Editor opens in its own window (applied when a MIDI editor is open)"],
+        ["mouse", "MM_CTX_ITEMLOWER", 2, "Move item ignoring snap", "Ctrl(Cmd)+drag a clip toggles Grid mode off while you drag"],
+        ["mouse", "MM_CTX_ITEMLOWER", 8, "Move item vertically", "Start(Control)+drag with the Grabber keeps a clip in time, moving it vertically"]
       ],
       "extras": [
         ["Edit modes: Shuffle is REAPER's ripple editing per track (F1), Slip is ripple off (F2), Grid is snap (F4). Spot has no equivalent.", 41990, "F1"],
@@ -305,7 +315,8 @@
       "description": "Apple Logic Pro, with Command as Ctrl and Option as Alt. Space plays and stops (the playhead stays where it stopped), R records, Return goes to the beginning, C cycles, K is the metronome, X the mixer, P the piano roll, Cmd+T splits, Cmd+J joins, Cmd+Shift+D makes a Track Stack. Drag in empty space to rubber-band select, Option-drag copies.",
       "docs": [
         "https://support.apple.com/guide/logicpro/global-commands-lgcp02bf31b6/mac",
-        "https://support.apple.com/guide/logicpro/main-window-tracks-and-various-editors-lgcpe8314fe2/mac"
+        "https://support.apple.com/guide/logicpro/main-window-tracks-and-various-editors-lgcpe8314fe2/mac",
+        "https://support.apple.com/guide/logicpro/tracks-area-lgcpea796663/mac"
       ],
       "keys": [
         ["Space", 40328, "Play or Stop (the playhead stays where it stopped)"],
@@ -384,7 +395,8 @@
         ["mac:Win+R", 9, "Track record enable (Control-R)"],
         ["mac:Win+B", 41999, "Bounce in place (Control-B)"],
         ["mac:Win+S", 7, "Solo the selected regions' tracks (Control-S)"],
-        ["F", 50124, "Show/hide the Browsers (here: the Media Explorer)"]
+        ["F", 50124, "Show/hide the Browsers (here: the Media Explorer)"],
+        ["Alt+Mousewheel", 1000, "Option+scroll zooms all tracks vertically"]
       ],
       "midi_keys": [
         ["Alt+Up", "Edit: Move notes up one semitone", "Transpose Event +1 Semitone"],
@@ -425,7 +437,8 @@
         ["toggle", 40036, 1, "Catch: the view follows the playhead"],
         ["toggle", 40621, 0, "The loop range is its own, separate from the time selection"],
         ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
-        ["midi_dock", 1, "The editors open in the main window's lower area (E, P) (applied when a MIDI editor is open)"]
+        ["midi_dock", 1, "The editors open in the main window's lower area (E, P) (applied when a MIDI editor is open)"],
+        ["mouse", "MM_CTX_ITEMEDGE", 4, "Stretch item", "Option+drag a region border: the Resize tool becomes the Stretch tool"]
       ],
       "extras": [
         ["Smart Controls: the track's plug-in chain (B).", 40291, "B"],
@@ -484,7 +497,10 @@
         "Live.ReaperThemeZip"
       ],
       "description": "Ableton Live 12 (Windows keys), Arrangement view. Space plays from the start marker and stops, Shift+Space continues, F9 records, Ctrl+E splits, Ctrl+J consolidates, O is the metronome, Ctrl+Alt+M the mixer, C arms, Ctrl+T adds a track, Ctrl+Shift+C captures MIDI. Session View is Helgobox's Playtime; racks are REAPER's FX containers.",
-      "docs": ["https://www.ableton.com/en/manual/live-keyboard-shortcuts/"],
+      "docs": [
+        "https://www.ableton.com/en/manual/live-keyboard-shortcuts/",
+        "https://www.ableton.com/en/manual/arrangement-view/"
+      ],
       "keys": [
         ["Space", 40044, "Play from Start Marker/Stop"],
         ["Shift+Space", 40073, "Continue Play from Stop Point"],
@@ -554,7 +570,10 @@
         ["F5", 54, "Activate/deactivate track 5"],
         ["F6", 62, "Activate/deactivate track 6"],
         ["F7", 70, "Activate/deactivate track 7"],
-        ["F8", 78, "Activate/deactivate track 8"]
+        ["F8", 78, "Activate/deactivate track 8"],
+        ["Ctrl+Mousewheel", 990, "Zoom (Cmd+wheel on a Mac)"],
+        ["Alt+Mousewheel", 1000, "Track height (Option+wheel on a Mac; REAPER sizes every track)"],
+        ["Shift+Mousewheel", 977, "Scroll left/right"]
       ],
       "midi_keys": [
         ["Ctrl+A", "Edit: Select all events", "Select All Notes"],
@@ -591,7 +610,11 @@
         ["mouse", "win:MM_CTX_ITEM", 2, "Copy item", "Ctrl+drag a clip copies it"],
         ["mouse", "mac:MM_CTX_ITEM", 4, "Copy item", "Option+drag a clip copies it"],
         ["toggle", 40036, 1, "Follow on: the view follows the playhead"],
-        ["midi_dock", 1, "Clip View sits at the bottom of the window (applied when a MIDI editor is open)"]
+        ["midi_dock", 1, "Clip View sits at the bottom of the window (applied when a MIDI editor is open)"],
+        ["mouse", "win:MM_CTX_ITEM", 4, "Move item ignoring snap", "Alt+drag bypasses snapping"],
+        ["mouse", "mac:MM_CTX_ITEM", 2, "Move item ignoring snap", "Cmd+drag bypasses snapping"],
+        ["mouse", "win:MM_CTX_ITEM", 3, "Move item contents", "Ctrl+Shift+drag slides a clip's waveform or MIDI"],
+        ["mouse", "mac:MM_CTX_ITEM", 5, "Move item contents", "Shift+Option+drag slides a clip's waveform or MIDI"]
       ],
       "extras": [
         ["Session View: Helgobox's Playtime clip launcher (scenes, clips, follow actions).", "_HB_SHOW_HIDE_PLAYTIME", null],
@@ -677,7 +700,10 @@
         "FruityCocktail.ReaperThemeZip"
       ],
       "description": "Image-Line FL Studio (Windows keys). Space starts and stops, Ctrl+Space pauses, R records, F6 channel rack (step sequencer), F7 piano roll, F8 plug-in picker, F9 mixer, Alt+F8 browser, Ctrl+B duplicates, Insert slices, Backspace toggles snap, Ctrl+M the metronome. In the piano roll right-click deletes notes. Patterns are pooled MIDI items.",
-      "docs": ["https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/basics_shortcuts.htm"],
+      "docs": [
+        "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/basics_shortcuts.htm",
+        "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/playlist.htm"
+      ],
       "keys": [
         ["Space", 40044, "Start/Stop Playback"],
         ["Ctrl+Space", 40073, "Start/Pause Playback"],
@@ -729,7 +755,8 @@
         ["Shift+C", 42608, "Select all clips of the same source"],
         ["Alt+Num*", 40173, "Next song marker"],
         ["Alt+Num/", 40172, "Previous song marker"],
-        ["F12", "_S&M_WNCLS3", "Close all plug-in windows"]
+        ["F12", "_S&M_WNCLS3", "Close all plug-in windows"],
+        ["Ctrl+Mousewheel", 990, "Zoom at the mouse"]
       ],
       "midi_keys": [
         ["Ctrl+A", "Edit: Select all events", "Select All"],
@@ -765,7 +792,8 @@
         ["toggle", 40621, 0, "The loop range is its own, separate from the time selection"],
         ["toggle", 41117, 0, "Clips can overlap and play together, as in FL's playlist"],
         ["toggle", 40036, 1, "The playlist follows the song position"],
-        ["midi_dock", 0, "The piano roll floats in its own window (applied when a MIDI editor is open)"]
+        ["midi_dock", 0, "The piano roll floats in its own window (applied when a MIDI editor is open)"],
+        ["mouse", "MM_CTX_ITEM", 4, "Move item ignoring snap", "Alt+drag a clip: snapping off while you drag"]
       ],
       "extras": [
         ["Channel Rack and Step Sequencer: MPL's RS5k step sequencer (F6).", "_RSa31e94c408150d20aad669ba609f01c4083975ae", "F6"],
@@ -835,7 +863,9 @@
       ],
       "description": "Steinberg Cubase Pro 14 (Windows keys). Space starts and stops, Enter starts, keypad 0 stops, keypad * records, keypad / cycles, keypad 1/2 go to the locators, P sets the locators to the selection, Alt+X splits, Ctrl+D duplicates, J snaps, H/G zoom, F3 MixConsole, F5 MediaBay, Alt+Num1..9 workspaces (REAPER's screensets). Alt+drag copies.",
       "docs": [
-        "https://www.steinberg.help/r/cubase-pro/14.0/en/cubase_nuendo/topics/key_commands/key_commands_default_c.html"
+        "https://www.steinberg.help/r/cubase-pro/14.0/en/cubase_nuendo/topics/key_commands/key_commands_default_c.html",
+        "https://www.steinberg.help/r/cubase-pro/14.0/en/cubase_nuendo/topics/project_window/project_window_zooming_c.html",
+        "https://www.steinberg.help/r/cubase-pro/14.0/en/cubase_nuendo/topics/preferences/preferences_editing_tool_modifiers_r.html"
       ],
       "keys": [
         ["Space", 40328, "Start/Stop"],
@@ -958,7 +988,9 @@
         ["Alt+Num6", 40459, "Workspace 6"],
         ["Alt+Num7", 40460, "Workspace 7"],
         ["Alt+Num8", 40461, "Workspace 8"],
-        ["Alt+Num9", 40462, "Workspace 9"]
+        ["Alt+Num9", 40462, "Workspace 9"],
+        ["Ctrl+Mousewheel", 990, "Zoom horizontally"],
+        ["Ctrl+Shift+Mousewheel", 1000, "Zoom vertically"]
       ],
       "midi_keys": [
         ["Up", "Edit: Move notes up one semitone", "Up: move selected event in the Key Editor one semitone up"],
@@ -993,7 +1025,9 @@
         ["mouse", "MM_CTX_ITEM", 4, "Copy item", "Alt+drag copies an event"],
         ["toggle", 40621, 0, "The loop range is its own, separate from the time selection"],
         ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
-        ["midi_dock", 1, "Editors open in the Lower Zone (applied when a MIDI editor is open)"]
+        ["midi_dock", 1, "Editors open in the Lower Zone (applied when a MIDI editor is open)"],
+        ["mouse", "MM_CTX_ITEM_CLK", 4, "Split item", "Alt+click an event with the Object Selection tool splits it"],
+        ["mouse", "MM_CTX_ITEM", 6, "Move item contents", "Ctrl+Alt+drag slips the event's contents"]
       ],
       "extras": [
         ["Tools (1 Object Selection, 2 Range, 3 Split...): REAPER has no tool modes; its mouse modifiers do each by context. Alt+X splits, empty-space drag selects.", null, null],
@@ -1063,7 +1097,8 @@
       "description": "PreSonus Studio One, now Fender Studio Pro (Windows keys), from Fender's Studio Pro key shortcuts sheet. Space starts and stops, Enter starts, NumPad , returns to zero, Alt+X splits, D duplicates, G merges, Q quantizes, N snaps, E/W zoom, F2 editor, F3 console, F5 browser, T adds tracks, Insert adds a marker, Ctrl+K finds a command. Smart Tool: the top half of an event selects a range, the bottom half moves it (Studio One's Arrow tool with the range link on).",
       "docs": [
         "https://pae-web.presonusmusic.com/downloads/products/pdf/Studio_One_Pro_7_Key_Command_Sheet.pdf",
-        "https://fenderstudiopromanual.fender.com/en/Content/Editing_Topics/Arrange_View_Mouse_Tools.htm"
+        "https://fenderstudiopromanual.fender.com/en/Content/Editing_Topics/Arrange_View_Mouse_Tools.htm",
+        "https://fenderstudiopromanual.fender.com/en/Content/Editing_Topics/Navigating_With_Zoom.htm"
       ],
       "keys": [
         ["Space", 40044, "Play/Stop"],
@@ -1172,7 +1207,11 @@
         ["[", 40286, "Previous Channel"],
         ["Ctrl+P", 40214, "Insert Instrument Part (here: a new MIDI item)"],
         ["Alt+W", 40848, "Undo Zoom"],
-        ["Alt+S", 40031, "Zoom to Selection Horizontally"]
+        ["Alt+S", 40031, "Zoom to Selection Horizontally"],
+        ["Mousewheel", 989, "Scroll vertically"],
+        ["Shift+Mousewheel", 977, "Scroll horizontally"],
+        ["Ctrl+Mousewheel", 1000, "Zoom vertically"],
+        ["Ctrl+Shift+Mousewheel", 990, "Zoom horizontally"]
       ],
       "midi_keys": [
         ["Ctrl+A", "Edit: Select all events", "Select all notes in the focused Part"],
@@ -1201,7 +1240,10 @@
         ["mouse", "MM_CTX_ITEM", 0, "Select time", "Smart Tool (Link on): dragging the top half of a clip selects a range"],
         ["mouse", "MM_CTX_ITEMLOWER", 0, "Move item ignoring time selection", "Smart Tool (Link on): dragging the bottom half moves the clip"],
         ["mouse", "MM_CTX_ITEMLOWER", 4, "Copy item", "Alt+drag on the bottom half copies the clip"],
-        ["midi_dock", 1, "The editor docks at the bottom (F2) (applied when a MIDI editor is open)"]
+        ["midi_dock", 1, "The editor docks at the bottom (F2) (applied when a MIDI editor is open)"],
+        ["mouse", "MM_CTX_ITEMLOWER", 1, "Move item ignoring snap", "Shift while dragging an event turns snap off"],
+        ["mouse", "MM_CTX_ITEMLOWER", 6, "Move item contents", "Ctrl+Alt+drag slips an audio event"],
+        ["mouse", "MM_CTX_ITEMEDGE", 4, "Stretch item", "Alt while resizing an audio event stretches it"]
       ],
       "extras": [
         ["Arranger Track: REAPER's regions (drag a region to move its section with the Region/Marker Manager or Region Playlist).", 40326, null],
@@ -1274,7 +1316,9 @@
       "description": "Bitwig Studio (Windows keys). Space or P plays and stops, Alt+Space plays from the beginning, Ctrl+E splits, Ctrl+J consolidates, Ctrl+D duplicates, Ctrl+G groups tracks, +/- zoom, M the mixer, E the detail editor, D the devices, Alt+B the browser, Caps Lock the computer keyboard. Beatwing (spinlud) is the Stash theme inspired by Bitwig: a dark purple theme stands in.",
       "docs": [
         "https://downloads.bitwig.com/documentation/Bitwig%20Studio%20User%20Guide%20English.pdf",
-        "https://downloads.bitwig.com/6.0/Release-Notes-6.0.pdf"
+        "https://downloads.bitwig.com/6.0/Release-Notes-6.0.pdf",
+        "https://www.bitwig.com/userguide/latest/the_arrange_view_and_tracks",
+        "https://www.bitwig.com/userguide/latest/arranger_clips_and_the_browser_panel"
       ],
       "keys": [
         ["Space", 40044, "Play/Stop"],
@@ -1319,7 +1363,8 @@
         ["Shift+Alt+.", 40173, "Next cue marker"],
         ["Alt+C", 40527, "Clear meter peaks"],
         ["A", 40926, "Automation editor"],
-        ["5", 40746, "Knife: split the clip under the mouse"]
+        ["5", 40746, "Knife: split the clip under the mouse"],
+        ["win:Ctrl+Alt+Mousewheel", 990, "Zoom (Ctrl+Alt+scroll anywhere in the Arranger)"]
       ],
       "midi_keys": [
         ["Up", "Edit: Move notes up one semitone", "Transpose selected note events by +1 semitone"],
@@ -1351,7 +1396,9 @@
         ["mouse", "MM_CTX_TRACK", 0, "Select time", "Dragging where there are no clips selects time"],
         ["mouse", "win:MM_CTX_ITEM", 2, "Copy item", "Ctrl+drag a clip copies it"],
         ["mouse", "mac:MM_CTX_ITEM", 4, "Copy item", "Alt+drag a clip copies it"],
-        ["midi_dock", 1, "The detail editor sits in the bottom panel (E) (applied when a MIDI editor is open)"]
+        ["midi_dock", 1, "The detail editor sits in the bottom panel (E) (applied when a MIDI editor is open)"],
+        ["mouse", "MM_CTX_ITEM", 1, "Move item ignoring snap", "Shift inverts snapping while dragging"],
+        ["mouse", "MM_CTX_ITEMEDGE", 4, "Stretch item", "Alt+drag a clip's edge time-stretches it"]
       ],
       "extras": [
         ["Clip Launcher: Helgobox's Playtime clip launcher.", "_HB_SHOW_HIDE_PLAYTIME", null],
@@ -1419,7 +1466,11 @@
         "Default_7.0.ReaperThemeZip"
       ],
       "description": "Cakewalk by BandLab / SONAR (Windows keys). Space plays and stops, R records, Ctrl+Home goes to the start, L loops, S splits at the Now time, N snaps, M adds a marker, Alt+R/M/S arm, mute and solo the track, Ctrl+Left/Right zoom, Alt+2 the Console, Alt+3 the Piano Roll, B the Browser, Tab the next transient. The Console is docked at the bottom with the masters on the right, the Browser on the right. No REAPER theme imitates Cakewalk yet: Echolot's BandLab colours stand in. Keys checked against Cakewalk by BandLab's documentation; Sonar (2025) has no published list yet.",
-      "docs": ["https://legacy.cakewalk.com/Documentation?product=Cakewalk&language=3&help=KeyboardShortcuts.html"],
+      "docs": [
+        "https://legacy.cakewalk.com/Documentation?product=Cakewalk&language=3&help=KeyboardShortcuts.html",
+        "https://legacy.cakewalk.com/Documentation?product=Cakewalk&language=3&help=Arranging.22.html",
+        "https://legacy.cakewalk.com/Documentation?product=Cakewalk&language=3&help=Tools.04.html"
+      ],
       "keys": [
         ["Space", 40044, "Play/Stop"],
         ["R", 1013, "Record"],
@@ -1487,7 +1538,9 @@
         ["F", 40113, "Fit tracks to window"],
         ["Shift+F", 40295, "Fit the whole project"],
         ["Shift+J", 40527, "Reset all meters"],
-        ["Alt+4", "_RSa31e94c408150d20aad669ba609f01c4083975ae", "Step sequencer"]
+        ["Alt+4", "_RSa31e94c408150d20aad669ba609f01c4083975ae", "Step sequencer"],
+        ["Alt+Mousewheel", 990, "Fast Zoom (Cakewalk zooms both ways at once by default; here the timeline)"],
+        ["Ctrl+Alt+Mousewheel", 1000, "Track scale"]
       ],
       "midi_keys": [
         ["Tab", "Navigate: Select next note", "Go to the next note"],
@@ -1509,7 +1562,8 @@
         ["toggle", 40621, 0, "The loop range is its own, separate from the time selection"],
         ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
         ["mouse", "MM_CTX_ITEM", 2, "Copy item", "Ctrl+drag a clip copies it"],
-        ["midi_dock", 1, "The Piano Roll opens in the MultiDock (applied when a MIDI editor is open)"]
+        ["midi_dock", 1, "The Piano Roll opens in the MultiDock (applied when a MIDI editor is open)"],
+        ["mouse", "MM_CTX_ITEM_CLK", 4, "Split item", "Smart tool: Alt+click a clip splits it"]
       ],
       "extras": [
         ["ProChannel and FX Rack: the track's FX chain.", 40291, null],
@@ -1556,7 +1610,11 @@
         "INQUASAR DARK MATTER v.1.0.ReaperThemeZip"
       ],
       "description": "Reason Studios Reason 13 (Windows keys). Space toggles play, Ctrl+Enter or keypad * records, keypad 1/2 go to the loop locators, keypad 7/8 move a bar, L loops, C clicks, Alt+X splits at the Song Position, Ctrl+J joins, H/G zoom, S snaps, M mutes clips, Ctrl+K quantizes, F5 Mixer, F6 Rack (here: the track's FX), F9 Browser. The transport sits at the bottom, the Browser docked on the left. No REAPER theme imitates Reason yet: Default 7 stands in.",
-      "docs": ["https://docs.reasonstudios.com/reason13/key-commands"],
+      "docs": [
+        "https://docs.reasonstudios.com/reason13/key-commands",
+        "https://docs.reasonstudios.com/reason13/common-operations-and-concepts",
+        "https://docs.reasonstudios.com/reason13/arranging-in-the-sequencer"
+      ],
       "keys": [
         ["Space", 40044, "Toggle Stop/Play"],
         ["Num0", 1016, "Stop"],
@@ -1625,7 +1683,11 @@
         ["Ctrl+E", 40153, "Show/hide the edit area"],
         ["Ctrl+F5", 40083, "Detach/attach the main mixer"],
         ["win:Ctrl+Shift+I", 40018, "Import audio file"],
-        ["mac:Ctrl+Alt+I", 40018, "Import audio file"]
+        ["mac:Ctrl+Alt+I", 40018, "Import audio file"],
+        ["Mousewheel", 989, "Scroll vertically"],
+        ["Shift+Mousewheel", 977, "Scroll horizontally"],
+        ["Ctrl+Mousewheel", 990, "Zoom horizontally (Cmd on a Mac)"],
+        ["Ctrl+Shift+Mousewheel", 1000, "Zoom vertically"]
       ],
       "midi_keys": [
         ["Ctrl+Up", "Edit: Move notes up one semitone", "Transpose up"],
@@ -1653,7 +1715,10 @@
         ["mouse", "win:MM_CTX_ITEM", 2, "Copy item", "Ctrl+drag a clip copies it"],
         ["mouse", "mac:MM_CTX_ITEM", 4, "Copy item", "Option+drag a clip copies it"],
         ["dock", "mixer", "top", 1, "Main Mixer docked at the top, as in Reason's one-window layout (when mixer docking is allowed in Settings and REAPER has a docker at the top)"],
-        ["midi_dock", 1, "The Edit Mode area sits in the sequencer (applied when a MIDI editor is open)"]
+        ["midi_dock", 1, "The Edit Mode area sits in the sequencer (applied when a MIDI editor is open)"],
+        ["mouse", "MM_CTX_ITEM", 1, "Move item vertically", "Shift+drag keeps clips in time, moving them vertically"],
+        ["mouse", "win:MM_CTX_ITEMEDGE", 2, "Stretch item", "Ctrl+drag a clip's resize handle scales its tempo"],
+        ["mouse", "mac:MM_CTX_ITEMEDGE", 4, "Stretch item", "Option+drag a clip's resize handle scales its tempo"]
       ],
       "extras": [
         ["The Rack: each track's FX chain holds its devices; REAPER's FX containers group them like Combinators.", 40291, "F6"],
@@ -1707,7 +1772,12 @@
       "themes": ["ReAudacity.ReaperThemeZip", "Default_7.0.ReaperThemeZip"],
       "accent": "#3A7BD5",
       "description": "Audacity (Windows keys), for editing audio and podcasts. Space plays and stops, X stops where you are, P pauses, R records, L loops, Ctrl+I splits, Ctrl+K deletes the selection and closes the gap (ripple is on), Ctrl+T trims to the selection, Ctrl+B adds a label (a marker here), Ctrl+1/3 zoom, Ctrl+E zooms to the selection, Ctrl+F fits the project. Dragging in the audio selects time, as Audacity's Selection Tool does. Keys from Audacity's Keyboard Shortcut Reference (default set). Adobe Audition isn't covered: its key list couldn't be checked.",
-      "docs": ["https://manual.audacityteam.org/man/keyboard_shortcut_reference.html"],
+      "docs": [
+        "https://manual.audacityteam.org/man/keyboard_shortcut_reference.html",
+        "https://manual.audacityteam.org/man/mouse_bindings.html",
+        "https://manual.audacityteam.org/man/zooming.html",
+        "https://support.audacityteam.org/au3/audio-editing/speeding-up-and-slowing-down-audio"
+      ],
       "keys": [
         ["Space", 40044, "Play/Stop"],
         ["X", 40328, "Play/Stop and set cursor"],
@@ -1755,7 +1825,10 @@
         ["Ctrl+U", 40341, "Mute all tracks"],
         ["Ctrl+Shift+U", 40339, "Unmute all tracks"],
         ["Shift+U", 6, "Mute/unmute the track"],
-        ["Shift+S", 7, "Solo/unsolo the track"]
+        ["Shift+S", 7, "Solo/unsolo the track"],
+        ["Mousewheel", 989, "Scroll the tracks"],
+        ["Shift+Mousewheel", 977, "Scroll horizontally"],
+        ["Ctrl+Mousewheel", 990, "Zoom: up zooms in (Cmd on a Mac)"]
       ],
       "midi_keys": [],
       "feel": [
@@ -1765,7 +1838,8 @@
         ["toggle", 40621, 0, "The loop range is its own (Shift+L sets it to the selection)"],
         ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
         ["mouse", "MM_CTX_ITEM", 0, "Select time", "Selection Tool: dragging in the audio selects time"],
-        ["mouse", "MM_CTX_TRACK", 0, "Select time", "Dragging in an empty part of a track selects time"]
+        ["mouse", "MM_CTX_TRACK", 0, "Select time", "Dragging in an empty part of a track selects time"],
+        ["mouse", "MM_CTX_ITEMEDGE", 4, "Stretch item", "Alt(Option) on a clip's edge stretches it"]
       ],
       "extras": [
         ["Effects: REAPER puts them on the clip (take FX) or the track. Normalize and fades are item actions.", 40638, null],
@@ -1792,7 +1866,10 @@
       "themes": ["Default_7.0.ReaperThemeZip"],
       "accent": "#9B7BEA",
       "description": "Adobe Audition (Windows keys), Multitrack view. Space plays and stops, Home and End go to the start and end, Ctrl+Left/Right jump to the previous or next marker, clip or selection edge, = and - zoom (Alt for vertical), M adds a marker, Alt+, and Alt+. nudge clips. Keys from Adobe's default shortcut list, which Adobe calls partial; Cut, Copy, Paste, Undo and the rest are REAPER's own, which are the same keys.",
-      "docs": ["https://helpx.adobe.com/audition/using/default-keyboard-shortcuts.html"],
+      "docs": [
+        "https://helpx.adobe.com/audition/using/default-keyboard-shortcuts.html",
+        "https://help.adobe.com/archive/en/audition/cs6/audition_reference.pdf"
+      ],
       "keys": [
         ["Space", 40044, "Start and stop playback"],
         ["Home", 40042, "Move the playhead to the beginning"],
@@ -1820,7 +1897,8 @@
         ["toggle", 1157, 1, "Snapping on"],
         ["toggle", 40621, 0, "The loop range is its own"],
         ["toggle", 41117, 1, "A clip dropped over another replaces the part it covers"],
-        ["mouse", "MM_CTX_TRACK", 0, "Select time", "Dragging in an empty part of a track selects time"]
+        ["mouse", "MM_CTX_TRACK", 0, "Select time", "Dragging in an empty part of a track selects time"],
+        ["mouse", "MM_CTX_ITEM", 4, "Copy item", "Alt-drag a clip's header copies it"]
       ],
       "extras": [
         ["Waveform Editor: REAPER edits audio right in the arrange view; double-click a clip for its properties.", 40009, null],

@@ -25,6 +25,11 @@ def table(name):
 
 
 main, midi = table("actions_main.tsv"), table("actions_midi.tsv")
+MM_CTX = {"MM_CTX_TRACK", "MM_CTX_TRACK_CLK", "MM_CTX_ITEM", "MM_CTX_ITEM_CLK", "MM_CTX_ITEM_DBLCLK", "MM_CTX_ITEMLOWER", "MM_CTX_ITEMLOWER_CLK",
+          "MM_CTX_ITEMLOWER_DBLCLK", "MM_CTX_ITEMEDGE", "MM_CTX_ITEMFADE", "MM_CTX_ITEMSTRETCHMARKER", "MM_CTX_ENVSEG", "MM_CTX_ENVPT",
+          "MM_CTX_ENVLANE", "MM_CTX_RULER", "MM_CTX_RULER_CLK", "MM_CTX_ARRANGE_RMOUSE", "MM_CTX_ARRANGE_MMOUSE", "MM_CTX_CURSORHANDLE",
+          "MM_CTX_MIDI_NOTE", "MM_CTX_MIDI_NOTE_CLK", "MM_CTX_MIDI_PIANOROLL", "MM_CTX_MIDI_PIANOROLL_CLK", "MM_CTX_MIDI_RMOUSE", "MM_CTX_MIDI_CCLANE",
+          "MM_CTX_MIDI_RULER"}  # (REAPER's mouse contexts, as reaper-mouse.ini names them)
 midi_names = set(midi.values()) if midi else None
 problems = 0
 for st in load_styles():
@@ -61,6 +66,10 @@ for st in load_styles():
     for f in st.get("feel", []):
         if f[0] == "toggle" and isinstance(f[1], int) and main is not None and str(f[1]) not in main:
             print("%s: feel toggle %d is not a REAPER action" % (st["name"], f[1])); problems += 1
+        if f[0] == "mouse":  # (the behaviour names themselves: tests/reaper/mouse_names.lua, inside REAPER)
+            ctx = f[1][4:] if f[1][:4] in ("mac:", "win:") else f[1]
+            if ctx not in MM_CTX or not isinstance(f[2], int) or not 0 <= f[2] <= 15:
+                print("%s: mouse %s %r isn't a mouse context and modifier REAPER has" % (st["name"], f[1], f[2])); problems += 1
     have = [th for th in [st.get("theme")] + st.get("themes", []) if th and os.path.exists(os.path.join(THEMES, th))]
     if not have:
         print("%s: none of its themes are in ColorThemes" % st["name"]); problems += 1

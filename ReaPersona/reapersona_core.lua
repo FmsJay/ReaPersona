@@ -366,7 +366,7 @@ M.ASPECTS = {
   { "transport", "Where the transport sits", true, "Transport position" },
   { "browser", "Where the Media Explorer docks", true, "Media Explorer" },
   { "toolbar", "The DAW's toolbar in place of your main toolbar", true, "Toolbar" },
-  { "mouse", "Mouse behaviours (Smart Tool and so on)", true, "Mouse feel" },
+  { "mouse", "Mouse drags and clicks (Smart Tool and so on; the wheel is part of the shortcuts)", true, "Mouse drags and clicks" },
   { "settings", "Snap, ripple, follow-playhead, the loop range and overlapping clips", true, "Snap, ripple and loop" },
   { "editor", "Dock the MIDI editor in the main window, or let it float", true, "MIDI editor docking" },
 }
@@ -638,6 +638,7 @@ function M.restore_last()
   set_toggles(st and (st.base or st.id))
   if M.follow_on() then M.start_following() end -- (a persona per project: the action that follows project tabs)
   pcall(M.upgrade_startup)
+  M.sync_tick() -- (what your other computers changed while this one was off)
 end
 
 -- ---------------------------------------------------------------- MIDI editor keys
@@ -948,13 +949,23 @@ function M.layer_clashes(styles) -- -> your personas whose own layer a built-in 
   end
   return out
 end
-do
+local function fix_clashes()
   local moved = M.layer_clashes(M.styles)
   for _, st in ipairs(moved) do
     local a = free_alt()
     if a then st.alt = a; save_user_style(st) else M.log(st.name .. " shares shortcut layer alt-" .. st.alt .. " and no layer is free") end
   end
   if #moved > 0 then load_presets() end -- (presets on one of them take its new layer)
+end
+fix_clashes()
+function M.reload_users() -- your personas, presets and theme recipes read again, in place (a sync or a setup file changed the files)
+  for n = #M.styles, 1, -1 do if M.styles[n].user then table.remove(M.styles, n) end end
+  for _, st in ipairs(load(USERS)) do st.user = true; M.styles[#M.styles + 1] = st end
+  for _, st in ipairs(M.styles) do if st.user and st.keys_from then M.resolve_keys(st) end end
+  fix_clashes()
+  load_presets()
+  for k, v in pairs(M.load_json(M.here .. "/user_themes.json") or {}) do M.OWN[k] = v end
+  M.stubs_stale = true -- (a new persona's "use" action)
 end
 -- ---------------------------------------------------------------- combining styles: several DAWs' keys and feel in one style
 -- Styles are taken in priority order (first wins); `choice` overrides that per clash: choice["key " .. spec], choice["midi " .. spec]
@@ -974,10 +985,13 @@ local function feel_value(f)
   elseif f[1] == "switch" then return tostring(f[2]) else return tostring(f[3]) end
 end
 -- ---------------------------------------------------------------- the Persona Builder: blocks stacked into a persona
--- A block is { kind = "daw", id, keys, feel, theme } (a DAW's shortcuts, its layout and feel and its theme, each part on or off),
--- { kind = "feel", id, aspect } (one part of a DAW's feel), { kind = "settings", group, values } (REAPER options: values[i] is 0/1
--- for a switch or the option's number for a choice, -1 leaves it alone), { kind = "theme", file } or { kind = "colour", hex }.
--- Where two blocks set the same thing, the lower one wins. The persona keeps its blocks, so the Builder can open it again.
+-- A block is { kind = "daw", id, keys, feel, theme, mouse } (a DAW's shortcuts, its layout and feel, its theme and its mouse, each
+-- part on or off), { kind = "mouse", id } (a DAW's mouse alone: its wheel shortcuts and its drags and clicks), { kind = "feel", id,
+-- aspect } (one part of a DAW's feel), { kind = "settings", group, values } (REAPER options: values[i] is 0/1 for a switch or the
+-- option's number for a choice, -1 leaves it alone), { kind = "theme", file } or { kind = "colour", hex }.
+-- Where two blocks set the same thing, the lower one wins. A mouse block also takes the whole mouse from the blocks above it, so one
+-- DAW's keys with another's mouse is that DAW's mouse and nothing of the first one's (James, 5.10: "a Builder block for them").
+-- The persona keeps its blocks, so the Builder can open it again.
 M.SETTING_GROUPS = { -- (REAPER's own actions, checked against its action list; "_SWS..." and "_S&M..." ones need SWS)
   { id = "playback", name = "Playback and scrolling", items = {
     { 41817, "Continuous scrolling", tip = "The arrange view moves under a fixed playhead during playback." },
@@ -1057,7 +1071,8 @@ function M.setting_now(item) -- -> the item as REAPER has it now (0/1, or the op
   return reaper.GetToggleCommandState(cmd_id(item[1]))
 end
 function M.new_block(kind, a, b) -- every part on; a settings block starts as REAPER is set now
-  if kind == "daw" then return { kind = "daw", id = a, keys = true, feel = true, theme = true }
+  if kind == "daw" then return { kind = "daw", id = a, keys = true, feel = true, theme = true, mouse = true }
+  elseif kind == "mouse" then return { kind = "mouse", id = a }
   elseif kind == "feel" then return { kind = "feel", id = a, aspect = b }
   elseif kind == "settings" then
     local values = {}
@@ -1070,6 +1085,7 @@ function M.block_title(b)
   local st = b.id and M.by_id(b.id)
   local name = st and st.name or tostring(b.id)
   if b.kind == "daw" then return name
+  elseif b.kind == "mouse" then return name .. ": Mouse"
   elseif b.kind == "feel" then return name .. ": " .. M.aspect_name(b.aspect)
   elseif b.kind == "settings" then return (group_by_id(b.group) or { name = tostring(b.group) }).name
   elseif b.kind == "theme" then return "Theme: " .. tostring(b.file):gsub("%.ReaperTheme%a*$", "")
@@ -1101,16 +1117,26 @@ function M.safe_feel(list) -- a shared file's feel, keeping only commands ReaPer
   end
   return out
 end
+-- (e.mouse: a wheel shortcut or a mouse drag/click, the part a mouse block takes over)
 local function block_entries(b) -- what one block sets: { slot, kind = "key"|"midi"|"feel"|"theme"|"accent", label, key, entry, value }
   local out, st = {}, b.id and M.by_id(b.id)
-  local function feel(f) local s = feel_slot(f); if s then out[#out + 1] = { slot = s, kind = "feel", label = f[#f], entry = f } end end
-  if b.kind == "daw" and st then
-    if b.keys then
-      for _, k in ipairs(M.keys_here(st.keys)) do out[#out + 1] = { slot = "key " .. M.canon(k[1]), kind = "key", label = k[3], key = k[1], entry = k } end
+  local function feel(f) local s = feel_slot(f); if s then out[#out + 1] = { slot = s, kind = "feel", label = f[#f], entry = f, mouse = f[1] == "mouse" or nil } end end
+  local function key(k, wheel) out[#out + 1] = { slot = "key " .. M.canon(k[1]), kind = "key", label = k[3], key = k[1], entry = k, mouse = wheel or nil } end
+  if (b.kind == "daw" or b.kind == "mouse") and st then
+    -- (a DAW block saved before 5.10 has no mouse part: its wheel keys go with its keys and its drags with its feel, as they did)
+    local mouse, daw = b.kind == "mouse" or b.mouse, b.kind == "daw"
+    for _, k in ipairs(M.keys_here(st.keys)) do
+      local wheel = M.is_wheel(k[1])
+      if wheel and (mouse or (mouse == nil and b.keys)) or (not wheel and daw and b.keys) then key(k, wheel) end
+    end
+    if daw and b.keys then
       for _, k in ipairs(st.midi_keys or {}) do out[#out + 1] = { slot = "midi " .. M.canon(k[1]), kind = "midi", label = k[3], key = k[1], entry = k } end
     end
-    if b.feel then for _, f in ipairs(st.feel or {}) do feel(f) end end
-    local th = b.theme and M.theme_for(st)
+    for _, f in ipairs(st.feel or {}) do
+      if f[1] == "mouse" then if mouse or (mouse == nil and b.feel) then feel(f) end
+      elseif daw and b.feel then feel(f) end
+    end
+    local th = daw and b.theme and M.theme_for(st)
     if th then out[#out + 1] = { slot = "theme", kind = "theme", label = th, value = th } end
   elseif b.kind == "feel" and st then
     for _, f in ipairs(st.feel or {}) do if M.aspect_of(f) == b.aspect then feel(f) end end
@@ -1125,10 +1151,13 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
   return out
 end
 function M.build_preview(blocks) -- -> per block its entries, each with .lost_to = the lower block that replaces it
-  local per, winner = {}, {}
+  local per, winner, mouse = {}, {}, {}
   for i, b in ipairs(blocks) do -- (b.off[slot]: a line of the block you unticked, left out of the persona)
     per[i] = block_entries(b)
-    for _, e in ipairs(per[i]) do if type(b.off) == "table" and b.off[e.slot] then e.off = true else winner[e.slot] = i end end
+    if b.kind == "mouse" then for slot in pairs(mouse) do winner[slot] = i end end -- (the whole mouse from the blocks above: this one's)
+    for _, e in ipairs(per[i]) do
+      if type(b.off) == "table" and b.off[e.slot] then e.off = true else winner[e.slot] = i; mouse[e.slot] = e.mouse end
+    end
   end
   for i, list in ipairs(per) do for _, e in ipairs(list) do if not e.off and winner[e.slot] ~= i then e.lost_to = winner[e.slot] end end end
   return per
@@ -1174,20 +1203,24 @@ function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true
 end
 -- Whose shortcut layer a built persona's keys are on. Borrowing a DAW's layer is only for one DAW's keys taken whole: one with some keys
 -- left out took the whole layer anyway, and changing the keys of one of yours on a borrowed layer changed that DAW's too. So keys from
--- several DAWs, keys left out, or a persona that has a layer of its own already (its keys may have been changed there) get a layer of
--- their own. Review, 5.9.3. -> "none" (your own keys), "borrow" or "own"; the DAW ids; the layer it keeps, if any
+-- several DAWs (another's mouse wheel included), keys left out, or a persona that has a layer of its own already (its keys may have been
+-- changed there) get a layer of their own. Review, 5.9.3; the mouse, 5.10. -> "none" (your own keys), "borrow" or "own"; the DAW ids;
+-- the layer it keeps, if any
 function M.keys_layer(blocks, id)
-  local daws, cut = {}, false
-  for _, b in ipairs(blocks) do
-    if b.kind == "daw" and b.keys and b.id and M.by_id(b.id) then
-      daws[#daws + 1] = b.id
-      for slot, off in pairs(type(b.off) == "table" and b.off or {}) do if off and (slot:match("^key ") or slot:match("^midi ")) then cut = true end end
+  local per, daws, count = M.build_preview(blocks), {}, {}
+  for i, b in ipairs(blocks) do
+    for _, e in ipairs(per[i]) do
+      if (e.kind == "key" or e.kind == "midi") and not e.off and not e.lost_to then
+        if not count[b.id] then count[b.id] = 0; daws[#daws + 1] = b.id end
+        count[b.id] = count[b.id] + 1
+      end
     end
   end
   local old = id and M.by_id(id)
   local own = old and old.user and not old.keys_from and (old.alt or 0) > 0 and old.alt or nil
   if #daws == 0 then return "none", daws end
-  if #daws == 1 and not cut and not own then return "borrow", daws end
+  local st = M.by_id(daws[1])
+  if #daws == 1 and not own and count[daws[1]] == #M.keys_here(st.keys) + #(st.midi_keys or {}) then return "borrow", daws end
   return "own", daws, own
 end
 -- One of yours on a DAW's layer gets a copy of those keys on a layer of its own, so changing them in REAPER's Actions window changes
@@ -1302,6 +1335,7 @@ function M.wheel_code(spec) -- "Shift+Mousewheel" (modifiers in any order) -> 25
   end
   return 255, base + add
 end
+function M.is_wheel(spec) return type(spec) == "string" and M.wheel_code(M.for_os(spec) or spec) ~= nil end -- (a persona's key that's the wheel)
 function M.wheel_name(k) -- a wheel key as reaper-kb.ini has it (short or long form) -> "Ctrl+Shift+Mousewheel", or nil
   k = tonumber(k)
   if not k then return nil end
@@ -1568,7 +1602,7 @@ function M.extstate_keys(text, section) -- the keys reaper-extstate.ini's text k
 end
 local function extstate_names() -- every key this version sets: some may not be in reaper-extstate.ini yet (REAPER writes it later)
   local t = { "style", "orig", "orig project", "view", "look", "migrated", "page", "welcomed", "text size", "all actions", "follow projects",
-    "follow beat", "project default", "midi dock", "search", "theme my_reaper", "theme path my_reaper" }
+    "follow beat", "project default", "midi dock", "search", "theme my_reaper", "theme path my_reaper", "sync folder", "sync id", "sync last" }
   for _, list in ipairs({ M.styles, M.presets }) do
     for _, st in ipairs(list) do for _, k in ipairs({ "theme ", "forks ", "declined theme " }) do t[#t + 1] = k .. st.id end end
   end
@@ -1887,6 +1921,9 @@ function M.import_file(path, out, in_zip, depth) -- (depth: how many packs deep;
     if ok and d and d.preset then
       local pr, why = M.import_preset(d)
       out[#out + 1] = { pr and "preset" or "skipped", pr and pr.name or base, why }
+    elseif ok and d and (d.reapersona_setup or d.reapersona_sync) then
+      local r, why = M.import_setup(d)
+      out[#out + 1] = { r and "setup" or "skipped", base, r and (M.setup_summary(r) .. (r.install and "; install the shortcuts for your personas' keys" or "")) or why }
     elseif ok and d and d.style then
       local st, why = M.import(p)
       out[#out + 1] = { st and "style" or "skipped", st and st.name or base, st and ("shortcut layer alt-" .. st.alt) or why }
@@ -2159,14 +2196,17 @@ function M.cheat_sheet(st) -- -> path of an HTML page laid out for printing
     for _, r in ipairs(rows) do h[#h + 1] = "<tr><td>" .. esc(r[1]) .. "</td><td>" .. esc(r[2]) .. "</td></tr>" end
     h[#h + 1] = "</table></div>"
   end
-  local rows = {}
-  for _, k in ipairs(M.keys_here(st.keys)) do rows[#rows + 1] = { M.keyname(k[1]), k[3] } end
+  local rows, mouse = {}, {}
+  for _, k in ipairs(M.keys_here(st.keys)) do table.insert(M.is_wheel(k[1]) and mouse or rows, { M.keyname(k[1]), k[3] }) end
   tbl("Arrange", rows)
   rows = {}
   for _, k in ipairs(st.midi_keys or {}) do rows[#rows + 1] = { M.keyname(k[1]), k[3] } end
   tbl("MIDI editor", rows)
   rows = {}
-  for _, f in ipairs(st.feel or {}) do rows[#rows + 1] = { f[1] == "mouse" and "Mouse" or "Setting", f[#f] } end
+  for _, f in ipairs(st.feel or {}) do
+    if f[1] == "mouse" then if M.for_os(f[2]) then mouse[#mouse + 1] = { "Drag/click", f[#f] } end else rows[#rows + 1] = { "Setting", f[#f] } end
+  end
+  tbl("Mouse", mouse)
   tbl("How it behaves", rows)
   rows = {}
   for _, x in ipairs(st.extras or {}) do rows[#rows + 1] = { x[3] or "", x[1] } end
@@ -2179,6 +2219,255 @@ function M.cheat_sheet(st) -- -> path of an HTML page laid out for printing
   local p = M.here .. "/cheat sheets/" .. M.file_name(st.name) .. ".html"
   if not M.write(p, table.concat(h, "\n")) then return nil, "couldn't write " .. p end
   return p
+end
+
+-- ---------------------------------------------------------------- your setup on another computer: one file, or a shared folder
+-- (James, 5.10: "sync ReaPersona settings across my computers", e.g. smooth zoom changed on the laptop, and "export/import ... or sync
+-- through Syncthing like StudioSync does".) Everything of yours as items: "persona <id>", "preset <id>", "recipe <name>" (a theme
+-- recipe you imported), "setting <key>" (ReaPersona's own choices; not this computer's state such as the persona in use or where a
+-- docker is) and "ext <section>|<key>" (the extensions ReaPersona recommends, which keep their settings in REAPER's ExtState). A setup
+-- file holds them all; a shared folder (Syncthing, Google Drive, Dropbox...) holds one file per computer, so two computers never write
+-- the same file, and per item the newest change wins. Your themes stay where they are: a persona naming a theme this computer doesn't
+-- have uses the next one it does, as always.
+M.EXT_SETTINGS = { -- (here: keys that belong to this computer, never copied)
+  { section = "SmoothWheelScroll", name = "Smooth Wheel Scroll", here = { pos = true, win = true, dock = true } }, -- (its window's place)
+  { section = "smooth_playhead", name = "ReaSmoothPlayhead", here = { orig_drawmode = true } }, -- (the theme's playhead, with its path)
+}
+local HERE_ONLY = { style = true, orig = true, ["orig project"] = true, migrated = true, page = true, search = true, ["follow beat"] = true,
+  ["midi dock"] = true, ["theme my_reaper"] = true, ["theme path my_reaper"] = true, welcomed = true }
+local HERE_PREFIX = { "docker ", "params ", "forks ", "sync " }
+function M.synced_setting(k) -- a ReaPersona ExtState key that goes to your other computers (pure)
+  if HERE_ONLY[k] then return false end
+  for _, p in ipairs(HERE_PREFIX) do if k:sub(1, #p) == p then return false end end
+  return true
+end
+local SYNC_KINDS = { persona = true, preset = true, recipe = true, setting = true, ext = true }
+local GONE_KINDS = { persona = true, preset = true, recipe = true } -- (deleting one of these deletes it on your other computers too)
+function M.setup_items() -- -> everything of yours as items; the kinds whose file doesn't parse (left alone: nothing deleted or written)
+  local items, skip = {}, {}
+  local function add(kind, list, field, path)
+    if not list then skip[kind] = true; return end
+    for k, v in pairs(list) do
+      local id = field and type(v) == "table" and v[field] or (not field and k)
+      if type(id) == "string" and id ~= "" and type(v) == "table" then items[kind .. " " .. id] = v end
+    end
+  end
+  local u, pr, rc = M.load_json(USERS), M.load_json(PRESETS), M.load_json(M.here .. "/user_themes.json")
+  add("persona", u and (u.styles or {}), "id")
+  add("preset", pr and (pr.presets or {}), "id")
+  add("recipe", rc, nil)
+  local ini, keys = M.read(res .. "/reaper-extstate.ini") or "", {}
+  for _, k in ipairs(M.extstate_keys(ini, M.SECTION)) do keys[k] = true end
+  for _, k in ipairs(extstate_names()) do keys[k] = true end -- (some may not be in the file yet: REAPER writes it later)
+  for k in pairs(keys) do if M.synced_setting(k) then items["setting " .. k] = reaper.GetExtState(M.SECTION, k) end end
+  for _, x in ipairs(M.EXT_SETTINGS) do
+    for _, k in ipairs(M.extstate_keys(ini, x.section)) do
+      if not x.here[k] then items["ext " .. x.section .. "|" .. k] = reaper.GetExtState(x.section, k) end
+    end
+  end
+  return items, skip
+end
+-- Merging: state[item] = { t = when it last changed (seconds), h = its text, v = its value, del = true once deleted }. What changed here
+-- since the last look gets the time now (an item seen for the first time gets `seed`: 0 when you chose to take the folder's setup,
+-- so the other computers' versions win); then each item another computer changed later than this one is taken. Equal times keep
+-- this computer's. -> the items to change here: { item, v (nil: delete it), was (its state before, to put back if writing fails) }
+function M.sync_merge(state, mine, skip, theirs, now, seed) -- (pure)
+  local function kind(item) return item:match("^(%a+) ") end
+  for item, v in pairs(mine) do
+    local h, st = M.json_encode(v), state[item]
+    if not st then state[item] = { t = seed or now, h = h, v = v }
+    elseif st.del or st.h ~= h then state[item] = { t = now, h = h, v = v } end
+  end
+  for item, st in pairs(state) do
+    local k = kind(item)
+    if not st.del and mine[item] == nil and GONE_KINDS[k] and not skip[k] then state[item] = { t = now, h = "", del = true } end
+  end
+  local best = {}
+  for _, f in ipairs(theirs) do
+    for item, r in pairs(type(f.items) == "table" and f.items or {}) do
+      local k = type(item) == "string" and kind(item)
+      local good = type(r) == "table" and tonumber(r.t) and k and SYNC_KINDS[k] and not skip[k]
+      if good and not r.del then
+        if k == "setting" or k == "ext" then good = type(r.v) == "string" else good = type(r.v) == "table" end
+      end
+      if good and (not best[item] or tonumber(r.t) > best[item].t) then best[item] = { t = tonumber(r.t), v = r.v, del = r.del and true or nil } end
+    end
+  end
+  local out = {}
+  for item, r in pairs(best) do
+    local st = state[item]
+    local h = r.del and "" or M.json_encode(r.v)
+    if (not st or r.t > st.t) and not (st and st.h == h and (st.del or false) == (r.del or false)) then
+      if not (r.del and (not st or st.del)) then out[#out + 1] = { item = item, v = (not r.del) and r.v or nil, was = st } end
+      state[item] = { t = r.t, h = h, v = r.v, del = r.del }
+    end
+  end
+  table.sort(out, function(a, b) return a.item < b.item end)
+  return out
+end
+-- Items into this computer's files and ExtState. A file of yours that doesn't parse is never written over: its items wait (they're
+-- put back in the state, so they're tried again once it's fixed). -> { personas, presets, recipes, settings, ext = counts, install =
+-- true when a persona with a shortcut layer of its own came in (its keys need installing), failed = { items } }
+local function apply_items(list)
+  local rep = { personas = 0, presets = 0, recipes = 0, settings = 0, ext = 0, failed = {} }
+  local by = { persona = {}, preset = {}, recipe = {} }
+  for _, a in ipairs(list) do
+    local k, rest = a.item:match("^(%a+) (.+)$")
+    if k == "setting" then reaper.SetExtState(M.SECTION, rest, a.v or "", true); rep.settings = rep.settings + 1
+      if rest == "follow projects" and a.v == "1" then M.start_following() end
+    elseif k == "ext" then
+      local sec, key = rest:match("^([^|]+)|(.+)$")
+      if sec then reaper.SetExtState(sec, key, a.v or "", true); rep.ext = rep.ext + 1 end
+    elseif by[k] then by[k][#by[k] + 1] = { id = rest, a = a } end
+  end
+  local function files(kind, path, wrap, count)
+    if #by[kind] == 0 then return end
+    local d = M.load_json(path)
+    local list = d and (wrap and (d[wrap] or {}) or d)
+    if not list then for _, x in ipairs(by[kind]) do rep.failed[#rep.failed + 1] = x.a end return end
+    for _, x in ipairs(by[kind]) do
+      local v = x.a.v
+      if wrap then
+        for n = #list, 1, -1 do if type(list[n]) == "table" and list[n].id == x.id then table.remove(list, n) end end
+        if v then
+          v.id = x.id
+          if type(v.name) == "string" then v.name = v.name:gsub("%c", " ") end
+          list[#list + 1] = v
+          if kind == "persona" and not v.keys_from and (tonumber(v.alt) or 0) > 0 and #(v.keys or {}) > 0 then rep.install = true end
+        end
+      else list[x.id] = v end
+    end
+    local ok = M.save_json(path, wrap and { [wrap] = list } or setmetatable(list, M.OBJECT))
+    if ok then rep[count] = rep[count] + #by[kind] else for _, x in ipairs(by[kind]) do rep.failed[#rep.failed + 1] = x.a end end
+  end
+  files("persona", USERS, "styles", "personas")
+  files("preset", PRESETS, "presets", "presets")
+  files("recipe", M.here .. "/user_themes.json", nil, "recipes")
+  if rep.personas + rep.presets + rep.recipes > 0 then M.reload_users() end
+  return rep
+end
+function M.setup_summary(rep) -- "2 personas, 5 settings and Smooth Wheel Scroll's settings" (pure)
+  local parts = {}
+  for _, x in ipairs({ { "personas", "persona" }, { "presets", "preset" }, { "recipes", "theme recipe" }, { "settings", "setting" } }) do
+    local n = rep[x[1]] or 0
+    if n > 0 then parts[#parts + 1] = n .. " " .. x[2] .. (n == 1 and "" or "s") end
+  end
+  if (rep.ext or 0) > 0 then parts[#parts + 1] = "extension settings" end
+  if #parts == 0 then return "nothing new" end
+  return #parts == 1 and parts[1] or (table.concat(parts, ", ", 1, #parts - 1) .. " and " .. parts[#parts])
+end
+M.SETUP_RESTART = "Smooth Wheel Scroll and ReaSmoothPlayhead read their settings when REAPER starts."
+
+-- A setup file: everything of yours, to take to another computer by hand.
+function M.computer()
+  local n = os.getenv("COMPUTERNAME")
+  if not n and not tostring(reaper.GetOS()):find("^Win") then
+    local p = io.popen("hostname 2>/dev/null"); if p then n = (p:read("l") or ""):gsub("%.local$", ""); p:close() end
+  end
+  return (n and n ~= "") and n or "this computer"
+end
+function M.export_setup(path) -- -> true, or nil + why
+  local items = M.setup_items()
+  local out = setmetatable({}, M.OBJECT)
+  for item, v in pairs(items) do out[item] = { v = v } end
+  if not M.write(path, M.json_encode({ reapersona_setup = 1, computer = M.computer(), saved = os.time(), items = out }) .. "\n") then
+    return nil, "couldn't write " .. path
+  end
+  return true
+end
+function M.import_setup(d) -- a setup file (decoded, or its path): every item in it taken, the file's version winning -> report, or nil + why
+  if type(d) == "string" then local ok, t = pcall(M.json_decode, M.read(d) or ""); d = ok and t or nil end
+  if type(d) ~= "table" or not (d.reapersona_setup or d.reapersona_sync) or type(d.items) ~= "table" then return nil, "not a ReaPersona setup file" end
+  local list = {}
+  local _, skip = M.setup_items()
+  for item, r in pairs(d.items) do
+    local k = type(item) == "string" and item:match("^(%a+) ")
+    if k and SYNC_KINDS[k] and not skip[k] and type(r) == "table" and not r.del then
+      local good = (k == "setting" or k == "ext") and type(r.v) == "string" or (k ~= "setting" and k ~= "ext" and type(r.v) == "table")
+      if good then list[#list + 1] = { item = item, v = r.v } end
+    end
+  end
+  table.sort(list, function(a, b) return a.item < b.item end)
+  local rep = apply_items(list)
+  for k in pairs(skip) do rep.skipped = (rep.skipped and (rep.skipped .. ", ") or "") .. k end
+  return rep
+end
+
+-- A shared folder: <computer>-<id>.reapersona-sync.json per computer, written only when something changed (so Syncthing and the like
+-- send nothing the rest of the time), read from every other computer. Looked at when REAPER starts, while the window is open and when
+-- it closes. Another computer's file that doesn't parse (half-synced, or edited by hand) is skipped and left as it is.
+local SYNC_STATE = M.here .. "/sync_state.json"
+function M.sync_folder() return reaper.GetExtState(M.SECTION, "sync folder") end
+local function sync_file_name()
+  local id = reaper.GetExtState(M.SECTION, "sync id")
+  if id == "" then
+    math.randomseed(os.time() + math.floor(reaper.time_precise() * 1000))
+    id = string.format("%04x", math.random(0, 0xFFFF))
+    reaper.SetExtState(M.SECTION, "sync id", id, true)
+  end
+  return M.file_name(M.computer() .. "-" .. id) .. ".reapersona-sync.json"
+end
+M.sync_file_name = sync_file_name
+function M.sync_others(dir) -- -> the other computers' files: { name, d (decoded) or bad = true }
+  local out, own = {}, sync_file_name()
+  reaper.EnumerateFiles(dir, -1)
+  for i = 0, 1000 do
+    local f = reaper.EnumerateFiles(dir, i)
+    if not f then break end
+    if f:match("%.reapersona%-sync%.json$") and f ~= own then
+      local ok, d = pcall(M.json_decode, M.read(dir .. "/" .. f) or "")
+      if ok and type(d) == "table" and d.reapersona_sync and type(d.items) == "table" then out[#out + 1] = { name = f, d = d }
+      else out[#out + 1] = { name = f, bad = true } end
+    end
+  end
+  return out
+end
+-- start: "theirs" the first time, when you chose to take the folder's setup (the other computers' versions win), "mine" to send this
+-- computer's. -> a report ({ ..., others = their files, changed = true when this computer took something }), or nil + why
+function M.sync_now(start)
+  local dir = M.sync_folder():gsub("[/\\]+$", "")
+  if dir == "" then return nil, "no sync folder chosen" end
+  local state = M.load_json(SYNC_STATE)
+  if not state then return nil, "sync_state.json doesn't parse (a copy is next to it): fix or delete it, then sync again" end
+  state.items = type(state.items) == "table" and state.items or {}
+  local now, first = os.time(), next(state.items) == nil
+  local others = M.sync_others(dir)
+  local theirs = {}
+  for _, o in ipairs(others) do if o.d then theirs[#theirs + 1] = o.d end end
+  local mine, skip = M.setup_items()
+  local todo = M.sync_merge(state.items, mine, skip, theirs, now, (first and start == "theirs") and 0 or now)
+  local rep = apply_items(todo)
+  for _, a in ipairs(rep.failed) do state.items[a.item] = a.was end
+  rep.others, rep.changed = others, #todo > #rep.failed
+  local items = setmetatable({}, M.OBJECT)
+  for item, st in pairs(state.items) do items[item] = st.del and { t = st.t, del = true } or { t = st.t, v = st.v } end
+  local text = M.json_encode({ reapersona_sync = 1, computer = M.computer(), items = items }) .. "\n"
+  local keep = setmetatable({}, M.OBJECT) -- (kept before the folder is written: what came in is never sent back as a change of this computer's)
+  for item, st in pairs(state.items) do keep[item] = st end
+  M.save_json(SYNC_STATE, { items = keep })
+  local path = dir .. "/" .. sync_file_name()
+  if M.read(path) ~= text and not M.write(path, text) then return nil, "couldn't write in " .. dir .. " (is the folder there, and its drive connected?)" end
+  local bad = {}
+  for _, o in ipairs(others) do if o.bad then bad[#bad + 1] = o.name end end
+  reaper.SetExtState(M.SECTION, "sync last", os.time() .. "|" .. M.setup_summary(rep) .. (#bad > 0 and ("|skipped " .. table.concat(bad, ", ")) or ""), true)
+  return rep
+end
+function M.start_sync(dir, start) -- the folder chosen: -> the first sync's report, or nil + why
+  reaper.SetExtState(M.SECTION, "sync folder", dir, true)
+  os.remove(SYNC_STATE) -- (a new folder: every item seen afresh, as `start` says)
+  local rep, why = M.sync_now(start)
+  if not rep then M.stop_sync() end
+  return rep, why
+end
+function M.stop_sync()
+  reaper.DeleteExtState(M.SECTION, "sync folder", true)
+  os.remove(SYNC_STATE)
+end
+function M.sync_tick() -- (REAPER's start, and the window's loop: quiet, a problem goes to errors.log)
+  if M.sync_folder() == "" then return end
+  local ok, rep, why = pcall(M.sync_now)
+  if not ok then M.log("sync: " .. tostring(rep)) elseif not rep then M.log("sync: " .. tostring(why)) end
+  return ok and rep or nil
 end
 
 -- ---------------------------------------------------------------- merge themes (merge_themes.py does the zip work)
