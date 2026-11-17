@@ -38,13 +38,29 @@ NAMED.update({"Num%d" % i: 96 + i for i in range(10)})
 OEM = {"?": 191, ";": 186, "=": 187, "+": 187, ",": 188, "-": 189, ".": 190, "/": 191, "`": 192, "[": 219, "\\": 220, "]": 221, "'": 222}
 
 
-WHEEL = {"Mousewheel": (255, 248), "Ctrl+Alt+Mousewheel": (255, 251)}  # (as REAPER writes them; other wheel combos aren't needed yet)
+# The mouse wheel (5.9.5, as reapersona_core.lua's M.wheel_code): flags 255, key = 248 (wheel) or 216 (horizontal wheel) + Ctrl 1, Alt 2,
+# Shift 4, as REAPER writes them (248 Mousewheel, 251 Ctrl+Alt+Mousewheel, 218 Alt+HorizWheel). No code for the Windows key.
+WHEELS, WHEEL_MODS = {"Mousewheel": 248, "HorizWheel": 216}, {"Ctrl": 1, "Alt": 2, "Shift": 4}
+
+
+def wheel_code(spec):
+    """'Shift+Mousewheel' (modifiers in any order) -> (255, 252), or None. Pure."""
+    parts = spec.split("+")
+    if parts[-1] not in WHEELS:
+        return None
+    add = 0
+    for m in parts[:-1]:
+        if m not in WHEEL_MODS:
+            raise ValueError("no wheel shortcut with " + m + ": " + spec)
+        add |= WHEEL_MODS[m]
+    return 255, WHEELS[parts[-1]] + add
 
 
 def encode(spec):
     """'Ctrl+Shift+L' -> (modifier flags, key code), as reaper-kb.ini writes them. Pure."""
-    if spec in WHEEL:
-        return WHEEL[spec]
+    wheel = wheel_code(spec)
+    if wheel:
+        return wheel
     if spec.endswith("+"):  # ("+", "Num+", "Ctrl++": the key itself ends in a plus)
         rest = spec[:-1]
         cut = rest.rfind("+")

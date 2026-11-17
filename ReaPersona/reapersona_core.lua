@@ -1284,9 +1284,38 @@ for i = 1, 12 do NAMED["F" .. i] = 111 + i end
 for i = 0, 9 do NAMED["Num" .. i] = 96 + i end
 local OEM = { ["?"] = 191, [";"] = 186, ["="] = 187, ["+"] = 187, [","] = 188, ["-"] = 189, ["."] = 190, ["/"] = 191, ["`"] = 192,
   ["["] = 219, ["\\"] = 220, ["]"] = 221, ["'"] = 222 }
-local WHEEL = { Mousewheel = { 255, 248 }, ["Ctrl+Alt+Mousewheel"] = { 255, 251 } }
+-- The mouse wheel as a shortcut (James, 5.9.5: "can the mouse controls be part of reapersona?"): flags 255, and a key that's the wheel's
+-- base, 248 for the wheel and 216 for the horizontal one, plus Ctrl 1, Alt 2, Shift 4 (as REAPER writes them: 248 Mousewheel, 251
+-- Ctrl+Alt+Mousewheel, 218 Alt+HorizWheel; the full table from the Ultraschall reaper-kb.ini description). REAPER 7 also writes a long
+-- form, the same code plus a multiple of 256 (2044 for Shift+Mousewheel, on the desktop), so reading looks at the low byte. The Windows
+-- key has no wheel code: a wheel shortcut with Win is skipped.
+local WHEELS, WHEEL_MODS = { Mousewheel = 248, HorizWheel = 216 }, { Ctrl = 1, Alt = 2, Shift = 4 }
+function M.wheel_code(spec) -- "Shift+Mousewheel" (modifiers in any order) -> 255, 252; or nil
+  local mods, key = M.split_spec(spec)
+  local base = WHEELS[key]
+  if not base then return nil end
+  local add = 0
+  for m in mods:gmatch("[^+]+") do
+    local v = WHEEL_MODS[m]
+    if not v then return nil end
+    add = add | v
+  end
+  return 255, base + add
+end
+function M.wheel_name(k) -- a wheel key as reaper-kb.ini has it (short or long form) -> "Ctrl+Shift+Mousewheel", or nil
+  k = tonumber(k)
+  if not k then return nil end
+  k = k & 0xFF
+  local base = k >= 248 and 248 or (k >= 216 and k < 224) and 216 or nil
+  if not base then return nil end
+  local add, mods = k - base, {}
+  for _, m in ipairs({ { "Ctrl", 1 }, { "Alt", 2 }, { "Shift", 4 } }) do if add & m[2] ~= 0 then mods[#mods + 1] = m[1] end end
+  mods[#mods + 1] = base == 248 and "Mousewheel" or "HorizWheel"
+  return table.concat(mods, "+")
+end
 function M.encode(spec) -- "Ctrl+Shift+L" -> flags, key as reaper-kb.ini writes them (same as install_shortcuts.encode), or nil
-  if WHEEL[spec] then return WHEEL[spec][1], WHEEL[spec][2] end
+  local wf, wk = M.wheel_code(spec)
+  if wf then return wf, wk end
   local mods, key = M.split_spec(spec)
   local flags = 0
   for m in mods:gmatch("[^+]+") do
@@ -1782,7 +1811,8 @@ local KEYNAME = {} -- (key code -> name, for keymaps dropped in)
 for k, v in pairs(NAMED) do KEYNAME[v] = k end
 local function decode(f, k) -- reaper-kb.ini flags, key -> "Ctrl+Shift+L" (the reverse of M.encode), or nil
   f, k = tonumber(f), tonumber(k)
-  if not (f and k) or f == 255 then return nil end
+  if f == 255 then return M.wheel_name(k) end
+  if not (f and k) then return nil end
   local mods = {}
   if f & CTRL ~= 0 then mods[#mods + 1] = "Ctrl" end
   if f & ALT ~= 0 then mods[#mods + 1] = "Alt" end

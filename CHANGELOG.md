@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.9.5
+- **The mouse wheel can be any persona's shortcut**: Mousewheel and HorizWheel with any mix of Ctrl, Alt and Shift ("Shift+Mousewheel", "Ctrl+Alt+HorizWheel" in styles.json), written as REAPER writes them, and REAPER's own longer form read back (an existing Shift+wheel line, say). Before, only plain Mousewheel and Ctrl+Alt+Mousewheel could be. (The Windows key has no wheel code.) Mouse drags and clicks were already part of a persona's feel.
+
 ## 5.9.4
 - **Remove ReaPersona** (Settings): My REAPER comes back, then the startup block, ReaPersona's actions and its settings go, and with Python its shortcut layers and toolbars (REAPER restarts). Your personas, presets and themes stay. The startup block from any version, or one written by hand, is now recognised, swapped for the one that stays quiet once ReaPersona is gone, and also when the window opens.
 - **Your personas' keys are their own.** A Builder persona with some of a DAW's keys left out, or one that already has a layer, gets a layer of its own instead of the DAW's; *Make them its own* (Shortcuts) copies a persona's borrowed keys onto its own layer before you change them. One of yours on a layer a newer built-in took moves to a free one.

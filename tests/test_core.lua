@@ -94,6 +94,19 @@ local none, why = core.unpack_command("Other", "/a/p.zip", "/d", have({}))
 assert(none == nil and why:find("needs unzip, bsdtar or 7z", 1, true) and why:find("apt install unzip", 1, true))
 assert(select(2, core.unpack_command("Other", "/a/p.rar", "/d", have({ unzip = 1 }))):find("needs unrar", 1, true), "unzip can't open a .rar")
 
-for _, f in ipairs({ "reapersona_core.lua", "styles.json", "user_styles.json" }) do os.remove(tmp .. "/" .. f) end
+-- 5. The mouse wheel as a shortcut (5.9.5): every modifier mix, both wheels, and REAPER's long form read back.
+local f, k = core.encode("Mousewheel"); assert(f == 255 and k == 248, "the wheel")
+f, k = core.encode("Ctrl+Alt+Mousewheel"); assert(k == 251, "Ctrl+Alt, as before")
+f, k = core.encode("Shift+Mousewheel"); assert(k == 252)
+f, k = core.encode("Shift+Ctrl+Mousewheel"); assert(k == 253, "modifiers in any order")
+f, k = core.encode("Alt+HorizWheel"); assert(f == 255 and k == 218, "the horizontal wheel, as REAPER writes Alt+HorizWheel")
+assert(core.encode("Win+Mousewheel") == nil, "no wheel code with the Windows key")
+assert(core.decode(255, 2044) == "Shift+Mousewheel" and core.decode(255, 10237) == "Ctrl+Shift+Mousewheel", "REAPER's long forms")
+assert(core.decode(255, 216) == "HorizWheel" and core.decode(255, 255) == "Ctrl+Alt+Shift+Mousewheel")
+for _, spec in ipairs({ "Mousewheel", "Ctrl+Mousewheel", "Alt+Shift+Mousewheel", "Ctrl+Alt+Shift+HorizWheel" }) do
+  assert(core.decode(core.encode(spec)) == spec, "round trip: " .. spec)
+end
+
+for _, f2 in ipairs({ "reapersona_core.lua", "styles.json", "user_styles.json" }) do os.remove(tmp .. "/" .. f2) end
 os.execute(win and ('rmdir "' .. tmp:gsub("/", "\\") .. '"') or ("rmdir '" .. tmp .. "'")) -- (empty by now: rmdir leaves it if not)
 print("ok")
