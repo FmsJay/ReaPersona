@@ -59,7 +59,12 @@ function F.recent_errors(core, n)
   local lines = {}
   for l in t:gmatch("[^\r\n]+") do lines[#lines + 1] = l end
   local out = {}
-  for i = math.max(1, #lines - (n or 15) + 1), #lines do out[#out + 1] = "    " .. lines[i] end
+  local home = (os.getenv("HOME") or os.getenv("USERPROFILE") or ""):gsub("\\", "/")
+  for i = math.max(1, #lines - (n or 15) + 1), #lines do
+    local l = lines[i]:gsub("\\", "/")
+    if home ~= "" then l = l:gsub(home:gsub("%p", "%%%0"), "~") end -- (no home folder, so no user name, in a public issue)
+    out[#out + 1] = "    " .. l
+  end
   return out
 end
 
@@ -82,17 +87,21 @@ function F.save(core, kind, title, body, extra)
 end
 
 -- ---------------------------------------------------------------- the window
-local st = { open = false, kind = "bug", subject = "", body = "", folder = true, github = false, log = true }
+local st = { open = false, kind = "bug", subject = "", body = "", folder = true, github = false, log = true, set = false }
 
 -- The button that opens it.
 function F.button(ctx, ImGui)
-  if ImGui.Button(ctx, "Feedback##fb") then st.open = true end
-  ImGui.SetItemTooltip(ctx, "Report a bug, give feedback or ask for a feature: saved for whoever looks after ReaPersona, and/or as an issue on GitHub.")
+  if ImGui.Button(ctx, "Feedback##fb") then st.open, st.set = true, false end
+  ImGui.SetItemTooltip(ctx, "Report a bug, give feedback or ask for a feature: as an issue on ReaPersona's GitHub (you send it from your browser), and/or saved in your sync folder.")
 end
 
 -- Draw it while open (each frame, from the main window's loop). say(text): the window's message line.
 function F.draw(ctx, ImGui, core, version, say)
   if not st.open then return end
+  if not st.set then -- (each time it opens: syncing, the folder reaches your other computers; not syncing, only GitHub reaches anyone)
+    local _, shared = F.folder(core)
+    st.folder, st.github, st.set = shared, not shared, true
+  end
   ImGui.SetNextWindowSize(ctx, 520, 440, ImGui.Cond_FirstUseEver)
   local visible, open = ImGui.Begin(ctx, "ReaPersona feedback##fbwin", true, ImGui.WindowFlags_NoCollapse)
   st.open = open
@@ -122,7 +131,7 @@ function F.draw(ctx, ImGui, core, version, say)
   ImGui.SetItemTooltip(ctx, "Opens a new issue on GitHub in your browser, filled in, for you to send with your GitHub account (it's free).\nAnyone can read issues there.")
   ImGui.SameLine(ctx, 0, 16)
   _, st.log = ImGui.Checkbox(ctx, "Add what it was doing", st.log)
-  ImGui.SetItemTooltip(ctx, "Adds ReaPersona's version, REAPER's, the audio system, the persona in use and the last lines of ReaPersona's error log. No files or audio.")
+  ImGui.SetItemTooltip(ctx, "Adds ReaPersona's version, REAPER's, the audio system, the persona in use and the last lines of ReaPersona's error log (your home folder shown as ~). No files or audio.")
   local title, body = F.compose(st.kind, st.subject, st.body)
   ImGui.BeginDisabled(ctx, not title or not (st.folder or st.github))
   if ImGui.Button(ctx, "Send##fbsend") then

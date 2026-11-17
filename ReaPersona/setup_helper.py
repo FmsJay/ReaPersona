@@ -37,10 +37,14 @@ def install(res, listfile):
             if len(parts) != 3 or not isinstance(v, dict):
                 continue
             remote, category, package = parts
+            try:
+                kind = int(v.get("type", 1))
+            except (TypeError, ValueError):  # (one bad entry is skipped, not the whole install)
+                continue
             if c.execute("SELECT 1 FROM entries WHERE remote = ? AND category = ? AND package = ?", (remote, category, package)).fetchone():
                 continue
             c.execute("INSERT INTO entries (remote, category, package, desc, type, version, author, flags) VALUES (?, ?, ?, ?, ?, '0', ?, 0)",
-                      (remote, category, package, str(v.get("desc", "")), int(v.get("type", 1)), str(v.get("author", ""))))
+                      (remote, category, package, str(v.get("desc", "")), kind, str(v.get("author", ""))))
             added += 1
         c.commit()
     finally:

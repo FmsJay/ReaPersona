@@ -540,7 +540,7 @@
         ["Shift+Tab", 40291, "Toggle Between Device/Clip View (here: the track's devices)"],
         ["Ctrl+Alt+3", 40153, "Hide/Show Clip View (here: the MIDI editor)"],
         ["Ctrl+Shift+M", 40214, "Insert MIDI clip"],
-        ["Ctrl+Shift+C", "_SWS_SMARTCOPY", "Copy time"],
+        ["Ctrl+Shift+C", 40211, "Capture MIDI"],
         ["M", 40377, "Computer MIDI Keyboard (here: REAPER's virtual MIDI keyboard)"],
         ["Tab", "_HB_SHOW_HIDE_PLAYTIME", "Toggle Session/Arrangement View (here: Helgobox Playtime)"],
         ["Ctrl+G", 42785, "Group tracks"],

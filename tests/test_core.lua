@@ -216,28 +216,28 @@ assert(#out == 0, "wrong types, unknown kinds and items without a time are left 
 out = core.sync_merge({}, {}, {}, { { items = { ["ext SmoothWheelScroll|window"] = { t = 1, v = "144" } } },
   { items = { ["ext SmoothWheelScroll|window"] = { t = 2, v = "200" } } } }, 900, 900)
 assert(#out == 1 and out[1].v == "200", "the newest of several computers")
-assert(core.synced_setting("look") and core.synced_setting("theme pro_tools") and core.synced_setting("aspect mouse"))
+assert(not core.synced_setting("look") and not core.synced_setting("text size") and not core.synced_setting("declined smoothscroll") and core.synced_setting("theme pro_tools") and core.synced_setting("aspect mouse"))
 assert(not core.synced_setting("style") and not core.synced_setting("docker top") and not core.synced_setting("sync folder") and not core.synced_setting("orig"))
 assert(core.setup_summary({ personas = 2, settings = 1, ext = 3 }) == "2 personas, 1 setting and extension settings")
 assert(core.setup_summary({}) == "nothing new")
 
 -- 8. A setup file and a shared folder, end to end, in the test folder.
 local function set_ext(s, k, v) ext[s .. "/" .. k] = v end
-write(tmp .. "/reaper-extstate.ini", "[ReaPersona]\nstyle=pro_tools\nlook=Dark\ndocker top=14\n[SmoothWheelScroll]\nwindow=200.000000\npos=772 84\n")
-set_ext("ReaPersona", "style", "pro_tools"); set_ext("ReaPersona", "look", "Dark"); set_ext("ReaPersona", "docker top", "14")
+write(tmp .. "/reaper-extstate.ini", "[ReaPersona]\nstyle=pro_tools\naspect mouse=Dark\ndocker top=14\n[SmoothWheelScroll]\nwindow=200.000000\npos=772 84\n")
+set_ext("ReaPersona", "style", "pro_tools"); set_ext("ReaPersona", "aspect mouse", "Dark"); set_ext("ReaPersona", "docker top", "14")
 set_ext("SmoothWheelScroll", "window", "200.000000"); set_ext("SmoothWheelScroll", "pos", "772 84")
 write(tmp .. "/user_styles.json", '{"styles": [{"id": "built_m", "name": "Mixing", "kind": "built", "keys_from": "logic"}]}')
 write(tmp .. "/presets.json", '{"presets": [{"id": "preset_1", "name": "Late night", "base": "logic"}]}')
 core = load_core()
 local items = core.setup_items()
-assert(items["setting look"] == "Dark" and items["persona built_m"].name == "Mixing" and items["preset preset_1"].name == "Late night")
+assert(items["setting aspect mouse"] == "Dark" and items["persona built_m"].name == "Mixing" and items["preset preset_1"].name == "Late night")
 assert(items["ext SmoothWheelScroll|window"] == "200.000000")
 assert(items["setting style"] == nil and items["setting docker top"] == nil and items["ext SmoothWheelScroll|pos"] == nil, "this computer's own state stays")
 assert(core.export_setup(tmp .. "/setup.json"))
-set_ext("ReaPersona", "look", "Light"); set_ext("SmoothWheelScroll", "window", "100")
+set_ext("ReaPersona", "aspect mouse", "Light"); set_ext("SmoothWheelScroll", "window", "100")
 write(tmp .. "/user_styles.json", '{"styles": []}')
 local r = assert(core.import_setup(tmp .. "/setup.json"))
-assert(ext["ReaPersona/look"] == "Dark" and ext["SmoothWheelScroll/window"] == "200.000000" and ext["SmoothWheelScroll/pos"] == "772 84")
+assert(ext["ReaPersona/aspect mouse"] == "Dark" and ext["SmoothWheelScroll/window"] == "200.000000" and ext["SmoothWheelScroll/pos"] == "772 84")
 assert(r.personas == 1 and core.by_id("built_m") and core.by_id("built_m").keys == core.by_id("logic").keys, "the persona is back, on Logic's layer")
 write(tmp .. "/user_styles.json", "{broken")
 r = assert(core.import_setup(tmp .. "/setup.json"))
@@ -252,7 +252,7 @@ set_ext("ReaPersona", "sync folder", share)
 r = assert(core.sync_now())
 local mine = core.sync_file_name()
 local sent = core.json_decode(assert(read(share .. "/" .. mine), "this computer's file"))
-assert(sent.reapersona_sync == 1 and sent.items["setting look"].v == "Dark" and sent.items["persona built_m"].v.name == "Mixing")
+assert(sent.reapersona_sync == 1 and sent.items["setting aspect mouse"].v == "Dark" and sent.items["persona built_m"].v.name == "Mixing")
 write(share .. "/LAPTOP-1234.reapersona-sync.json", core.json_encode({ reapersona_sync = 1, computer = "LAPTOP", items = {
   ["ext SmoothWheelScroll|window"] = { t = os.time() + 60, v = "250.000000" }, ["persona built_m"] = { t = os.time() + 60, del = true } } }))
 write(share .. "/MAC-9.reapersona-sync.json", "{half a file")
@@ -338,6 +338,71 @@ write(share .. "/LAPTOP-1234.reapersona-sync.json", core.json_encode({ reaperson
 r = assert(core.sync_now())
 assert(not read(tmp .. "/FXChains/Bass.RfxChain"), "a part that's off here isn't taken in")
 core.stop_sync()
+
+-- 11. The 5.11 review's findings (H1-H5, M3, M6-M7), each checked.
+-- H4: a computer whose clock ran ahead can't make later edits here lose; incoming times are clamped to a day ahead.
+state = { ["setting aspect mouse"] = { t = 10 ^ 12, h = '"1"', v = "1" } }
+core.sync_merge(state, { ["setting aspect mouse"] = "0" }, {}, {}, 1000, 1000)
+assert(state["setting aspect mouse"].t == 10 ^ 12 + 1, "a change here is later than what it replaces")
+state = {}
+out = core.sync_merge(state, {}, {}, { { items = { ["setting aspect mouse"] = { t = 10 ^ 12, v = "1" } } } }, 1000, 1000)
+assert(#out == 1 and state["setting aspect mouse"].t == 1000 + 86400, "a time from the future is believed only a day ahead")
+-- M7: equal times settle the same way everywhere (the larger hash), between computers and between peers.
+local a_state, b_state = {}, {}
+core.sync_merge(a_state, { ["pref x"] = "A" }, {}, {}, 50, 0)
+core.sync_merge(b_state, { ["pref x"] = "B" }, {}, {}, 50, 0)
+local function file_of(st) local it = {}; for k, v in pairs(st) do it[k] = { t = v.t, v = v.v } end return { items = it } end
+local fa, fb = file_of(a_state), file_of(b_state)
+core.sync_merge(a_state, { ["pref x"] = "A" }, {}, { fb }, 60, 60)
+core.sync_merge(b_state, { ["pref x"] = "B" }, {}, { fa }, 60, 60)
+assert(a_state["pref x"].v == b_state["pref x"].v, "both 'take theirs' at time 0: they still agree, on " .. tostring(a_state["pref x"].v))
+out = core.sync_merge({}, {}, {}, { { items = { ["pref y"] = { t = 5, v = "1" } } }, { items = { ["pref y"] = { t = 5, v = "2" } } } }, 9, 9)
+local out2 = core.sync_merge({}, {}, {}, { { items = { ["pref y"] = { t = 5, v = "2" } } }, { items = { ["pref y"] = { t = 5, v = "1" } } } }, 9, 9)
+assert(out[1].v == out2[1].v, "peers tied: the same winner whatever order their files are read in")
+-- H2: what comes in passes the same checks as what goes out.
+for _, item in ipairs({ "setting sync folder", "setting sync advanced", "xstate ReaPersona|sync folder", "ext SomeSection|x", "pref vstpath64",
+    "tpl Scripts/__startup.lua", "tpl FXChains/../Scripts/__startup.lua", "theme UserPlugins/x.dll", "code reaper-kb.ini", "code Scripts/ReaPersona/reapersona_core.lua",
+    "code Scripts/x.exe", "ini reaper.ini", "persona ../x", "evil x" }) do
+  assert(not core.item_allowed(item, item:match("^%a+ ") and ({ tpl = 1, theme = 1, code = 1, ini = 1 })[item:match("^(%a+)")] and { h = "0123456789abcdef", n = 1 } or "v"), item .. " is refused")
+end
+for _, item in ipairs({ "setting aspect mouse", "ext SmoothWheelScroll|window", "xstate JLOOPER|Scene2", "pref autosaveint", "persona built_1" }) do
+  assert(core.item_allowed(item, "1"), item .. " is taken")
+end
+assert(core.item_allowed("tpl FXChains/Vox/Lead.RfxChain", { h = "0123456789abcdef", n = 3 }) and core.item_allowed("code Scripts/Mine/x.lua", { h = "0123456789abcdef", n = 3 }))
+assert(not core.item_allowed("tpl FXChains/a.RfxChain", { h = "../../reaper.ini", n = 3 }) and not core.item_allowed("ini reaper-kb.ini", { h = "../x" }), "a blob's name is only a hash")
+assert(not core.item_allowed("ext SmoothWheelScroll|pos", "1 2"), "an extension's window place stays")
+-- H3: the persona that keeps a shared layer doesn't depend on the order they're listed in.
+local c1 = core.layer_clashes({ { id = "built_b", alt = 14, user = true }, { id = "built_a", alt = 14, user = true } })
+local c2 = core.layer_clashes({ { id = "built_a", alt = 14, user = true }, { id = "built_b", alt = 14, user = true } })
+assert(#c1 == 1 and #c2 == 1 and c1[1].id == "built_b" and c2[1].id == "built_b", "the smaller id keeps it on every computer")
+-- Menus go out without ReaPersona's own toolbars; a setup file says what's in it.
+assert(core.menu_shared("[Main toolbar]\nitem_0=1\n[Floating toolbar 20]\ntitle=ReaPersona Pro Tools\nitem_0=2\n[Floating toolbar 3]\ntitle=Mine\n") ==
+  "[Main toolbar]\nitem_0=1\n[Floating toolbar 3]\ntitle=Mine\n")
+assert(core.setup_kinds({ items = { ["persona a"] = {}, ["persona b"] = {}, ["pref x"] = "1", ["evil x"] = 1 } }) == "2 personas, 1 REAPER preferences")
+-- H5: with no sync folder, the parts made of files are left out of a setup file (never written to the drive's root).
+core = load_core()
+set_ext("ReaPersona", "sync folder", "")
+set_ext("ReaPersona", "sync advanced", "templates")
+local it = core.setup_items()
+for k in pairs(it) do assert(not k:match("^tpl "), "no templates without a folder for their content") end
+set_ext("ReaPersona", "sync advanced", "")
+-- H1: a keymap waiting in pending/ for the restart isn't read as this computer's (it would go back out and undo the change).
+set_ext("ReaPersona", "sync folder", share)
+set_ext("ReaPersona", "sync advanced", "keys")
+set_ext("ReaPersona", "style", "my_reaper")
+write(tmp .. "/reaper-kb.ini", "KEY 1 65 40001 0\n")
+it = core.setup_items()
+assert(it["ini reaper-kb.ini"], "the keymap goes out normally")
+os.execute(win and ('mkdir "' .. (tmp .. "/pending"):gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. tmp .. "/pending'"))
+write(tmp .. "/pending/reaper-kb.ini", "KEY 1 65 40099 0\n")
+it = core.setup_items()
+assert(not it["ini reaper-kb.ini"], "not while the other computer's waits for the restart")
+set_ext("ReaPersona", "style", "pro_tools")
+os.remove(tmp .. "/pending/reaper-kb.ini")
+it = core.setup_items()
+assert(not it["ini reaper-kb.ini"], "and not while a persona is in use (it changes them live)")
+set_ext("ReaPersona", "sync advanced", "")
+set_ext("ReaPersona", "sync folder", "")
 
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))

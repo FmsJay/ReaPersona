@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.11.0
+-- @version 5.11.1
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -300,7 +300,7 @@ local function use(st)
   say(st.name .. " in use" .. (#setup > 0 and (", and this project has its " .. table.concat(setup, ", ")) or "") .. ". Undo switch (top) puts " .. (was and was.name or "the last one") .. " back.")
   for _, key in ipairs(st.recommends or {}) do -- (offered once: no is remembered)
     local x = core.EXTENSIONS[key]
-    if x and core.extension_state(key) == "missing" and reaper.GetExtState(SECTION, "declined " .. key) == "" then
+    if x and core.ext_here(key) and core.extension_state(key) == "missing" and reaper.GetExtState(SECTION, "declined " .. key) == "" then
       if reaper.MB(st.name .. " " .. x.feel .. ". " .. x.name .. " does that in REAPER: " .. x.why .. ".\n\nInstall it now? (REAPER needs a restart to load it.)", "ReaPersona: recommended for " .. st.name, 4) == 6 then
         install_ext(key)
       else reaper.SetExtState(SECTION, "declined " .. key, "1", true) end
@@ -450,12 +450,12 @@ local function detail(sel, alt)
     muted(sel.description or "")
     if (sel.alt or 0) > 0 and not installed[sel.alt] then
       ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.YELLOW)
-      ImGui.TextWrapped(ctx, "Its shortcuts aren't installed yet: see Check.")
+      ImGui.TextWrapped(ctx, "Its shortcuts aren't installed yet: Home > Shortcut layers > Install and restart.")
       ImGui.PopStyleColor(ctx)
     end
     for _, key in ipairs(sel.recommends or {}) do
       local x = core.EXTENSIONS[key]
-      local state = x and core.extension_state(key)
+      local state = x and core.ext_here(key) and core.extension_state(key)
       if state and state ~= "on" then
         ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.YELLOW)
         ImGui.TextWrapped(ctx, "Recommended for " .. sel.name .. ": " .. x.name .. " (" .. x.why .. ")." .. (state == "restart" and " Installed: restart REAPER to load it." or ""))
@@ -513,7 +513,7 @@ local function detail(sel, alt)
       ImGui.SameLine(ctx)
       ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.RED)
       local deps = ImGui.Button(ctx, "Delete persona") and (sel.preset and {} or core.presets_on(sel.id))
-      if deps and reaper.MB("Delete " .. sel.name .. "? This can't be undone." ..
+      if deps and reaper.MB("Delete " .. sel.name .. "? This can't be undone." .. (core.sync_folder() ~= "" and " It goes from your other computers too (they sync)." or "") ..
           (#deps > 0 and ("\n\nThese personas are built on it and will use My REAPER's keys instead:\n" .. table.concat(deps, "\n")) or ""), "ReaPersona", 4) == 6 then
         if on and sel.preset then core.use(core.by_id(sel.base or "my_reaper")) end
         local ok, why
@@ -649,7 +649,7 @@ local function daws_page(sel, alt)
     local ok, p = reaper.GetUserFileNameForRead("", "Import a ReaPersona persona", "*.json")
     if ok then
       local st, why = core.import(p)
-      reaper.MB(st and (st.name .. " imported as shortcut layer alt-" .. st.alt .. ".\n\nReopen ReaPersona to see it; its shortcuts need installing (see Check).") or ("Not imported: " .. why), "ReaPersona", 0)
+      reaper.MB(st and (st.name .. " imported as shortcut layer alt-" .. st.alt .. ".\n\nReopen ReaPersona to see it; its shortcuts need installing (Home > Shortcut layers).") or ("Not imported: " .. why), "ReaPersona", 0)
     end
   end
 end
@@ -824,7 +824,7 @@ local function choose_sync_folder()
   if #names > 0 then
     local r = reaper.MB("The folder already has the ReaPersona setup of " .. table.concat(names, ", ") .. ".\n\n" ..
       "Yes: take theirs here. Where both have the same persona or setting, theirs wins; what only this computer has goes to them.\n" ..
-      "No: this computer's setup wins and goes to them.\nCancel: don't sync.", "ReaPersona: sync", 3)
+      "No: this computer's setup wins and goes to them (personas deleted on the others since may come back).\nCancel: don't sync.", "ReaPersona: sync", 3)
     if r == 2 then return end
     start = r == 6 and "theirs" or "mine"
   end
@@ -911,6 +911,9 @@ local function settings_page()
     ImGui.SameLine(ctx)
     if ImGui.Button(ctx, "Load a file...") then
       local ok, p = reaper.GetUserFileNameForRead(res .. "/", "Load a ReaPersona setup", "json")
+      local fine, d = false, nil
+      if ok and p ~= "" then fine, d = pcall(core.json_decode, core.read(p) or "") end
+      if ok and p ~= "" and fine and type(d) == "table" and d.items and not core.confirm_setup(d, p:match("[^/\\]+$")) then ok = false end
       if ok and p ~= "" then
         local r, why = core.import_setup(p)
         if r then
@@ -938,8 +941,16 @@ local function settings_page()
       ImGui.SameLine(ctx)
       if ImGui.Button(ctx, "Stop syncing") then core.stop_sync(); sync_err, sync_seen = nil, ""; say("Not syncing any more. Your setup here stays as it is.") end
     end
+    local pend = core.restart_pending() -- (shown whether or not the advanced parts are unfolded)
+    if #pend > 0 then
+      ImGui.TextColored(ctx, C.YELLOW, "From your other computers, waiting for REAPER to restart: " .. table.concat(pend, ", "))
+      if primary("Apply (REAPER restarts)##applysetup") then install_shortcuts() end
+      ImGui.SetItemTooltip(ctx, "REAPER closes (asking about anything unsaved), they're merged into this computer's (backed up first), your persona shortcuts go back in, and REAPER opens again.")
+    end
     ImGui.Dummy(ctx, 0, 4)
-    if setting_row("##advsync", "Advanced: REAPER itself too", reaper.GetExtState(SECTION, "sync show advanced") == "1",
+    local n_adv = 0
+    for _, a in ipairs(core.ADVANCED) do if core.advanced_on(a.id) then n_adv = n_adv + 1 end end
+    if setting_row("##advsync", "Advanced: REAPER itself too" .. (n_adv > 0 and ("  (" .. n_adv .. " part" .. (n_adv == 1 and "" or "s") .. " syncing)") or ""), reaper.GetExtState(SECTION, "sync show advanced") == "1",
         "Your preferences, other scripts' settings, shortcuts, menus and toolbars, templates, your own scripts and JSFX, themes and ReaPack packages, each part chosen below.") then
       reaper.SetExtState(SECTION, "sync show advanced", reaper.GetExtState(SECTION, "sync show advanced") == "1" and "" or "1", true)
     end
@@ -961,12 +972,6 @@ local function settings_page()
           end
         end
         ImGui.EndDisabled(ctx)
-      end
-      local pend = core.restart_pending()
-      if #pend > 0 then
-        ImGui.TextColored(ctx, C.YELLOW, "From your other computers, waiting for REAPER to restart: " .. table.concat(pend, ", "))
-        if primary("Apply (REAPER restarts)##applysetup") then install_shortcuts() end
-        ImGui.SetItemTooltip(ctx, "REAPER closes (asking about anything unsaved), they're merged into this computer's (backed up first), your persona shortcuts go back in, and REAPER opens again.")
       end
       if core.advanced_on("packages") then
         local miss = core.packages_missing()
@@ -1533,8 +1538,11 @@ local function setup_page()
       setup_row("keys", have == want, "Shortcut layers: " .. have .. " of " .. want .. " personas installed", "Each persona's keys. REAPER restarts to load them (about 10 seconds).", have < want and "Install and restart" or "Reinstall", install_shortcuts)
       setup_row("start", core.startup_on(), "Brings your persona back when REAPER starts", "One block in Scripts/__startup.lua.", not core.startup_on() and "Add it" or nil,
         function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end)
-      for key, x in pairs(core.EXTENSIONS) do
-        local s = core.extension_state(key)
+      local ext_keys = {}
+      for key in pairs(core.EXTENSIONS) do if core.ext_here(key) then ext_keys[#ext_keys + 1] = key end end -- (Windows-only ones only on Windows)
+      table.sort(ext_keys)
+      for _, key in ipairs(ext_keys) do
+        local x, s = core.EXTENSIONS[key], core.extension_state(key)
         setup_row("ext" .. key, s == "on" or s == "off", x.name .. (s == "restart" and " (restart REAPER to load it)" or ""), x.why .. " Recommended by the DAW personas.",
           s == "missing" and core.can_install(key) and "Install" or nil, function() install_ext(key) end)
       end
@@ -1559,7 +1567,7 @@ local function setup_page()
           if ImGui.SmallButton(ctx, "Import your key commands##impk" .. i) then
             local s, missed = core.import_cubase_keys(d.can.keys)
             if s then ensure_new = true; selected = s.id end
-            reaper.MB(s and (s.name .. " is in DAWs (shortcut layer alt-" .. s.alt .. "; install the shortcuts in Setup). " .. #missed .. " of your assignments are for commands ReaPersona doesn't map yet.") or ("Not imported: " .. tostring(missed)), "ReaPersona", 0)
+            reaper.MB(s and (s.name .. " is in Personas (shortcut layer alt-" .. s.alt .. "; install the shortcuts on Home). " .. #missed .. " of your assignments are for commands ReaPersona doesn't map yet.") or ("Not imported: " .. tostring(missed)), "ReaPersona", 0)
           end
         end
       end
@@ -1570,7 +1578,7 @@ local function setup_page()
       if ok then
         local s, missed = core.import_cubase_keys(p)
         if s then ensure_new = true; selected = s.id end
-        reaper.MB(s and (s.name .. " is in DAWs (install the shortcuts in Setup).") or ("Not imported: " .. tostring(missed)), "ReaPersona", 0)
+        reaper.MB(s and (s.name .. " is in Personas (install the shortcuts on Home).") or ("Not imported: " .. tostring(missed)), "ReaPersona", 0)
       end
     end
     ImGui.SameLine(ctx)
