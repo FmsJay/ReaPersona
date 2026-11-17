@@ -413,6 +413,32 @@ os.remove(tmp .. "/pending/prefs.json")
 local wfp = core.preset_style({ id = "preset_vo", name = "VO", base = "pro_tools", feel = {}, project = { srate = 48000, tracks = "<TRACK\n  NAME VO\n>\n", tracks_name = "1 track from x" } })
 assert(wfp.project and wfp.project.srate == 48000 and wfp.project.tracks:find("NAME VO", 1, true) and wfp.description:find("48 kHz", 1, true))
 assert(core.preset_style({ id = "preset_plain", name = "P", base = "pro_tools", feel = {} }).project == nil, "a plain one has no project part")
+-- 5.13: a whole project as a template: no items, media bay, scripts' data or this project's folders; nested blocks handled.
+local rpp = '<REAPER_PROJECT 0.1 "7.86/win64" 1\n  RECORD_PATH "C:/rec" ""\n  RENDER_FILE "C:/out"\n  RENDER_PATTERN $project\n  TEMPO 90 4 4\n' ..
+  '  MARKER 1 0 "Verse" 0\n  <PROJBAY\n    <ITEM\n    >\n  >\n  <EXTSTATE\n    <StudioSync\n      id 1\n    >\n  >\n  <TRACK\n    NAME Vox\n    <FXCHAIN\n' ..
+  '      <VST "VST3: Pro-Q 3 (FabFilter)" Pro-Q.vst3 0 "" 1\n        AAAA\n      >\n      <JS "utility/volume" ""\n      >\n    >\n    <ITEM\n      POSITION 0\n      <SOURCE WAVE\n        FILE "a.wav"\n      >\n    >\n  >\n>\n'
+local tpl = core.template_from_rpp(rpp)
+assert(not tpl:find("ITEM", 1, true) and not tpl:find("a.wav", 1, true) and not tpl:find("StudioSync", 1, true) and not tpl:find("PROJBAY", 1, true), tpl)
+assert(not tpl:find("RECORD_PATH", 1, true) and not tpl:find("C:/out", 1, true), "no folders of this project")
+assert(tpl:find("TEMPO 90", 1, true) and tpl:find("MARKER 1", 1, true) and tpl:find("RENDER_PATTERN", 1, true) and tpl:find("NAME Vox", 1, true), "the rest stays")
+local _, opens = tpl:gsub("\n%s*<", ""); local _, closes = tpl:gsub("\n%s*>", "")
+assert(opens + 1 == closes, "blocks balanced (the project's own opens on the first line)")
+local need = core.fx_needed(tpl)
+assert(#need == 2 and need[1] == "Pro-Q 3 (FabFilter)" and need[2] == "JS: utility/volume", table.concat(need, ";"))
+-- the project template goes into a preset and its description, and into a Builder block's entries
+local wft = core.preset_style({ id = "preset_t", name = "T", base = "pro_tools", feel = {}, project = { srate = 48000, tracks = "", template = tpl, template_name = "Song (1 track...)" } })
+assert(wft.project.template == tpl and wft.description:find("Song (1 track", 1, true))
+local ents = core.project_entries({ kind = "project", template = tpl, template_name = "Song" })
+assert(#ents == 1 and ents[1].slot == "project template" and ents[1].value.template == tpl)
+-- settings appended at the end of each group (blocks saved before keep their values in place), the new group, the new workflows
+assert(core.setting_group("editing").items[1][1] == 1157 and core.setting_group("monitoring").items[1][1] == 41583)
+for _, id in ipairs({ "mixing", "mastering", "video" }) do
+  local blocks = core.workflow(id).blocks()
+  for _, b in ipairs(blocks) do if b.kind == "settings" then assert(core.setting_group(b.group), b.group) end end
+  local st = core.build_style(blocks, id)
+  assert(st and #st.feel > 0, id)
+end
+assert(core.synced_setting("inputs preset_x") == false, "each computer's inputs stay on it")
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")

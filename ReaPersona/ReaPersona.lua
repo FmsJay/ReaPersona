@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.12.2
+-- @version 5.13.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -398,12 +398,12 @@ local function save_preset_prompt()
   local ok, name = reaper.GetUserInputs("Save as a persona", 1, "Name,extrawidth=160,separator=\n", (cur.preset and cur.name or (cur.name .. " (mine)")))
   name = ok and name:gsub("^%s+", ""):gsub("%s+$", "") or ""
   if name == "" then return end
-  local pj, n = core.project_now()
-  local wf = reaper.MB("Make " .. name .. " a workflow too?\n\nYes: a new, empty project with it gets this project's sample rate (" .. core.khz(pj.srate) .. ")" ..
-    (n > 0 and (" and " .. pj.tracks_name .. " (" .. (reaper.CountSelectedTracks(0) > 0 and "the selected ones" or "all of them") .. ", with their FX and routing, not their items)") or "") ..
-    ".\nNo: just the shortcuts, theme, layout and settings, as now.", "ReaPersona: save", 3)
+  local all = reaper.CountTracks(0)
+  local wf = reaper.MB("Make " .. name .. " a workflow too?\n\nYes: a new, empty project with it starts as this one does: its " .. all .. " track" .. (all == 1 and "" or "s") ..
+    " with their FX, routing and folders (not their audio or MIDI), its sample rate, recording format, render settings, tempo, markers and regions." ..
+    "\nNo: just the shortcuts, theme, layout and settings, as now.", "ReaPersona: save", 3)
   if wf == 2 then return end
-  local st, why = core.save_preset(name, wf == 6)
+  local st, why = core.save_preset(name, wf == 6) -- (yes: the whole project as its template, 5.13)
   if not st then return say("Not saved: " .. tostring(why)) end
   selected = st.id
   say("Saved " .. name .. ": it's in your list" .. (wf == 6 and ", and new projects with it start like this one." or "."))
@@ -495,6 +495,24 @@ local function detail(sel, alt)
         reaper.Main_openProject("template:" .. tpl)
       end
       ImGui.SetItemTooltip(ctx, "A new project with the tracks " .. (sel.short or sel.name) .. " starts you with, its buses and sends, using REAPER's own plugins.")
+    end
+    if sel.project then -- (a workflow)
+      ImGui.SameLine(ctx)
+      if ImGui.Button(ctx, "New project with it") then
+        if not on then use(sel) end
+        reaper.Main_OnCommand(40859, 0) -- (a new tab, so nothing open is replaced)
+        local done = core.apply_project(sel)
+        say("A new project with " .. sel.name .. (#done > 0 and (": " .. table.concat(done, ", ")) or "") .. ".")
+      end
+      ImGui.SetItemTooltip(ctx, "Opens a new project tab set up by this workflow.")
+      if on and reaper.CountTracks(0) > 0 then
+        ImGui.SameLine(ctx)
+        if ImGui.Button(ctx, "Keep these inputs on this computer") then
+          local n = core.keep_inputs(sel.id)
+          say("Kept the inputs of this project's " .. n .. " track" .. (n == 1 and "" or "s") .. ": new projects with " .. sel.name .. " on this computer get them. Your other computers keep their own.")
+        end
+        ImGui.SetItemTooltip(ctx, "Each computer's interface numbers its inputs its own way. Set the tracks' inputs here once, press this, and new projects with " .. sel.name .. " get them on this computer.")
+      end
     end
     if (sel.alt or 0) > 0 and not sel.preset then
       ImGui.SameLine(ctx)
@@ -1762,7 +1780,7 @@ local function bld_palette()
     end
     ImGui.SetItemTooltip(ctx, w.tip)
   end
-  chip("Project", function() return core.new_block("project") end, "A new project's sample rate, starter tracks and window set, set in the block.")
+  chip("Project", function() return core.new_block("project") end, "A new project's sample rate, starter tracks or whole project template, and window set, set in the block.")
   ImGui.Dummy(ctx, 0, 4)
   ImGui.Text(ctx, "From a DAW")
   local cur = core.by_id(bld.daw or "") or core.by_id(core.current().base or core.current().id) or styles[1]
@@ -1892,6 +1910,17 @@ local function block_card(i, b, list, blocks)
       end
       ImGui.SetItemTooltip(ctx, "The selected tracks (or every track, with none selected), with their FX, sends and settings but not their items, go into every new project that uses this persona.")
       if has then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "None##ptr0") then b.tracks, b.tracks_name = "", "" end end
+      local tp = type(b.template) == "string" and b.template ~= ""
+      ImGui.AlignTextToFramePadding(ctx)
+      ImGui.Text(ctx, "Project template: " .. (tp and (b.template_name or "yes") or "none"))
+      ImGui.SameLine(ctx)
+      if ImGui.SmallButton(ctx, "Use this whole project##ptpl") then
+        local pj = core.project_now(true)
+        if pj.template then b.template, b.template_name = pj.template, pj.template_name; say("The block keeps " .. pj.template_name .. ".")
+        else say("Couldn't read this project.") end
+      end
+      ImGui.SetItemTooltip(ctx, "This project as the starting point for new ones: every track with its FX, routing and folders, the sample rate, recording format, render settings, tempo, markers and regions. Not its audio or MIDI.")
+      if tp then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "None##ptpl0") then b.template, b.template_name = nil, nil end end
       ImGui.SetNextItemWidth(ctx, 170 * UI)
       local w = tonumber(b.wset) or 0
       if ImGui.BeginCombo(ctx, "Window set##pws", w > 0 and ("#" .. w) or "Leave as it is") then

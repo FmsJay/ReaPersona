@@ -472,11 +472,15 @@ function M.preset_style(p)
       "'s layout, toolbar and feel, and the theme " .. tostring(p.theme) .. "."
   end
   st.extras, st.tips, st.description_base = base.extras, base.tips, base.description
-  if type(p.project) == "table" then -- (a workflow: a new project's sample rate and starter tracks)
+  if type(p.project) == "table" then -- (a workflow: a new project's sample rate and starter tracks, or a whole project template)
     st.project = { srate = tonumber(p.project.srate) or 0, tracks = type(p.project.tracks) == "string" and p.project.tracks or "",
-      tracks_name = tostring(p.project.tracks_name or ""), wset = tonumber(p.project.wset) or 0 }
-    st.description = st.description .. " A new project with it gets " .. ((st.project.srate > 0) and (M.khz(st.project.srate)) or "its sample rate") ..
-      (st.project.tracks ~= "" and (" and " .. st.project.tracks_name) or "") .. "."
+      tracks_name = tostring(p.project.tracks_name or ""), wset = tonumber(p.project.wset) or 0,
+      template = type(p.project.template) == "string" and p.project.template ~= "" and p.project.template or nil, template_name = p.project.template_name and tostring(p.project.template_name) or nil }
+    if st.project.template then st.description = st.description .. " A new project with it starts as " .. (st.project.template_name or "its project template") .. "."
+    else
+      st.description = st.description .. " A new project with it gets " .. ((st.project.srate > 0) and (M.khz(st.project.srate)) or "its sample rate") ..
+        (st.project.tracks ~= "" and (" and " .. st.project.tracks_name) or "") .. "."
+    end
   end
   return st
 end
@@ -488,12 +492,22 @@ local function load_presets()
   return list
 end
 load_presets()
-function M.project_now() -- this project as a workflow's project part: its sample rate and its tracks (FX and routing, no items)
+function M.project_now(whole) -- this project as a workflow's project part: its sample rate and its tracks (FX and routing, no items);
+  -- whole: the whole project as a template too (its recording and render settings, tempo, markers...: 5.13)
   local text, n = M.selected_tracks_text()
   local sr = math.floor(reaper.GetSetProjectInfo(0, "PROJECT_SRATE", 0, false) + 0.5)
   if reaper.GetSetProjectInfo(0, "PROJECT_SRATE_USE", 0, false) ~= 1 then local _, d = reaper.GetAudioDeviceInfo("SRATE"); sr = math.floor((tonumber(d) or sr) + 0.5) end
   local pn = reaper.GetProjectName(0, ""):gsub("%.[Rr][Pp][Pp]$", "")
-  return { srate = sr, tracks = n > 0 and text or "", tracks_name = n > 0 and (n .. " track" .. (n == 1 and "" or "s") .. " from " .. (pn ~= "" and pn or "an unsaved project")) or "", wset = 0 }, n
+  local pj = { srate = sr, tracks = n > 0 and text or "", tracks_name = n > 0 and (n .. " track" .. (n == 1 and "" or "s") .. " from " .. (pn ~= "" and pn or "an unsaved project")) or "", wset = 0 }
+  if whole then
+    local t = M.project_template_text()
+    if t then
+      local all = reaper.CountTracks(0)
+      pj.template, pj.tracks = t, ""
+      pj.template_name = (pn ~= "" and pn or "this project") .. " (" .. all .. " track" .. (all == 1 and "" or "s") .. ", its recording and render settings, tempo and markers)"
+    end
+  end
+  return pj, n
 end
 function M.save_preset(name, with_project) -- -> the new preset (as a style). with_project: this project's rate and tracks for new projects
   local base = M.current()
@@ -534,7 +548,7 @@ function M.save_preset(name, with_project) -- -> the new preset (as a style). wi
   end
   local list = load_presets()
   local p = { id = M.new_id("preset_"), name = name, base = base.id, saved = os.date("%Y-%m-%d"), feel = feel,
-              theme = M.loaded_theme() or M.theme_for(base), project = with_project and M.project_now() or nil }
+              theme = M.loaded_theme() or M.theme_for(base), project = with_project and M.project_now(true) or nil }
   list[#list + 1] = p
   local ok, why = M.save_json(PRESETS, { presets = list })
   if not ok then return nil, why end
@@ -1074,7 +1088,10 @@ M.SETTING_GROUPS = { -- (REAPER's own actions, checked against its action list; 
     { 40364, "Metronome", tip = "REAPER's click." },
     { "_SWS_AWMPLAYTOG", "Metronome during playback", tip = "The click sounds when playing (SWS)." },
     { "_SWS_AWCOUNTPLAYTOG", "Count-in before playback", tip = "A bar of click before playback starts (SWS)." },
-    { "_SWS_TOGSEEKMODE1", "Playback follows item moves", tip = "Moving or resizing an item during playback seeks to it (SWS)." } } },
+    { "_SWS_TOGSEEKMODE1", "Playback follows item moves", tip = "Moving or resizing an item during playback seeks to it (SWS)." },
+    { 41834, "Stop at the end of the loop when repeat is off", tip = "Playback stops at the loop range's end instead of carrying on." },
+    { 40671, "Keep the pitch when changing the playback rate", tip = "The master playrate speeds audio up without changing its pitch." },
+    { 40868, "Home and End go to markers", tip = "The transport's Home and End jump between project markers." } } },
   { id = "editing", name = "Editing", items = {
     { 1157, "Snap", tip = "Edits snap to the grid." },
     { { 40309, 40310, 40311 }, "Ripple editing", { "Off", "Per track", "All tracks" }, tip = "Moving or deleting an item shifts what comes after it." },
@@ -1087,7 +1104,12 @@ M.SETTING_GROUPS = { -- (REAPER's own actions, checked against its action list; 
     { 1135, "Locking", tip = "Locked items and envelopes can't be moved (Shift+L sets what)." },
     { 40507, "Overlapping items shown in lanes", tip = "Items that overlap on a track sit in lanes, one above the other." },
     { 40276, "Edit cursor jumps to a new time selection", tip = "Selecting time moves the edit cursor to its start." },
-    { "_SWS_AWCLRTIMESELCLKTOG", "Time selection and edit cursor linked", tip = "Clicking clears the time selection and moves the cursor together (SWS)." } } },
+    { "_SWS_AWCLRTIMESELCLKTOG", "Time selection and edit cursor linked", tip = "Clicking clears the time selection and moves the cursor together (SWS)." },
+    { 42421, "Razor edits always trim what's behind", tip = "Otherwise razor edits follow the item editing options above." },
+    { 42459, "Razor edits in the item lane take the envelopes too", tip = "A razor edit over items also edits that track's automation." },
+    { 41338, "Slip editing moves every take", tip = "Slipping an item's content moves all its takes, not just the active one." },
+    { 41071, "Copied MIDI items share their notes (pooled)", tip = "Editing one copy edits them all (ghost copies)." },
+    { 43651, "Group names and colours in the arrange view" } } },
   { id = "recording", name = "Recording", items = {
     { { 40252, 40076, 40253 }, "Record mode", { "Normal", "Punch in the time selection", "Punch in selected items" } },
     { { 41330, 41186, 42677 }, "Recording over an item", { "Splits it and adds a take", "Replaces it (tape)", "Adds a layer" }, tip = "What happens when you record over an existing item." },
@@ -1098,7 +1120,9 @@ M.SETTING_GROUPS = { -- (REAPER's own actions, checked against its action list; 
     { "_SWS_AWMRECTOG", "Metronome while recording", tip = "The click sounds when recording (SWS)." },
     { "_SWS_AWCOUNTRECTOG", "Count-in before recording", tip = "A bar of click before recording starts (SWS)." },
     { 40300, "Edit cursor to the end of a new recording", tip = "When recording stops, the edit cursor moves to its end." },
-    { "_SWS_AWAUTOGROUPTOG", "Group what's recorded together", tip = "Items recorded in one pass are grouped (SWS)." } } },
+    { "_SWS_AWAUTOGROUPTOG", "Group what's recorded together", tip = "Items recorded in one pass are grouped (SWS)." },
+    { 42631, "Auto-fades when comping in lanes", tip = "Comp areas in fixed lanes get fades and crossfades." },
+    { 42601, "Razor edits on collapsed lanes take every lane" } } },
   { id = "view", name = "View", items = {
     { { 40366, 40367, 40365, 40370, 40368 }, "Ruler", { "Bars and beats + time", "Bars and beats", "Minutes:seconds", "Timecode", "Seconds" } }, -- (+ time first: it reads "Bars and beats" as on too)
     { 40651, "Item labels", tip = "Names on media items." },
@@ -1125,7 +1149,13 @@ M.SETTING_GROUPS = { -- (REAPER's own actions, checked against its action list; 
     { 41576, "Envelope points follow the time selection", tip = "Selecting time selects the envelope points in it." },
     { 42206, "Trim behind automation items", tip = "An automation item moved over another cuts it." },
     { 42640, "Keep trailing values when recording automation" },
-    { "_SWS_TOGAUTOADDENVS", "Envelopes appear when you move a control in Write mode", tip = "SWS." } } },
+    { "_SWS_TOGAUTOADDENVS", "Envelopes appear when you move a control in Write mode", tip = "SWS." },
+    { 42220, "An automation item when you arm a bypassed envelope", tip = "Activating a hidden, bypassed envelope puts in an automation item." } } },
+  { id = "monitoring", name = "Monitoring and FX", items = {
+    { 41583, "FX run while stopped", tip = "Plug-ins keep processing when the transport is stopped (reverb tails, synths you play live)." },
+    { 41884, "Monitoring FX bypassed", tip = "The monitoring FX chain (headphone or room correction, say) is off: it never reaches renders either way." },
+    { 42034, "MIDI input quantize on every track", tip = "Live MIDI is quantized as it's recorded." },
+    { 41187, "Looped-segment scrub at the edit cursor", tip = "Moving the edit cursor plays a short looped bit there." } } },
   { id = "mixer", name = "Mixer", items = {
     { 40389, "Master on the right" }, { 40549, "FX inserts" }, { 40557, "Sends" }, { 40910, "FX parameters" }, { 40903, "Track icons" },
     { 40371, "Multiple rows" }, { 40745, "Solo in front", tip = "Soloing dims the rest instead of muting it." } } },
@@ -1295,6 +1325,10 @@ function M.project_entries(b) -- a project block's lines, for the Builder (pure)
     out[#out + 1] = { slot = "project tracks", kind = "project", label = "Starter tracks: " .. ((b.tracks_name or "") ~= "" and b.tracks_name or (n .. " track" .. (n == 1 and "" or "s"))) .. " (a new project)",
       value = { tracks = b.tracks, tracks_name = b.tracks_name } }
   end
+  if type(b.template) == "string" and b.template ~= "" then
+    out[#out + 1] = { slot = "project template", kind = "project", label = "Project template: " .. tostring(b.template_name or "a whole project") .. " (a new project)",
+      value = { template = b.template, template_name = b.template_name } }
+  end
   local w = tonumber(b.wset) or 0
   if w >= 1 and w <= 10 then out[#out + 1] = { slot = "project wset", kind = "project", label = "Window set #" .. w, value = { wset = w } } end
   return out
@@ -1303,16 +1337,87 @@ function M.track_chunk(name, armed, monitor, input) -- a starter track as a trac
   return "<TRACK\n  NAME \"" .. tostring(name):gsub('"', "'") .. "\"\n  REC " .. (armed and 1 or 0) .. " " .. (input or 0) .. " " .. (monitor and 1 or 0) ..
     " 0 0 0 0 0\n  NCHAN 2\n>\n"
 end
-function M.strip_items(chunk) -- a track's state without its media items, for a template (pure)
+function M.strip_blocks(text, names) -- the text without the <NAME ...> chunks named, at any depth (pure)
   local out, depth = {}, 0
-  for line in (chunk .. "\n"):gmatch("([^\n]*)\n") do
+  for line in (text .. "\n"):gmatch("([^\n]*)\n") do
     local t = line:match("^%s*(.-)%s*$")
     if depth > 0 then
       if t:sub(1, 1) == "<" then depth = depth + 1 elseif t == ">" then depth = depth - 1 end
-    elseif t:match("^<ITEM") then depth = 1
+    elseif names[t:match("^<(%S+)") or ""] then depth = 1
     else out[#out + 1] = line end
   end
-  return table.concat(out, "\n"):gsub("\n+$", "") .. "\n"
+  return (table.concat(out, "\n"):gsub("\n+$", "")) .. "\n"
+end
+function M.strip_items(chunk) return M.strip_blocks(chunk, { ITEM = true }) end -- a track's state without its media items, for a template (pure)
+-- A project as a project template (James, 5.13: "can be built with project templates as well"): everything REAPER keeps in the project
+-- (its tracks with their FX, routing and folders, sample rate, recording format, render settings, tempo and time signature, markers and
+-- regions, grid, notes) without its media items, its media bay, scripts' data stored in it (StudioSync's would make a new project look
+-- shared) or its own folders (recording path, render file). Pure.
+local TEMPLATE_DROP = { ITEM = true, EXTSTATE = true, PROJBAY = true }
+local TEMPLATE_DROP_LINE = { RECORD_PATH = true, RENDER_FILE = true }
+function M.template_from_rpp(t)
+  local out = {}
+  for line in M.strip_blocks(t, TEMPLATE_DROP):gmatch("[^\n]*\n") do
+    if not TEMPLATE_DROP_LINE[line:match("^%s*(%S+)") or ""] then out[#out + 1] = line end
+  end
+  return table.concat(out)
+end
+function M.project_template_text() -- this project as a template's text, or nil (REAPER writes a copy: the project keeps its file, name and changes)
+  local f = M.here .. "/_capture.RPP"
+  reaper.Main_SaveProjectEx(0, f, 0) -- (options 0: not a track template, and without &8 the project doesn't take the copy's name)
+  local t = M.read(f)
+  os.remove(f); os.remove(f .. "-bak")
+  return t and t:find("<REAPER_PROJECT", 1, true) and M.template_from_rpp(t) or nil
+end
+-- The plug-ins a workflow's tracks use, and which of them this computer hasn't got (the review: "a check for plugins a workflow's tracks
+-- need but a computer lacks"). Names as REAPER's FX browser shows them without the format ("Pro-Q 3 (FabFilter)"), so a VST3 on one
+-- computer and an AU of the same plug-in on a Mac count as the same; JSFX by their file. fx_needed is pure.
+function M.fx_needed(text)
+  local out, seen = {}, {}
+  for line in (text or ""):gmatch("[^\r\n]+") do
+    local kind, rest = line:match("^%s*<(%u+%d?) (.*)$")
+    local name
+    if kind == "VST" or kind == "AU" or kind == "CLAP" or kind == "LV2" or kind == "DX" then
+      name = rest:match('^"([^"]*)"') or rest:match("^(%S+)")
+      name = name and (name:gsub("^[%w]+: ", ""))
+    elseif kind == "JS" then
+      local f = rest:match('^"([^"]*)"') or rest:match("^(%S+)")
+      name = f and ("JS: " .. f)
+    end
+    if name and name ~= "" and name ~= "JS: " and not seen[name] then seen[name] = true; out[#out + 1] = name end
+  end
+  return out
+end
+function M.fx_missing(names)
+  if #names == 0 or not reaper.EnumInstalledFX then return {} end
+  local have, i = {}, 0
+  while true do
+    local ok, name = reaper.EnumInstalledFX(i)
+    if not ok then break end
+    have[(name:gsub("^[%w]+: ", ""))] = true
+    i = i + 1
+  end
+  local out = {}
+  for _, n in ipairs(names) do
+    local js = n:match("^JS: (.+)$")
+    if js then if not reaper.file_exists(res .. "/Effects/" .. js) then out[#out + 1] = n end
+    elseif not have[n] then out[#out + 1] = n end
+  end
+  return out
+end
+-- Each computer's own track inputs for a workflow: its interface numbers them its own way, so they're kept here, never synced
+-- ("inputs <persona id>" is one of HERE_PREFIX), and put on the workflow's tracks when a new project gets them.
+function M.keep_inputs(id) -- -> how many tracks' inputs were kept
+  local list = {}
+  for i = 0, reaper.CountTracks(0) - 1 do list[#list + 1] = math.floor(reaper.GetMediaTrackInfo_Value(reaper.GetTrack(0, i), "I_RECINPUT")) end
+  if #list == 0 then reaper.DeleteExtState(M.SECTION, "inputs " .. tostring(id), true)
+  else reaper.SetExtState(M.SECTION, "inputs " .. tostring(id), table.concat(list, ","), true) end
+  return #list
+end
+function M.inputs_for(id) -- (nil: none kept on this computer)
+  local s, t = reaper.GetExtState(M.SECTION, "inputs " .. tostring(id)), {}
+  for n in s:gmatch("%-?%d+") do t[#t + 1] = tonumber(n) end
+  return #t > 0 and t or nil
 end
 function M.selected_tracks_text() -- the selected tracks (or every track) as a template's text, without media items -> text, how many
   local list = {}
@@ -1353,6 +1458,24 @@ function M.apply_project(st) -- the persona's project part, in the project in fr
   local p, done = st and st.project, {}
   if type(p) ~= "table" then return done end
   local empty = M.project_empty(0)
+  local added = false
+  local _, was = reaper.GetProjExtState(0, M.SECTION, "set up")
+  if type(p.template) == "string" and p.template ~= "" and empty and reaper.CountTracks(0) == 0 and reaper.CountProjectMarkers(0) == 0 and was ~= tostring(st.id) then
+    local f = M.here .. "/_template.RPP"
+    if M.write(f, p.template) then
+      reaper.Main_openProject("noprompt:template:" .. f) -- (into this tab, as a new untitled project: an empty one has nothing to lose)
+      os.remove(f)
+      reaper.SetProjExtState(0, M.SECTION, "set up", tostring(st.id)) -- (so it isn't loaded again over itself)
+      local n = reaper.CountTracks(0)
+      done[#done + 1] = "its project template (" .. n .. " track" .. (n == 1 and "" or "s") .. ", recording and render settings, tempo and markers)"
+      if reaper.GetSetProjectInfo(0, "PROJECT_SRATE_USE", 0, false) == 1 then
+        local r = math.floor(reaper.GetSetProjectInfo(0, "PROJECT_SRATE", 0, false) + 0.5)
+        local note = M.device_rate(r)
+        if note then done[#done + 1] = M.khz(r) .. note end
+      end
+      empty, added = false, n > 0 -- (its rate and tracks came with it)
+    end
+  end
   local sr = tonumber(p.srate) or 0
   if sr > 0 and empty and reaper.CountTracks(0) == 0 and (reaper.GetSetProjectInfo(0, "PROJECT_SRATE", 0, false) ~= sr or reaper.GetSetProjectInfo(0, "PROJECT_SRATE_USE", 0, false) ~= 1) then
     reaper.GetSetProjectInfo(0, "PROJECT_SRATE", sr, true)
@@ -1365,7 +1488,17 @@ function M.apply_project(st) -- the persona's project part, in the project in fr
       reaper.Main_openProject(f) -- (a track template opened adds its tracks)
       os.remove(f)
       done[#done + 1] = reaper.CountTracks(0) .. " starter track" .. (reaper.CountTracks(0) == 1 and "" or "s")
+      added = reaper.CountTracks(0) > 0
     end
+  end
+  if added then
+    local inputs = M.inputs_for(st.id)
+    if inputs then
+      for i, v in ipairs(inputs) do local tr = reaper.GetTrack(0, i - 1); if tr then reaper.SetMediaTrackInfo_Value(tr, "I_RECINPUT", v) end end
+      done[#done + 1] = "this computer's track inputs"
+    end
+    local miss = M.fx_missing(M.fx_needed(p.template or p.tracks))
+    if #miss > 0 then done[#done + 1] = "not on this computer: " .. table.concat(miss, ", ") end
   end
   local w = tonumber(p.wset) or 0
   if w >= 1 and w <= 10 then reaper.Main_OnCommand(M.WSET_LOAD + w - 1, 0); done[#done + 1] = "window set #" .. w end
@@ -1402,6 +1535,26 @@ M.WORKFLOWS = {
         M.track_chunk("Loop 3", true, true, 0) .. M.track_chunk("Loop 4", true, true, 0), tracks_name = "Loop 1-4 (armed, monitoring on)", wset = 0 },
       settings_with("playback", { [1068] = 1, [40364] = 1, [41817] = 0 }),
       settings_with("recording", { [40114] = 1, ["_SWS_AWCOUNTRECTOG"] = 1, [41330] = 1 }) } end },
+  { id = "mixing", name = "Mixing", tip = "The project's own rate, no click, the loop following the time selection, FX and sends shown on tracks and in the mixer, and FX running while stopped.",
+    blocks = function() return {
+      settings_with("playback", { [40364] = 0, [40621] = 1, [1068] = 1 }),
+      settings_with("view", { [40302] = 1, [40677] = 1 }),
+      settings_with("mixer", { [40549] = 1, [40557] = 1, [40389] = 1 }),
+      settings_with("monitoring", { [41583] = 1 }) } end },
+  { id = "mastering", name = "Mastering", tip = "One Mix track, waveforms coloured by loudness, snap and ripple off, auto-crossfades on, no click.",
+    blocks = function() return {
+      { kind = "project", name = "Mastering", srate = 0, tracks = M.track_chunk("Mix", false, false, 1024), tracks_name = "Mix (stereo)", wset = 0 },
+      settings_with("editing", { [1157] = 0, [40309] = 1, [40041] = 1 }),
+      settings_with("view", { [43145] = 1 }),
+      settings_with("playback", { [40364] = 0 }),
+      settings_with("monitoring", { [41884] = 0 }) } end },
+  { id = "video", name = "Video post (48 kHz)", tip = "A 48 kHz project with Dialogue, Music and Effects tracks, the ruler in timecode, snap and ripple off, following the playhead.",
+    blocks = function() return {
+      { kind = "project", name = "Video post", srate = 48000, tracks = M.track_chunk("Dialogue", false, false, 0) .. M.track_chunk("Music", false, false, 1024) ..
+        M.track_chunk("Effects", false, false, 1024), tracks_name = "Dialogue, Music and Effects", wset = 0 },
+      settings_with("view", { [40366] = 4 }),
+      settings_with("editing", { [1157] = 0, [40309] = 1 }),
+      settings_with("playback", { [40036] = 1, [40364] = 0 }) } end },
 }
 function M.workflow(id) for _, w in ipairs(M.WORKFLOWS) do if w.id == id then return w end end end
 
@@ -2451,7 +2604,7 @@ M.EXT_SETTINGS = { -- (here: keys that belong to this computer, never copied)
 }
 local HERE_ONLY = { style = true, orig = true, ["orig project"] = true, migrated = true, page = true, search = true, ["follow beat"] = true,
   ["midi dock"] = true, ["theme my_reaper"] = true, ["theme path my_reaper"] = true, welcomed = true, ["text size"] = true, look = true, view = true }
-local HERE_PREFIX = { "docker ", "params ", "forks ", "sync ", "declined " }
+local HERE_PREFIX = { "docker ", "params ", "forks ", "sync ", "declined ", "inputs " }
 function M.synced_setting(k) -- a ReaPersona ExtState key that goes to your other computers (pure)
   if HERE_ONLY[k] then return false end
   for _, p in ipairs(HERE_PREFIX) do if k:sub(1, #p) == p then return false end end
@@ -2548,7 +2701,7 @@ end
 -- true when a persona with a shortcut layer of its own came in (its keys need installing), failed = { items } }
 -- What may come in: the same checks as what goes out, so a sync or setup file written by someone else can't switch on syncing, point it
 -- elsewhere, set paths, or put files where REAPER runs them (Review 5.11, H2). -> true when the item may be taken in (pure but for EXT_SETTINGS)
-local FILE_DIRS = { tpl = { "FXChains/", "TrackTemplates/", "ProjectTemplates/", "MIDINoteNames/", "KeyMaps/" }, code = { "Scripts/", "Effects/" }, theme = { "ColorThemes/" } }
+local FILE_DIRS = { tpl = { "FXChains/", "TrackTemplates/", "ProjectTemplates/", "MIDINoteNames/", "KeyMaps/", "presets/" }, code = { "Scripts/", "Effects/" }, theme = { "ColorThemes/" } }
 function M.item_allowed(item, v)
   local k, rest = tostring(item):match("^(%a+) (.+)$")
   if not k then return false end
@@ -2564,6 +2717,7 @@ function M.item_allowed(item, v)
     if rest:find("..", 1, true) or rest:find("\\", 1, true) or rest:match("^/") or rest:find(":", 1, true) or rest:lower():find("__startup") then return false end
     local ok = false
     for _, d in ipairs(FILE_DIRS[k]) do if rest:sub(1, #d) == d then ok = true end end
+    if k == "tpl" and rest == "reaper-render.ini" then ok = true end
     if k == "code" then
       for _, x in ipairs(M.CODE_SKIP) do if rest:sub(1, #x) == x then ok = false end end
       ok = ok and M.code_file(rest)
@@ -2653,7 +2807,7 @@ M.ADVANCED = {
   { id = "prefs", name = "REAPER's preferences", kinds = { "pref" }, tip = "Everything in Preferences that isn't this computer's own (paths, audio and MIDI devices, window places, recent files): taken in when REAPER restarts (Apply)." },
   { id = "xstate", name = "Other scripts' settings", kinds = { "xstate" }, tip = "What your other scripts and extensions remember in REAPER (their ExtState), apart from file paths and StudioSync's own." },
   { id = "keys", name = "Shortcuts, mouse, menus and toolbars", kinds = { "ini" }, tip = "Your keymap, mouse modifiers, menus and toolbars, merged into this computer's when REAPER restarts (Apply). Window sets stay each computer's: they hold its screens' places." },
-  { id = "templates", name = "FX chains and templates", kinds = { "tpl" }, tip = "FX chains, track templates, project templates, MIDI note names and key map files." },
+  { id = "templates", name = "FX chains, templates and presets", kinds = { "tpl" }, tip = "FX chains, track and project templates, plug-ins' presets, render presets, MIDI note names and key map files." },
   { id = "code", name = "Your scripts and JSFX", kinds = { "code" }, tip = "Scripts and JSFX you made or copied in yourself (ReaPack's are installed by ReaPack, below). Needs Python." },
   { id = "themes", name = "Themes", kinds = { "theme" }, tip = "Every theme file in ColorThemes. Can be large." },
   { id = "packages", name = "ReaPack repositories and packages", kinds = { "repo", "pkg" }, tip = "Your ReaPack repositories, and the packages your other computers have and this one doesn't, ready to install. Needs Python." },
@@ -2804,7 +2958,7 @@ local function collect_files(items, kind, base_rel, keep, max)
     if v and publish(full, v, text) then items[kind .. " " .. rel] = v end
   end
 end
-local TPL_DIRS = { "FXChains", "TrackTemplates", "ProjectTemplates", "MIDINoteNames", "KeyMaps" }
+local TPL_DIRS = { "FXChains", "TrackTemplates", "ProjectTemplates", "MIDINoteNames", "KeyMaps", "presets" } -- (presets: plug-ins' saved presets)
 -- (ReaPersona and StudioSync are kept apart from package syncing: a computer may run a copy installed by hand, and ReaPack's would be a
 -- second one beside it)
 M.PKG_HERE = { ReaPersona = true, StudioSync = true }
@@ -2861,7 +3015,11 @@ local COLLECT = {
       end
     end
   end,
-  tpl = function(items) for _, d in ipairs(TPL_DIRS) do collect_files(items, "tpl", d) end end,
+  tpl = function(items)
+    for _, d in ipairs(TPL_DIRS) do collect_files(items, "tpl", d) end
+    local full = res .. "/reaper-render.ini" -- (render presets)
+    if reaper.file_exists(full) then local v, text = file_value(full); if v and publish(full, v, text) then items["tpl reaper-render.ini"] = v end end
+  end,
   code = function(items)
     if not M.owned and not read_packages() then error("ReaPack's file list (needs Python)") end
     for _, d in ipairs({ "Scripts", "Effects" }) do

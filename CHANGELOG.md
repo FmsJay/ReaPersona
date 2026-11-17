@@ -1,5 +1,15 @@
 # Changelog
 
+## 5.13.0
+- **Workflows from a whole project.** *Save what I'm using...* with "Make it a workflow too?" now keeps the whole project as the workflow's template: every track with its FX, routing and folders, the sample rate, recording format, render settings, tempo and time signature, markers and regions (not its audio, MIDI, media bay or scripts' data). The Builder's Project block can take one too (*Use this whole project*). A new, empty project with the persona starts as that project did.
+- **New project with it** on a workflow's page opens a new tab set up by it.
+- **Each computer's inputs:** set a workflow's track inputs once on a computer and press *Keep these inputs on this computer*; new projects with that workflow get them there, and your other computers keep their own.
+- **Plug-in check:** a new project from a workflow says which of its plug-ins this computer hasn't got.
+- **More of REAPER's options for personas and workflows:** a Monitoring and FX group (FX running while stopped, monitoring FX bypassed, MIDI input quantize, looped scrub) and more in Playback, Editing (razor edits, slip editing, pooled MIDI), Recording (comping fades) and Automation.
+- **New starter workflows:** Mixing, Mastering and Video post (48 kHz, timecode ruler).
+- **Syncing:** plug-ins' presets and render presets go with FX chains and templates.
+- Fixed: ReaPack syncing on a Mac stopped at an "Obsolete packages" question when another computer had packages with no Mac version; those are no longer passed on to computers that can't install them.
+
 ## 5.12.2
 - **Fixed: syncing REAPER's keys could turn Undo off.** A key that runs a script (StudioSync's Undo, say) carries an id that differs on each computer, so taking another computer's copy left a key that runs nothing here, and REAPER dropped it. The keymap merge now leaves those keys alone, along with keys another computer turned off and the persona layers (each computer installs those itself).
 
