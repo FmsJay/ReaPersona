@@ -273,9 +273,24 @@ def kb_slot(line):
     return None
 
 
+def kb_takeable(line, mine_scripts):
+    """Whether one of the other computer's keymap lines may come in here. Pure. Not taken: keys on ReaPersona's layers (alt-1..16:
+    each computer installs its own), "disabled" keys (command 0: REAPER writes those when a key's script isn't known there), and keys
+    for a script this computer hasn't registered (scripts get a different id when they live in another folder, so the other
+    computer's id runs nothing here and REAPER drops the key: that turned Undo off on the laptop, 5.12.1)."""
+    p = line.split()
+    if p[:1] != ["KEY"] or len(p) < 5:
+        return True
+    cmd, sec = p[3], p[4]
+    if sec.isdigit() and 1 <= int(sec) <= 16 or cmd == "0":
+        return False
+    return not cmd.lstrip("_").startswith("RS") or cmd.lstrip("_") in mine_scripts
+
+
 def merge_kb(mine, theirs):
     """This computer's keymap with the other computer's lines taken in. Pure."""
-    take = [l for l in theirs.splitlines() if kb_slot(l)]
+    mine_scripts = {l.split()[3] for l in mine.splitlines() if l.startswith("SCR ") and len(l.split()) > 3}
+    take = [l for l in theirs.splitlines() if kb_slot(l) and not l.startswith("SCR ") and kb_takeable(l, mine_scripts)]
     slots = {kb_slot(l) for l in take}
     keep = [l for l in mine.splitlines() if not (kb_slot(l) and kb_slot(l) in slots)]
     while keep and keep[-1].strip() == "":
@@ -483,6 +498,9 @@ if __name__ == "__main__":
     assert encode("NumEnter") == (1, EXT + 13) and encode("Win+M") == (33, 77) and for_os("mac:Win+M") in (None, "Win+M")
     assert merge_kb("KEY 1 65 40001 0\nSCR 4 0 RSaa \"Custom: a\" a.lua\nKEY 1 66 40002 0\n", "KEY 1 65 40099 0\nACT 0 0 \"x\" \"y\" 1\n") == \
         "SCR 4 0 RSaa \"Custom: a\" a.lua\nKEY 1 66 40002 0\nKEY 1 65 40099 0\nACT 0 0 \"x\" \"y\" 1\n"
+    # theirs: a script unknown here, a disabled key, a persona layer, a known script: only the known one is taken
+    mine = "SCR 4 0 RSaa \"Custom: a\" a.lua\nKEY 9 90 _RSmine 0\n"
+    assert merge_kb(mine, "KEY 9 90 _RSzz 0\nKEY 9 90 0 0\nKEY 1 70 40001 3\nKEY 1 71 _RSaa 0\n") == mine + "KEY 1 71 _RSaa 0\n"
     assert merge_ini("[a]\nx=1\n[b]\ny=2\n", "[b]\ny=3\n[c]\nz=4\n") == "[a]\nx=1\n[b]\ny=3\n[c]\nz=4\n"
     assert set_prefs("[reaper]\nfoo=1\nbar=2\n[x]\nq=1", {"bar": "5", "new": "7"}) == "[reaper]\nfoo=1\nbar=5\nnew=7\n[x]\nq=1\n"
     if "--help" in sys.argv or "-h" in sys.argv:

@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.12.2
+- **Fixed: syncing REAPER's keys could turn Undo off.** A key that runs a script (StudioSync's Undo, say) carries an id that differs on each computer, so taking another computer's copy left a key that runs nothing here, and REAPER dropped it. The keymap merge now leaves those keys alone, along with keys another computer turned off and the persona layers (each computer installs those itself).
+
 ## 5.12.1
 - **Make a workflow by setting it up and saving it.** Save what I'm using... now asks "Make it a workflow too?": yes takes this project's sample rate and its tracks (the selected ones, or all; with their FX and routing, not their items) into the persona, so a new, empty project with it starts the same way. It goes to your other computers with your other personas.
 - **Your other computers is easier to find:** first on Settings, which now opens on ReaPersona's own settings (REAPER tweaks second), and a card on Home.
