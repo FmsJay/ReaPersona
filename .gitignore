@@ -22,3 +22,6 @@ ReaPersona/_downloads/
 *.tmp
 *.bad-*
 tests/_tmp-*/
+# a shared folder of ReaPersona setups (Syncthing): each computer's own, never published
+sync/
+ReaPersona/sync_state.json
