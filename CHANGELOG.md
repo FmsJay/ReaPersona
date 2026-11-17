@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## 5.14.0
 - **Install the shortcuts on Windows without Python.** Home > Install and restart now works with no Python: ReaPersona plans the install inside REAPER (the same rules as install_shortcuts.py, which stays the route where Python is) and a small batch file waits for REAPER to close, swaps the new keymap and toolbars in, backs your keymap up first and opens REAPER again. If anything changed the keymap between the plan and REAPER closing, nothing is swapped in and ReaPersona says so. Another computer's script keys are still never taken. Preferences from your other computers still need Python (REAPER writes them as it quits). Remove ReaPersona also takes the shortcut layers out without Python on Windows.
 - **A menu for screen readers.** ReaImGui's window is invisible to NVDA, JAWS and VoiceOver, so ReaPersona has a menu in REAPER's own menus with the main tasks: what's installed, pick a persona, back to My REAPER, undo the switch, install the shortcuts, sync or save and load your setup, and its help. Results come in message boxes, and OSARA speaks them and the page names in the window. Turn it on in Settings > ReaPersona > Screen readers; with OSARA installed ReaPersona asks the first time.
 - **Help > How it works:** the first steps, what each page does, the keys (F1 opens it, Ctrl+K searches), screen readers and how your setup is kept safe, with Copy as plain text.
 - **Getting started on Home:** the first steps with what's done and a button for each, until they're done or you hide them.
+
 ## 5.13.1
 Three new DAW personas, every key checked against the maker's own documentation and cited in the persona's docs list:
 - **Nuendo** (alt-13): Steinberg's Nuendo 14 default key commands are the same list as Cubase 14's, so it has Cubase's keys, MIDI editor keys, toolbars and layout. Its mouse follows Nuendo's Tool Modifiers page: Alt+drag copies, Alt+click splits, Alt+Shift+drag slips an event's contents.
