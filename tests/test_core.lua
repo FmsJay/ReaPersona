@@ -322,6 +322,9 @@ for _, k in ipairs({ "adjrecmanlatin", "adjrecmanlatout", "wnd_x", "mixwnd_vis",
   assert(not core.pref_synced(k, "1"), k .. " stays this computer's")
 end
 assert(not core.pref_synced("render_pattern_0", "J:\\Music\\x") and not core.pref_synced("foo", "/Users/chilio/x"), "a path in the value stays too")
+-- (5.16.1: per-project settings are read from reaper.ini's defaults, not from the project in front)
+assert(core.project_var("projsrate") and core.project_var("autoxfade") and core.project_var("projmetroen") and core.project_var("PROJBPM"))
+assert(not core.project_var("autosaveint") and not core.project_var("splitautoxfade") and not core.project_var("projsrateX"))
 assert(core.xstate_synced("Some Script", "volume", "0.5") and not core.xstate_synced("BandSync", "user", "James"))
 assert(not core.xstate_synced("Some Script", "window_pos", "10 20") and not core.xstate_synced("Some Script", "last", "C:\\x\\y.wav"))
 assert(not core.xstate_synced("SmoothWheelScroll", "window", "200"), "the extensions ReaPersona already carries")

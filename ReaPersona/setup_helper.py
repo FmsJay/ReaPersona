@@ -64,6 +64,9 @@ def install(res, listfile):
     c = sqlite3.connect(registry(res), timeout=10)
     added, plats, indexes = 0, here_platforms(), {}
     try:
+        # (a file still listed for a package that's gone makes ReaPack refuse to install the package that has it now: the Mac's eralumin
+        # JSFX stayed at version 0, 5.16.1)
+        c.execute("DELETE FROM files WHERE entry NOT IN (SELECT id FROM entries)")
         for key, v in want.items():
             parts = key.split("|", 2)
             if len(parts) != 3 or not isinstance(v, dict):

@@ -3415,7 +3415,24 @@ function M.pref_synced(k, v) -- (pure)
   if type(v) == "string" and (v:match("^%a:[\\/]") or v:match("^/") or v:match("^\\\\")) then return false end -- (a path on this computer)
   return true
 end
-local XSTATE_HERE = { ReaPersona = true, BandSync = true, StudioSync = true, ["reaper-daemon"] = true, reaper_daemon = true }
+-- Settings REAPER keeps per project (Mespotine's config-variable reference, REAPER 7.34): reaper.ini holds the defaults for new projects,
+-- but asking REAPER answers for the project in front, so a 48 kHz voiceover tab would go out as everyone's default. These are read from
+-- the file. (5.16.1)
+local PROJECT_VARS = {}
+for k in ([[afxcfg audioprshift autoxfade defpitchcfg defstretchmode envmgropts feedbackmode itemmixflag itemtimelock loop loopgran loopgranlen
+  mastermutesolo mixrowflags opennotes panlaw panlawflags panmode playrate playresamplemode pooledenvattach projalignbeatsrate projbeatbase projbpm
+  projdefrecpath projfrbase projfrdrop projgriddiv projgriddivsnap projgridframe projgridmin projgridsnapmin projgridswing projgroupover projgroupsel
+  projintmix projmasternch projmasterpanlaw projmasterpanlawflags projmasterpanmode projmastervuflags projmaxlen projmaxlenuse projmeaslen projmeasoffs
+  projmeasoffsruler projmetrobeatlen projmetroclick projmetrocountin projmetroen projmetrof1 projmetrof2 projmetropattern projmetrov1 projmetrov2
+  projpeaksgain projrecforopencopy projrecmode projrelpath projrenderaddtoproj projrenderbrickwall projrenderdither projrenderfadein
+  projrenderfadeinshape projrenderfadeout projrenderfadeoutshape projrenderlimit projrendernch projrendernorm projrendernormtgt projrenderpadend
+  projrenderpadstart projrenderqdelay projrenderrateinternal projrenderresample projrendersrate projrenderstems projrendertrimend projrendertrimstart
+  projripedit projripeditcfg projsellock projshowgrid projsmpteahead projsmptefw_rec projsmpteinput projsmptemaxfree projsmpteoffs projsmpterate
+  projsmpterateuseproj projsmpteresync projsmpteresync_rec projsmpteskip projsmptesync projsrate projsrateuse projtakelane projtimemode projtimeoffs
+  projtrackgroupdisabled projtsdenom projvidflags projvidh projvidw psmaxv psminv reccfg rendercfg renderclosewhendone rendertaillen rendertails
+  silenceflags silencethreshdb tempoenvtimelock vzoom2 vzoom3 zoom]]):gmatch("%S+") do PROJECT_VARS[k] = true end
+function M.project_var(k) return PROJECT_VARS[k:lower()] == true end -- (pure)
+local XSTATE_HERE ={ ReaPersona = true, BandSync = true, StudioSync = true, ["reaper-daemon"] = true, reaper_daemon = true }
 function M.xstate_synced(section, k, v) -- (pure)
   if XSTATE_HERE[section] then return false end
   for _, x in ipairs(M.EXT_SETTINGS) do if x.section == section then return false end end -- (already: the "ext" items)
@@ -3567,7 +3584,7 @@ local COLLECT = {
     local t = M.read(res .. "/reaper.ini") or ""
     local body = t:match("^%[[Rr][Ee][Aa][Pp][Ee][Rr]%]\r?\n(.-)\n%[") or t:match("\n%[[Rr][Ee][Aa][Pp][Ee][Rr]%]\r?\n(.-)\n%[") or ""
     for k, v in body:gmatch("([^=\r\n]+)=([^\r\n]*)") do
-      if reaper.get_config_var_string then local ok, live = reaper.get_config_var_string(k); if ok then v = live end end
+      if reaper.get_config_var_string and not M.project_var(k) then local ok, live = reaper.get_config_var_string(k); if ok then v = live end end
       if M.pref_synced(k, v) and waiting[k] == nil then items["pref " .. k] = v end
     end
   end,
