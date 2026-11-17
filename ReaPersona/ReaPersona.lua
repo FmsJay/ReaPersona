@@ -325,6 +325,51 @@ local function use(st)
   end
 end
 
+-- A workflow over the persona in use (5.16): picked here, on the Personas page, or from the screen-reader menu.
+local function pick_workflow(id)
+  local ok, why = core.set_workflow(id)
+  if not ok then return say("Not changed: " .. tostring(why)) end
+  local w, cur, setup = core.current_workflow(), core.current(), core.last_project_setup or {}
+  say((w and (w.name .. " is on top of " .. cur.name) or ("No workflow: " .. cur.name .. " on its own")) ..
+    (#setup > 0 and (", and this project has its " .. table.concat(setup, ", ")) or "") .. ".")
+end
+local function workflow_new_project(w) -- a new project set up by the workflow in use, over the persona in use
+  if not core.fresh_project(0) then reaper.Main_OnCommand(41929, 0) end -- (a new tab, without the default template's tracks)
+  local done = core.apply_project(core.layered(core.current()))
+  say("A new project with " .. w.name .. (#done > 0 and (": " .. table.concat(done, ", ")) or "") .. ".")
+end
+local function workflow_keep_inputs(w)
+  local n = core.keep_inputs(w.id)
+  say("Kept the inputs of this project's " .. n .. " track" .. (n == 1 and "" or "s") .. ": new projects with " .. w.name .. " on this computer get them. Your other computers keep their own.")
+end
+local function workflow_row()
+  local w = core.current_workflow()
+  ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Workflow on top:"); ImGui.SameLine(ctx)
+  ImGui.SetNextItemWidth(ctx, 230 * UI)
+  if ImGui.BeginCombo(ctx, "##workflow", w and w.name or "None") then
+    if ImGui.Selectable(ctx, "None: the persona on its own", not w) and w then pick_workflow("") end
+    local mine = false
+    for _, x in ipairs(core.workflow_list()) do
+      if x.mine and not mine then ImGui.Separator(ctx); mine = true end
+      local on = w and w.id == x.id
+      if ImGui.Selectable(ctx, x.name .. "##wf" .. x.id, on) and not on then pick_workflow(x.id) end
+      if x.tip then ImGui.SetItemTooltip(ctx, x.tip) end
+    end
+    ImGui.EndCombo(ctx)
+  end
+  ImGui.SetItemTooltip(ctx, "A kind of session over whichever persona is in use: its REAPER settings, and what a new, empty project gets (sample rate, starter tracks or a whole template). The persona keeps its keys, theme and layout. Your personas with a project part are listed too.")
+  if w and w.project then
+    ImGui.SameLine(ctx)
+    if ImGui.Button(ctx, "New project with " .. w.name) then workflow_new_project(w) end
+    ImGui.SetItemTooltip(ctx, "Opens a new project tab set up by " .. w.name .. " (a new project from REAPER's File menu or its key gets it too, while it's on).")
+    if reaper.CountTracks(0) > 0 then
+      ImGui.SameLine(ctx)
+      if ImGui.Button(ctx, "Keep these inputs##wf") then workflow_keep_inputs(w) end
+      ImGui.SetItemTooltip(ctx, "Each computer's interface numbers its inputs its own way. Set the tracks' inputs here once, press this, and new projects with " .. w.name .. " get them on this computer.")
+    end
+  end
+end
+
 -- One picture card in the grid: click shows it, double-click uses it.
 local function style_card(st, w, sel, alt)
   local dl = ImGui.GetWindowDrawList(ctx)
@@ -680,6 +725,7 @@ end
 local function daws_page(sel, alt)
   local list = {}
   for _, st in ipairs(styles) do if st.kind ~= "theme" then list[#list + 1] = st end end
+  workflow_row()
   view_switch()
   chooser(list, pick_in(list, sel), alt)
   ImGui.Dummy(ctx, 0, 4)
@@ -2180,7 +2226,7 @@ local GUIDE = {
     "4. More than one computer? Settings > Your other computers: save your setup to a file, or keep them the same through a shared folder." } },
   { "What each page does", {
     "Home > Setup: the first steps, what ReaPersona can use and whether it's there (one click for each), importing from another DAW on this computer, and themes by other people. Drop theme, toolbar, keymap or persona files anywhere on the window to add them.",
-    "Personas > DAWs: each DAW's persona, with its keys, look and feel: Use it, its cheat sheet, and a new project like it. Your personas: the ones you saved or built, and your workflows. Persona Builder: stack blocks (a DAW's keys, its mouse, groups of REAPER settings, a theme) into a persona of your own.",
+    "Personas > DAWs: each DAW's persona, with its keys, look and feel: Use it, its cheat sheet, and a new project like it. Workflow on top (above the cards) adds a kind of session, voiceover or mixing say, to whichever persona is in use: its REAPER settings and what a new project gets, while the persona keeps its keys and look. Your personas: the ones you saved or built, and your workflows. Persona Builder: stack blocks (a DAW's keys, its mouse, groups of REAPER settings, a theme) into a persona of your own.",
     "Shortcuts: every key of a persona, with the REAPER action it runs.",
     "Themes > Your themes: the theme for each persona. Get more: the REAPER Stash and ReaPack. Adjust: change the theme in use, live. Build one: a theme from parts of others.",
     "Settings > ReaPersona: your other computers, what a persona may change, a persona per project, the screen-reader menu, this window's look, and removing ReaPersona. REAPER tweaks: REAPER's and SWS's options in groups.",
@@ -2321,7 +2367,8 @@ local function top_bar(alt)
   ImGui.SameLine(ctx, 0, 14)
   ImGui.SetCursorPosY(ctx, y0 + 13)
   local col = accent_of(cur)
-  pill(cur.name .. (in_use(cur, alt) and "" or "  (keys off)"), solid(col))
+  local wf = core.current_workflow()
+  pill(cur.name .. (wf and wf.id ~= cur.id and ("  +  " .. wf.name) or "") .. (in_use(cur, alt) and "" or "  (keys off)"), solid(col))
   if not in_use(cur, alt) then ImGui.SetItemTooltip(ctx, "Its shortcut layer isn't on (REAPER restarted?): Use it again, or add the startup line on Home so it comes back each time REAPER starts.") end
   local w = ImGui.GetWindowWidth(ctx)
   if w > 760 then -- (search, Ctrl+K; on a narrow window it's left out of the bar)
@@ -2531,7 +2578,8 @@ end
 local function status_text()
   local cur, alt = core.current(), core.active_alt()
   local have, want = shortcuts_state()
-  local t = { "Persona in use: " .. cur.name .. (in_use(cur, alt) and "" or " (its keys are off: pick it again)"),
+  local wf = core.current_workflow()
+  local t = { "Persona in use: " .. cur.name .. (in_use(cur, alt) and "" or " (its keys are off: pick it again)") .. (wf and (", with the workflow " .. wf.name .. " on top") or ""),
     "Shortcut layers installed: " .. have .. " of " .. want .. " personas" .. (have < want and " (install the shortcuts next)" or ""),
     "Persona back at REAPER's start: " .. (core.startup_on() and "yes" or "no (add the startup line)"),
     core.sync_folder() ~= "" and ("Syncing with your other computers through " .. core.sync_folder()) or "Not syncing with other computers." }
@@ -2562,7 +2610,21 @@ local function screen_reader_menu(once) -- -> true: open the window instead. onc
     local undo = last_style and last_style ~= cur.id and core.by_id(last_style)
     if undo then item("Undo switch: back to " .. undo.name, function() use(undo) end) end
     item("Save what I'm using as a persona...", save_preset_prompt)
-    if cur.project then
+    local wf = core.current_workflow()
+    item("Workflow on top: " .. (wf and wf.name or "none") .. ". Pick a workflow...", function()
+      local names, ids = { (wf and "" or "!") .. "None: the persona on its own" }, { "" }
+      for _, x in ipairs(core.workflow_list()) do
+        ids[#ids + 1] = x.id
+        names[#names + 1] = (wf and wf.id == x.id and "!" or "") .. (x.name:gsub("^[#!><]+", ""):gsub("|", "/"):gsub("&", "&&")) .. (x.mine and " (yours)" or "")
+      end
+      local i = show_menu(names)
+      if ids[i] then pick_workflow(ids[i]) end
+    end)
+    if wf and wf.project then
+      item("New project with " .. wf.name, function() workflow_new_project(wf) end)
+      if reaper.CountTracks(0) > 0 then item("Keep this project's track inputs for " .. wf.name .. " on this computer", function() workflow_keep_inputs(wf) end) end
+    end
+    if cur.project and not (wf and wf.project) then
       item("New project with " .. cur.name, function()
         if not core.fresh_project(0) then reaper.Main_OnCommand(41929, 0) end
         local done = core.apply_project(cur)

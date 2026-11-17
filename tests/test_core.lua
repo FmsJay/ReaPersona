@@ -289,6 +289,32 @@ assert(rip == 40310, "voiceover: ripple per track")
 local lower = core.build_style({ vo.blocks()[1], { kind = "project", srate = 44100, tracks = "", wset = 0 } }, "x", "built_x")
 assert(lower.project.srate == 44100 and lower.project.tracks:find("Voiceover", 1, true), "the lower block's sample rate wins, its empty tracks don't")
 for _, w in ipairs(core.WORKFLOWS) do assert(core.build_style(w.blocks(), w.name, "built_" .. w.id), w.id) end
+-- 9b. A workflow on top of any persona (5.16): toggle actions and the project part only, after the persona's own, each computer's own pick.
+local pt = core.by_id("pro_tools")
+assert(core.layered(pt) == pt and not core.current_workflow(), "no workflow: the persona itself")
+ext["ReaPersona/workflow"] = "voiceover"
+local lay = core.layered(pt)
+assert(lay ~= pt and lay.workflow and lay.project.srate == 48000 and lay.project_id == "voiceover", "the workflow's project part, its own id for inputs")
+assert(lay.alt == pt.alt and lay.keys == pt.keys and lay.theme == pt.theme, "the persona keeps its keys and theme")
+assert(#lay.feel == #(pt.feel or {}) + #core.current_workflow().feel and #core.current_workflow().feel > 0, "its settings go after the persona's")
+for _, f in ipairs(core.current_workflow().feel) do assert(f[1] == "toggle" or f[1] == "choice", "only toggle actions") end
+assert(core.layered(lay) == lay, "not layered twice")
+ext["ReaPersona/workflow"] = "mixing"
+assert(core.layered(pt).project == pt.project, "a workflow with no project part leaves the persona's")
+ext["ReaPersona/workflow"] = "nope"
+assert(core.layered(pt) == pt, "an unknown workflow is none")
+local myvo = assert(core.build_style({ { kind = "daw", id = "logic", keys = true, feel = true, theme = true }, vo.blocks()[1], vo.blocks()[2] }, "My VO", "built_myvo"))
+myvo.user = true
+core.styles[#core.styles + 1] = myvo
+ext["ReaPersona/workflow"] = "built_myvo"
+local wl = core.current_workflow()
+assert(wl and wl.project.srate == 48000 and #wl.feel == 3, "one of yours: its project part and its settings blocks, not its DAW's feel")
+table.remove(core.styles)
+ext["ReaPersona/workflow"] = nil
+assert(not core.synced_setting("workflow"), "the workflow in use stays this computer's, as the persona does")
+local wnames = {}
+for _, x in ipairs(core.workflow_list()) do wnames[x.id] = true end
+for _, w in ipairs(core.WORKFLOWS) do assert(wnames[w.id], "every starter can be picked: " .. w.id) end
 
 -- 10. Advanced syncing (5.11): what stays this computer's, file identity, the shared keymap and ini files, and seeding per kind.
 assert(core.pref_synced("autosaveint", "5") and core.pref_synced("projsrate", "48000") and core.pref_synced("reccfg", "63616C66"))

@@ -607,6 +607,7 @@ function M.loaded_theme() -- the theme file in use, by the name you picked it by
 end
 function M.use(st)
   if not st then return end
+  st = M.layered(st) -- (the workflow in use, over it)
   if reaper.GetExtState(M.SECTION, "style") == "my_reaper" or reaper.GetExtState(M.SECTION, "style") == "" then
     local th = M.loaded_theme() -- (My REAPER's theme is whatever you had in it)
     if th then reaper.SetExtState(M.SECTION, "theme my_reaper", th, true) end
@@ -787,7 +788,7 @@ end
 
 -- ---------------------------------------------------------------- helper scripts (written and registered once, by the picker)
 local function safe(spec) return (spec:gsub("[^%w]", function(c) return string.format("_%02X", c:byte()) end)) end
-local STUBS = 6 -- (bump when the stubs below change, so they're written again. 4: the Actions list sorted once, M.ensure_scripts. 5: duplicate, gap, autopunch. 6: screen-reader menu)
+local STUBS = 7 -- (bump when the stubs below change, so they're written again. 4: the Actions list sorted once, M.ensure_scripts. 5: duplicate, gap, autopunch. 6: screen-reader menu. 7: notation editor)
 local HEAD = '-- @noindex\n-- (made by ReaPersona)\nlocal p = debug.getinfo(1, "S").source:match("^@?(.*)[/\\\\]")\n'
 local function stub(path, fn, arg) -- a one-line action: core.<fn>(arg), arg written as a Lua string literal
   return M.write(path, HEAD .. 'dofile(p .. "/../reapersona_core.lua").' .. fn .. "(" .. (arg and string.format("%q", arg) or "") .. ")\n")
@@ -837,7 +838,7 @@ function M.ensure_scripts()
                  ["play from start"] = { "play_from_start" }, ["follow projects"] = { "follow_projects" },
                  ["duplicate to new track"] = { "duplicate_to_new_track" }, ["autopunch"] = { "autopunch" },
                  ["remove leaving a gap"] = { "without_ripple", "40312" }, ["cut leaving a gap"] = { "without_ripple", "40307" },
-                 ["screen-reader menu"] = { "screen_reader_menu" } }
+                 ["screen-reader menu"] = { "screen_reader_menu" }, ["notation editor"] = { "notation_editor" } }
   local names = {}
   for _, st in ipairs(M.styles) do main["use " .. st.id] = { "use_id", st.id }; local l = (st.short or st.name):lower(); names[l] = (names[l] or 0) + 1 end
   local todo, off, all, used = {}, {}, M.all_actions(), used_ids()
@@ -925,6 +926,14 @@ function M.without_ripple(cmd)
   reaper.Main_OnCommand(id, 0)
   if all then reaper.Main_OnCommand(40311, 0) elseif per then reaper.Main_OnCommand(40310, 0) end
   reaper.Undo_EndBlock("Delete leaving a gap", -1)
+end
+-- GarageBand: N shows the Score Editor (here: the selected MIDI item in the MIDI editor, in notation view: "Mode: Notation").
+-- shortcut: it opens and switches to notation, it doesn't hide the editor again; REAPER's Escape or the window's close does that.
+function M.notation_editor()
+  if not reaper.GetSelectedMediaItem(0, 0) then return end
+  reaper.Main_OnCommand(40153, 0) -- (Item: Open in built-in MIDI editor)
+  local me = reaper.MIDIEditor_GetActive()
+  if me then reaper.MIDIEditor_OnCommand(me, 40954) end
 end
 -- Logic and Studio One: one key turns Autopunch on and off (here: REAPER's time-selection auto-punch, else normal recording).
 function M.autopunch()
@@ -1479,16 +1488,17 @@ end
 function M.apply_project(st) -- the persona's project part, in the project in front. -> what it did (for the window to say)
   local p, done = st and st.project, {}
   if type(p) ~= "table" then return done end
+  local pid = tostring(st.project_id or st.id) -- (a workflow over the persona: the workflow's, for its inputs and "set up")
   local fresh = M.fresh_project(0)
   local empty = fresh -- (below: "still fresh", the rate and starter tracks)
   local added = false
   local _, was = reaper.GetProjExtState(0, M.SECTION, "set up")
-  if type(p.template) == "string" and p.template ~= "" and fresh and was ~= tostring(st.id) then
+  if type(p.template) == "string" and p.template ~= "" and fresh and was ~= pid then
     local f = M.here .. "/_template.RPP"
     if M.write(f, p.template) then
       reaper.Main_openProject("template:" .. f) -- (into this tab, as a new untitled project: a fresh one has nothing to lose, and REAPER would ask if it had)
       os.remove(f)
-      reaper.SetProjExtState(0, M.SECTION, "set up", tostring(st.id)) -- (so it isn't loaded again over itself)
+      reaper.SetProjExtState(0, M.SECTION, "set up", pid) -- (so it isn't loaded again over itself)
       local n = reaper.CountTracks(0)
       done[#done + 1] = "its project template (" .. n .. " track" .. (n == 1 and "" or "s") .. ", recording and render settings, tempo and markers)"
       if reaper.GetSetProjectInfo(0, "PROJECT_SRATE_USE", 0, false) == 1 then
@@ -1505,7 +1515,7 @@ function M.apply_project(st) -- the persona's project part, in the project in fr
     reaper.GetSetProjectInfo(0, "PROJECT_SRATE_USE", 1, true) -- (REAPER mixes at the project's rate, not the device's)
     done[#done + 1] = "sample rate " .. M.khz(sr) .. (M.device_rate(sr) or "")
   end
-  if type(p.tracks) == "string" and p.tracks ~= "" and empty and was ~= tostring(st.id) then
+  if type(p.tracks) == "string" and p.tracks ~= "" and empty and was ~= pid then
     local f = M.here .. "/_starter.RTrackTemplate"
     if M.write(f, p.tracks) then
       reaper.Main_openProject(f) -- (a track template opened adds its tracks)
@@ -1515,7 +1525,7 @@ function M.apply_project(st) -- the persona's project part, in the project in fr
     end
   end
   if added then
-    local inputs = M.inputs_for(st.id)
+    local inputs = M.inputs_for(pid)
     if inputs then
       for i, v in ipairs(inputs) do local tr = reaper.GetTrack(0, i - 1); if tr then reaper.SetMediaTrackInfo_Value(tr, "I_RECINPUT", v) end end
       done[#done + 1] = "this computer's track inputs"
@@ -1582,6 +1592,55 @@ M.WORKFLOWS = {
       settings_with("playback", { [40036] = 1, [40364] = 0 }) } end },
 }
 function M.workflow(id) for _, w in ipairs(M.WORKFLOWS) do if w.id == id then return w end end end
+-- ---------------------------------------------------------------- a workflow on top of the persona in use (5.16)
+-- (Review, 5.14: "workflows can't sit on top of another persona": a Pro Tools user had to build a persona to add Voiceover.) A workflow
+-- picked on its own goes over whatever persona is in use: its settings after the persona's (so they win where both set one) and its
+-- project part in place of the persona's. Only a project part and REAPER toggle actions: never keys, theme, windows or the mouse.
+-- The pick is each computer's own ("workflow", like the persona in use): a starter's id, or one of your personas with a project part,
+-- which brings that project part and its Builder settings blocks.
+local layers = {}
+function M.workflow_list() -- -> { id, name, tip, mine } for every workflow you can pick
+  local out = {}
+  for _, w in ipairs(M.WORKFLOWS) do out[#out + 1] = { id = w.id, name = w.name, tip = w.tip } end
+  for _, st in ipairs(M.styles) do if st.user and st.project then out[#out + 1] = { id = st.id, name = st.name, tip = st.description, mine = true } end end
+  for _, st in ipairs(M.presets) do if st.project then out[#out + 1] = { id = st.id, name = st.name, tip = st.description, mine = true } end end
+  return out
+end
+function M.workflow_layer(id) -- -> { id, name, feel, project } or nil
+  if not id or id == "" then return nil end
+  local w, st = M.workflow(id), M.by_id(id)
+  local src = w or st
+  if not src or (not w and not st.project) then return nil end
+  if layers[id] and layers[id].src == src then return layers[id] end
+  local blocks = {}
+  if w then blocks = w.blocks()
+  else for _, b in ipairs(st.blocks or {}) do if b.kind == "settings" then blocks[#blocks + 1] = b end end end
+  local built = M.build_style(blocks, src.name, "workflow_" .. id)
+  local feel = {}
+  for _, f in ipairs(built and built.feel or {}) do if f[1] == "toggle" or f[1] == "choice" then feel[#feel + 1] = f end end -- (toggle actions only)
+  layers[id] = { src = src, id = id, name = src.name, feel = feel, project = w and built and built.project or (st and st.project) }
+  return layers[id]
+end
+function M.current_workflow() return M.workflow_layer(reaper.GetExtState(M.SECTION, "workflow")) end
+function M.layered(st) -- the persona with the workflow in use over it (a copy), or the persona itself
+  local w = st and not st.workflow and M.current_workflow()
+  if not w or w.id == st.id then return st end
+  local t = {}
+  for k, v in pairs(st) do t[k] = v end
+  t.feel = {}
+  for _, f in ipairs(st.feel or {}) do t.feel[#t.feel + 1] = f end
+  for _, f in ipairs(w.feel) do t.feel[#t.feel + 1] = f end -- (after the persona's: the workflow's win, and switching away puts back both)
+  if w.project then t.project, t.project_id = w.project, w.id end -- (no project part, as Mixing: the persona's own stays)
+  t.workflow = w
+  return t
+end
+function M.set_workflow(id) -- "" for none: the persona in use goes on again with it. -> true, or nil + why
+  id = id or ""
+  if id ~= "" and not M.workflow_layer(id) then return nil, "there's no workflow " .. id end
+  reaper.SetExtState(M.SECTION, "workflow", id, true)
+  M.use(M.current())
+  return true
+end
 
 -- Whose shortcut layer a built persona's keys are on. Borrowing a DAW's layer is only for one DAW's keys taken whole: one with some keys
 -- left out took the whole layer anyway, and changing the keys of one of yours on a borrowed layer changed that DAW's too. So keys from
@@ -1631,7 +1690,7 @@ end
 function M.project_persona(proj) local _, v = reaper.GetProjExtState(proj or 0, M.SECTION, "persona"); return v ~= "" and v or nil end
 function M.set_project_persona(id) reaper.SetProjExtState(0, M.SECTION, "persona", id or "") end
 function M.follow_on() return reaper.GetExtState(M.SECTION, "follow projects") == "1" end
-function M.watch_on() local cur = M.current(); return M.follow_on() or (cur ~= nil and cur.project ~= nil) end -- (the loop has work to do)
+function M.watch_on() local cur = M.layered(M.current()); return M.follow_on() or (cur ~= nil and cur.project ~= nil) end -- (the loop has work to do)
 function M.start_following()
   local id = cmd_id(M.scripts.main["follow projects"] or "")
   if id ~= 0 then reaper.Main_OnCommand(id, 0) end
@@ -1641,7 +1700,7 @@ function M.follow_projects()
   local C, last = M, nil
   reaper.atexit(function() reaper.DeleteExtState(M.SECTION, "follow beat", false) end)
   local function step()
-    local cur = C.current()
+    local cur = C.layered(C.current()) -- (with the workflow in use: its project part)
     if not (M.follow_on() or (cur and cur.project)) then return end
     reaper.SetExtState(M.SECTION, "follow beat", tostring(reaper.time_precise()), false)
     local p, fn = reaper.EnumProjects(-1)
@@ -1672,6 +1731,7 @@ function M.delete_user_style(id) -- -> true, or nil + why. Its "use" action goes
   for n = #users, 1, -1 do if users[n].id == id then table.remove(users, n) end end
   local ok, why = M.save_json(USERS, { styles = users })
   if not ok then return nil, why end
+  if reaper.GetExtState(M.SECTION, "workflow") == id then reaper.SetExtState(M.SECTION, "workflow", "", true) end
   if reaper.GetExtState(M.SECTION, "style") == id then M.use(M.by_id("my_reaper") or M.styles[1]) end
   for n = #M.styles, 1, -1 do if M.styles[n].id == id and M.styles[n].user then table.remove(M.styles, n) end end
   M.remove_script("use " .. id)
@@ -2491,7 +2551,7 @@ function M.extstate_keys(text, section) -- the keys reaper-extstate.ini's text k
 end
 local function extstate_names() -- every key this version sets: some may not be in reaper-extstate.ini yet (REAPER writes it later)
   local t = { "style", "orig", "orig project", "view", "look", "migrated", "page", "welcomed", "text size", "all actions", "follow projects",
-    "follow beat", "project default", "midi dock", "search", "theme my_reaper", "theme path my_reaper", "sync folder", "sync id", "sync last", "sync file" }
+    "follow beat", "project default", "midi dock", "workflow", "search", "theme my_reaper", "theme path my_reaper", "sync folder", "sync id", "sync last", "sync file" }
   for _, list in ipairs({ M.styles, M.presets }) do
     for _, st in ipairs(list) do for _, k in ipairs({ "theme ", "forks ", "declined theme " }) do t[#t + 1] = k .. st.id end end
   end
@@ -3125,7 +3185,7 @@ M.EXT_SETTINGS = { -- (here: keys that belong to this computer, never copied)
 }
 local HERE_ONLY = { style = true, orig = true, ["orig project"] = true, migrated = true, page = true, search = true, ["follow beat"] = true,
   ["midi dock"] = true, ["theme my_reaper"] = true, ["theme path my_reaper"] = true, welcomed = true, ["text size"] = true, look = true, view = true,
-  ["last style"] = true, ["menu once"] = true, onboarded = true, ["screen reader"] = true } -- (screen reader: each computer's own, or one
+  ["last style"] = true, ["menu once"] = true, onboarded = true, ["screen reader"] = true, workflow = true } -- (screen reader: each computer's own, or one
   -- computer turning the menu off could lock a screen-reader user on another out of it. Review, 5.14)
 local HERE_PREFIX = { "docker ", "params ", "forks ", "sync ", "declined ", "inputs " }
 function M.synced_setting(k) -- a ReaPersona ExtState key that goes to your other computers (pure)
