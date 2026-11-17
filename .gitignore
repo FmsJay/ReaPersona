@@ -25,3 +25,8 @@ tests/_tmp-*/
 # a shared folder of ReaPersona setups (Syncthing): each computer's own, never published
 sync/
 ReaPersona/sync_state.json
+ReaPersona/pending/
+ReaPersona/packages_missing.json
+ReaPersona/_packages.json
+ReaPersona/feedback/
+ReaPersona/_starter.RTrackTemplate

@@ -254,6 +254,109 @@ def key_of(line):
     return " ".join(q[1:5]) if len(q) >= 5 and q[0] == "KEY" else None
 
 
+# ---------------------------------------------------------------- your setup from your other computers (5.11, the advanced sync)
+# Files REAPER rewrites when it quits wait in ReaPersona/pending until it's closed: they're merged in here, never written over. The keymap
+# keeps every line of this computer's and takes the other computer's for the same key or the same script/custom action id (so this
+# computer's ReaPack script registrations and ReaPersona's lines stay); the menus, mouse modifiers and window sets take the other computer's
+# section where both have it and keep the rest; prefs.json goes into reaper.ini's [REAPER] section.
+PENDING = os.path.join(HERE, "pending")
+
+
+def kb_slot(line):
+    p = line.split()
+    if len(p) >= 5 and p[0] == "KEY":
+        return "KEY %s %s %s" % (p[1], p[2], p[4])
+    if len(p) >= 4 and p[0] == "SCR":
+        return "SCR %s %s" % (p[2], p[3])
+    if len(p) >= 4 and p[0] == "ACT":
+        return "ACT %s %s" % (p[2], p[3])
+    return None
+
+
+def merge_kb(mine, theirs):
+    """This computer's keymap with the other computer's lines taken in. Pure."""
+    take = [l for l in theirs.splitlines() if kb_slot(l)]
+    slots = {kb_slot(l) for l in take}
+    keep = [l for l in mine.splitlines() if not (kb_slot(l) and kb_slot(l) in slots)]
+    while keep and keep[-1].strip() == "":
+        keep.pop()
+    return "\n".join(keep + take) + "\n"
+
+
+def ini_sections(text):
+    order, secs, cur = [], {}, None
+    for line in text.splitlines():
+        m = re.match(r"^\[(.+)\]\s*$", line)
+        if m:
+            cur = m.group(1)
+            if cur not in secs:
+                secs[cur] = []
+                order.append(cur)
+        elif cur is not None and line.strip():
+            secs[cur].append(line)
+    return order, secs
+
+
+def merge_ini(mine, theirs):
+    """This computer's ini file with the other computer's sections taken in whole. Pure."""
+    order, secs = ini_sections(mine)
+    t_order, t_secs = ini_sections(theirs)
+    for name in t_order:
+        if name not in secs:
+            order.append(name)
+        secs[name] = t_secs[name]
+    return "".join("[%s]\n%s" % (n, "".join(l + "\n" for l in secs[n])) for n in order)
+
+
+def set_prefs(text, prefs):
+    """reaper.ini with these [REAPER] keys set (the section header in any case). Pure."""
+    lines = text.splitlines()
+    start = next((i for i, l in enumerate(lines) if l.strip().lower() == "[reaper]"), None)
+    if start is None:
+        lines = ["[REAPER]"] + lines
+        start = 0
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("[")), len(lines))
+    left = dict(prefs)
+    for i in range(start + 1, end):
+        k = lines[i].split("=", 1)[0]
+        if "=" in lines[i] and k in left:
+            lines[i] = "%s=%s" % (k, left.pop(k))
+    lines[end:end] = ["%s=%s" % (k, v) for k, v in left.items()]
+    return "\n".join(lines) + "\n"
+
+
+def apply_setup():
+    """What waits in ReaPersona/pending, merged in (REAPER closed). -> lines saying what was done"""
+    done = []
+    if not os.path.isdir(PENDING):
+        return done
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    for name in ("reaper-kb.ini", "reaper-mouse.ini", "reaper-menu.ini", "reaper-screensets.ini"):
+        src = os.path.join(PENDING, name)
+        if not os.path.exists(src):
+            continue
+        dst = os.path.join(RES, name)
+        theirs = open(src, encoding="utf-8", errors="surrogateescape").read()
+        mine = open(dst, encoding="utf-8", errors="surrogateescape").read() if os.path.exists(dst) else ""
+        if os.path.exists(dst):
+            shutil.copy2(dst, dst + ".before-reapersona-sync-" + stamp)
+        merged = merge_kb(mine, theirs) if name == "reaper-kb.ini" else merge_ini(mine, theirs)
+        eol = "\r\n" if "\r\n" in mine else "\n"
+        write_atomic(dst, merged.replace("\n", eol).encode("utf-8", errors="surrogateescape"))
+        os.remove(src)
+        done.append("took in %s from your other computers (yours backed up first)" % name)
+    pf = os.path.join(PENDING, "prefs.json")
+    if os.path.exists(pf):
+        prefs = json.load(open(pf, encoding="utf-8"))
+        ini = os.path.join(RES, "reaper.ini")
+        text = open(ini, encoding="utf-8", errors="surrogateescape").read() if os.path.exists(ini) else ""
+        eol = "\r\n" if "\r\n" in text else "\n"
+        write_atomic(ini, set_prefs(text, {str(k): str(v) for k, v in prefs.items()}).replace("\n", eol).encode("utf-8", errors="surrogateescape"))
+        os.remove(pf)
+        done.append("set %d of REAPER's preferences from your other computers" % len(prefs))
+    return done
+
+
 def run(remove=False, no_midi=False):
     if reaper_running():
         sys.exit("Close REAPER first: it reads its keymap only when it starts.")
@@ -378,6 +481,10 @@ if __name__ == "__main__":
     assert encode("Num3") == (1, 99) and encode("F12") == (1, 123) and encode("+") == (0, 43) and encode("Ctrl+-") == (9, 189)
     assert encode("Shift+\\") == (5, 220) and encode("Shift+Num*") == (5, 106)
     assert encode("NumEnter") == (1, EXT + 13) and encode("Win+M") == (33, 77) and for_os("mac:Win+M") in (None, "Win+M")
+    assert merge_kb("KEY 1 65 40001 0\nSCR 4 0 RSaa \"Custom: a\" a.lua\nKEY 1 66 40002 0\n", "KEY 1 65 40099 0\nACT 0 0 \"x\" \"y\" 1\n") == \
+        "SCR 4 0 RSaa \"Custom: a\" a.lua\nKEY 1 66 40002 0\nKEY 1 65 40099 0\nACT 0 0 \"x\" \"y\" 1\n"
+    assert merge_ini("[a]\nx=1\n[b]\ny=2\n", "[b]\ny=3\n[c]\nz=4\n") == "[a]\nx=1\n[b]\ny=3\n[c]\nz=4\n"
+    assert set_prefs("[reaper]\nfoo=1\nbar=2\n[x]\nq=1", {"bar": "5", "new": "7"}) == "[reaper]\nfoo=1\nbar=5\nnew=7\n[x]\nq=1\n"
     if "--help" in sys.argv or "-h" in sys.argv:
         sys.exit(__doc__)
     if "--after-reaper-quits" in sys.argv:
@@ -399,6 +506,9 @@ if __name__ == "__main__":
         out = _io.StringIO()
         try:
             with contextlib.redirect_stdout(out):
+                if "--apply-setup" in sys.argv:  # (your setup from your other computers, waiting for REAPER to close: 5.11)
+                    for line in apply_setup():
+                        print(line)
                 run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)  # (--remove: Settings > Remove ReaPersona, review 5.9.4)
         except BaseException as e:  # (SystemExit included: whatever happened is written down for the picker)
             out.write("not installed: %s\n" % e)

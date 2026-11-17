@@ -605,6 +605,7 @@ function M.use(st)
   restore_feel(left)
   if back then reaper.SelectProjectInstance(back) end
   apply_feel(st, left)
+  M.last_project_setup = M.apply_project(st) -- (a workflow's sample rate and starter tracks, in a project that's still empty)
   reaper.SetExtState(M.SECTION, "orig project", tostring(reaper.EnumProjects(-1)), false)
   local th = M.theme_for(st)
   if not th and not (st.themes and st.themes[1]) then th = M.theme_for(M.by_id("my_reaper") or M.styles[1]) end -- (no theme of its own: yours)
@@ -988,7 +989,8 @@ end
 -- A block is { kind = "daw", id, keys, feel, theme, mouse } (a DAW's shortcuts, its layout and feel, its theme and its mouse, each
 -- part on or off), { kind = "mouse", id } (a DAW's mouse alone: its wheel shortcuts and its drags and clicks), { kind = "feel", id,
 -- aspect } (one part of a DAW's feel), { kind = "settings", group, values } (REAPER options: values[i] is 0/1 for a switch or the
--- option's number for a choice, -1 leaves it alone), { kind = "theme", file } or { kind = "colour", hex }.
+-- option's number for a choice, -1 leaves it alone), { kind = "theme", file }, { kind = "colour", hex } or { kind = "project", srate,
+-- tracks, tracks_name, wset } (a workflow's project: its sample rate, starter tracks and window set, for a project that's still empty).
 -- Where two blocks set the same thing, the lower one wins. A mouse block also takes the whole mouse from the blocks above it, so one
 -- DAW's keys with another's mouse is that DAW's mouse and nothing of the first one's (James, 5.10: "a Builder block for them").
 -- The persona keeps its blocks, so the Builder can open it again.
@@ -1079,7 +1081,8 @@ function M.new_block(kind, a, b) -- every part on; a settings block starts as RE
     for i, item in ipairs((group_by_id(a) or {}).items or {}) do values[i] = M.setting_now(item) end
     return { kind = "settings", group = a, values = values }
   elseif kind == "theme" then return { kind = "theme", file = a }
-  elseif kind == "colour" then return { kind = "colour", hex = a } end
+  elseif kind == "colour" then return { kind = "colour", hex = a }
+  elseif kind == "project" then return { kind = "project", srate = 0, tracks = "", tracks_name = "", wset = 0 } end
 end
 function M.block_title(b)
   local st = b.id and M.by_id(b.id)
@@ -1089,7 +1092,8 @@ function M.block_title(b)
   elseif b.kind == "feel" then return name .. ": " .. M.aspect_name(b.aspect)
   elseif b.kind == "settings" then return (group_by_id(b.group) or { name = tostring(b.group) }).name
   elseif b.kind == "theme" then return "Theme: " .. tostring(b.file):gsub("%.ReaperTheme%a*$", "")
-  elseif b.kind == "colour" then return "Colour " .. tostring(b.hex) end
+  elseif b.kind == "colour" then return "Colour " .. tostring(b.hex)
+  elseif b.kind == "project" then return "Project" .. ((b.name or "") ~= "" and (": " .. b.name) or "") end
   return "?"
 end
 function M.safe_feel(list) -- a shared file's feel, keeping only commands ReaPersona's own personas and settings use (a file can't run others)
@@ -1147,7 +1151,10 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
       elseif type(item[1]) ~= "table" and v >= 0 then feel({ "toggle", item[1], v, item[2] .. ": " .. (v == 1 and "on" or "off") }) end
     end
   elseif b.kind == "theme" and b.file then out[1] = { slot = "theme", kind = "theme", label = b.file, value = b.file }
-  elseif b.kind == "colour" and b.hex then out[1] = { slot = "accent", kind = "accent", label = "Colour " .. b.hex, value = b.hex } end
+  elseif b.kind == "colour" and b.hex then out[1] = { slot = "accent", kind = "accent", label = "Colour " .. b.hex, value = b.hex }
+  elseif b.kind == "project" then
+    for _, e in ipairs(M.project_entries(b)) do out[#out + 1] = e end
+  end
   return out
 end
 function M.build_preview(blocks) -- -> per block its entries, each with .lost_to = the lower block that replaces it
@@ -1177,7 +1184,8 @@ function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true
         elseif e.kind == "midi" then st.midi_keys[#st.midi_keys + 1] = copy(e.entry)
         elseif e.kind == "feel" then st.feel[#st.feel + 1] = copy(e.entry)
         elseif e.kind == "theme" then st.theme = e.value
-        elseif e.kind == "accent" then st.accent = e.value end
+        elseif e.kind == "accent" then st.accent = e.value
+        elseif e.kind == "project" then st.project = st.project or {}; for k, v in pairs(e.value) do st.project[k] = v end end
       end
     end
     if src and b.kind == "daw" then
@@ -1201,6 +1209,111 @@ function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true
     (layer == "own" and (" Its shortcuts are on layer alt-" .. st.alt .. ".") or "")
   return st, install
 end
+-- ---------------------------------------------------------------- workflows: what a new project gets
+-- (James, 5.11: "usually I want 44.1 kHz but when I'm recording voiceover for video I may want 48 kHz and a different layout, or different
+-- for live looping ... open a new project, select the persona (on any device) and it's ready to go".) A persona's project part: its
+-- sample rate, starter tracks (a track template's text, kept in the persona so it goes to your other computers with it) and a window set
+-- (View > Screensets). The sample rate and tracks go into a project that's still empty, never one with your work in it; the window set
+-- loads every time.
+M.SRATES = { 44100, 48000, 88200, 96000, 176400, 192000 }
+M.WSET_LOAD = 40454 -- "Screenset: Load window set #01" (#01-#10: 40454-40463)
+function M.project_entries(b) -- a project block's lines, for the Builder (pure)
+  local out = {}
+  local sr = tonumber(b.srate) or 0
+  if sr > 0 then out[#out + 1] = { slot = "project srate", kind = "project", label = "Sample rate " .. (sr / 1000) .. " kHz (a new project)", value = { srate = sr } } end
+  if type(b.tracks) == "string" and b.tracks ~= "" then
+    local n = select(2, b.tracks:gsub("<TRACK", ""))
+    out[#out + 1] = { slot = "project tracks", kind = "project", label = "Starter tracks: " .. ((b.tracks_name or "") ~= "" and b.tracks_name or (n .. " track" .. (n == 1 and "" or "s"))) .. " (a new project)",
+      value = { tracks = b.tracks, tracks_name = b.tracks_name } }
+  end
+  local w = tonumber(b.wset) or 0
+  if w >= 1 and w <= 10 then out[#out + 1] = { slot = "project wset", kind = "project", label = "Window set #" .. w, value = { wset = w } } end
+  return out
+end
+function M.track_chunk(name, armed, monitor, input) -- a starter track as a track template's text (pure). input: 0 = mono input 1, 1024 = stereo 1/2
+  return "<TRACK\n  NAME \"" .. tostring(name):gsub('"', "'") .. "\"\n  REC " .. (armed and 1 or 0) .. " " .. (input or 0) .. " " .. (monitor and 1 or 0) ..
+    " 0 0 0 0 0\n  NCHAN 2\n>\n"
+end
+function M.strip_items(chunk) -- a track's state without its media items, for a template (pure)
+  local out, depth = {}, 0
+  for line in (chunk .. "\n"):gmatch("([^\n]*)\n") do
+    local t = line:match("^%s*(.-)%s*$")
+    if depth > 0 then
+      if t:sub(1, 1) == "<" then depth = depth + 1 elseif t == ">" then depth = depth - 1 end
+    elseif t:match("^<ITEM") then depth = 1
+    else out[#out + 1] = line end
+  end
+  return table.concat(out, "\n"):gsub("\n+$", "") .. "\n"
+end
+function M.selected_tracks_text() -- the selected tracks (or every track) as a template's text, without media items -> text, how many
+  local list = {}
+  local n = reaper.CountSelectedTracks(0)
+  for i = 0, (n > 0 and n or reaper.CountTracks(0)) - 1 do
+    local tr = n > 0 and reaper.GetSelectedTrack(0, i) or reaper.GetTrack(0, i)
+    local ok, chunk = reaper.GetTrackStateChunk(tr, "", false)
+    if ok then list[#list + 1] = M.strip_items(chunk) end
+  end
+  return table.concat(list), #list
+end
+function M.project_empty(proj) return reaper.CountMediaItems(proj or 0) == 0 end
+function M.apply_project(st) -- the persona's project part, in the project in front. -> what it did (for the window to say)
+  local p, done = st and st.project, {}
+  if type(p) ~= "table" then return done end
+  local empty = M.project_empty(0)
+  local sr = tonumber(p.srate) or 0
+  if sr > 0 and empty and (reaper.GetSetProjectInfo(0, "PROJECT_SRATE", 0, false) ~= sr or reaper.GetSetProjectInfo(0, "PROJECT_SRATE_USE", 0, false) ~= 1) then
+    reaper.GetSetProjectInfo(0, "PROJECT_SRATE", sr, true)
+    reaper.GetSetProjectInfo(0, "PROJECT_SRATE_USE", 1, true) -- (REAPER mixes at the project's rate, not the device's)
+    local _, dev = reaper.GetAudioDeviceInfo("SRATE")
+    if tonumber(dev) ~= sr and reaper.Audio_Quit and reaper.Audio_Init then reaper.Audio_Quit(); reaper.Audio_Init() end -- (the device takes it)
+    done[#done + 1] = "sample rate " .. (sr / 1000) .. " kHz"
+  end
+  if type(p.tracks) == "string" and p.tracks ~= "" and empty and reaper.CountTracks(0) == 0 then
+    local f = M.here .. "/_starter.RTrackTemplate"
+    if M.write(f, p.tracks) then
+      reaper.Main_openProject(f) -- (a track template opened adds its tracks)
+      os.remove(f)
+      done[#done + 1] = reaper.CountTracks(0) .. " starter track" .. (reaper.CountTracks(0) == 1 and "" or "s")
+    end
+  end
+  local w = tonumber(p.wset) or 0
+  if w >= 1 and w <= 10 then reaper.Main_OnCommand(M.WSET_LOAD + w - 1, 0); done[#done + 1] = "window set #" .. w end
+  return done
+end
+-- Starter workflows for the Builder: a project block and settings blocks, each set the way that kind of session usually wants.
+local function settings_with(group, want) -- a settings block that sets only these items (by their first command) and leaves the rest
+  local b = { kind = "settings", group = group, values = {} }
+  for i, item in ipairs((M.setting_group(group) or { items = {} }).items) do
+    local key = type(item[1]) == "table" and item[1][1] or item[1]
+    b.values[i] = want[key] == nil and -1 or want[key]
+  end
+  return b
+end
+M.WORKFLOWS = {
+  { id = "voiceover", name = "Voiceover (48 kHz)", tip = "Video voiceover: a 48 kHz project with one armed mono track (monitoring off), ripple editing per track so cuts close the gap, auto-crossfades, no click.",
+    blocks = function() return {
+      { kind = "project", name = "Voiceover", srate = 48000, tracks = M.track_chunk("Voiceover", true, false, 0), tracks_name = "Voiceover (armed, mono input 1)", wset = 0 },
+      settings_with("editing", { [40309] = 2, [40041] = 1, [1157] = 0 }),
+      settings_with("recording", { [40252] = 1, [40300] = 1, [40364] = 0 }),
+      settings_with("playback", { [40364] = 0, [1068] = 0 }) } end },
+  { id = "podcast", name = "Podcast (48 kHz)", tip = "Two armed mono tracks, Host and Guest, at 48 kHz, ripple editing across all tracks, no click.",
+    blocks = function() return {
+      { kind = "project", name = "Podcast", srate = 48000, tracks = M.track_chunk("Host", true, false, 0) .. M.track_chunk("Guest", true, false, 1), tracks_name = "Host and Guest (armed, inputs 1 and 2)", wset = 0 },
+      settings_with("editing", { [40309] = 3, [40041] = 1, [1157] = 0 }),
+      settings_with("playback", { [40364] = 0 }) } end },
+  { id = "music", name = "Music (44.1 kHz)", tip = "A 44.1 kHz project with snap on and the click ready.",
+    blocks = function() return {
+      { kind = "project", name = "Music", srate = 44100, tracks = "", tracks_name = "", wset = 0 },
+      settings_with("editing", { [1157] = 1, [40309] = 1 }) } end },
+  { id = "looping", name = "Live looping", tip = "Loop playback on, every pass a new take, a bar of count-in, the click on, and four armed loop tracks with monitoring on.",
+    blocks = function() return {
+      { kind = "project", name = "Live looping", srate = 0, tracks = M.track_chunk("Loop 1", true, true, 0) .. M.track_chunk("Loop 2", true, true, 0) ..
+        M.track_chunk("Loop 3", true, true, 0) .. M.track_chunk("Loop 4", true, true, 0), tracks_name = "Loop 1-4 (armed, monitoring on)", wset = 0 },
+      settings_with("playback", { [1068] = 1, [40364] = 1, [41817] = 0 }),
+      settings_with("recording", { [40114] = 1, ["_SWS_AWCOUNTRECTOG"] = 1, [41330] = 1 }) } end },
+}
+function M.workflow(id) for _, w in ipairs(M.WORKFLOWS) do if w.id == id then return w end end end
+
 -- Whose shortcut layer a built persona's keys are on. Borrowing a DAW's layer is only for one DAW's keys taken whole: one with some keys
 -- left out took the whole layer anyway, and changing the keys of one of yours on a borrowed layer changed that DAW's too. So keys from
 -- several DAWs (another's mouse wheel included), keys left out, or a persona that has a layer of its own already (its keys may have been
@@ -2241,7 +2354,9 @@ function M.synced_setting(k) -- a ReaPersona ExtState key that goes to your othe
   for _, p in ipairs(HERE_PREFIX) do if k:sub(1, #p) == p then return false end end
   return true
 end
-local SYNC_KINDS = { persona = true, preset = true, recipe = true, setting = true, ext = true }
+local SYNC_KINDS = { persona = true, preset = true, recipe = true, setting = true, ext = true, -- (the advanced ones: M.ADVANCED)
+  pref = true, xstate = true, repo = true, pkg = true, tpl = true, code = true, theme = true, ini = true }
+local TEXT_KINDS = { setting = true, ext = true, pref = true, xstate = true, repo = true } -- (their values are strings; the rest are tables)
 local GONE_KINDS = { persona = true, preset = true, recipe = true } -- (deleting one of these deletes it on your other computers too)
 function M.setup_items() -- -> everything of yours as items; the kinds whose file doesn't parse (left alone: nothing deleted or written)
   local items, skip = {}, {}
@@ -2265,17 +2380,24 @@ function M.setup_items() -- -> everything of yours as items; the kinds whose fil
       if not x.here[k] then items["ext " .. x.section .. "|" .. k] = reaper.GetExtState(x.section, k) end
     end
   end
+  for _, a in ipairs(M.ADVANCED) do -- (advanced: only the parts switched on; the rest are left alone both ways)
+    if M.advanced_on(a.id) and not M.quick then
+      local ok, err = pcall(a.collect, items, ini)
+      if not ok then M.log("sync " .. a.id .. ": " .. tostring(err)); for _, k in ipairs(a.kinds) do skip[k] = true end end
+    else for _, k in ipairs(a.kinds) do skip[k] = true end end
+  end
   return items, skip
 end
 -- Merging: state[item] = { t = when it last changed (seconds), h = its text, v = its value, del = true once deleted }. What changed here
 -- since the last look gets the time now (an item seen for the first time gets `seed`: 0 when you chose to take the folder's setup,
 -- so the other computers' versions win); then each item another computer changed later than this one is taken. Equal times keep
 -- this computer's. -> the items to change here: { item, v (nil: delete it), was (its state before, to put back if writing fails) }
-function M.sync_merge(state, mine, skip, theirs, now, seed) -- (pure)
+function M.sync_merge(state, mine, skip, theirs, now, seed) -- (pure; seed: a time, or { [kind] = time } with now for the rest)
   local function kind(item) return item:match("^(%a+) ") end
+  local function seed_of(item) if type(seed) == "table" then return seed[kind(item)] or now end return seed or now end
   for item, v in pairs(mine) do
     local h, st = M.json_encode(v), state[item]
-    if not st then state[item] = { t = seed or now, h = h, v = v }
+    if not st then state[item] = { t = seed_of(item), h = h, v = v }
     elseif st.del or st.h ~= h then state[item] = { t = now, h = h, v = v } end
   end
   for item, st in pairs(state) do
@@ -2288,7 +2410,7 @@ function M.sync_merge(state, mine, skip, theirs, now, seed) -- (pure)
       local k = type(item) == "string" and kind(item)
       local good = type(r) == "table" and tonumber(r.t) and k and SYNC_KINDS[k] and not skip[k]
       if good and not r.del then
-        if k == "setting" or k == "ext" then good = type(r.v) == "string" else good = type(r.v) == "table" end
+        if TEXT_KINDS[k] then good = type(r.v) == "string" else good = type(r.v) == "table" end
       end
       if good and (not best[item] or tonumber(r.t) > best[item].t) then best[item] = { t = tonumber(r.t), v = r.v, del = r.del and true or nil } end
     end
@@ -2318,7 +2440,11 @@ local function apply_items(list)
     elseif k == "ext" then
       local sec, key = rest:match("^([^|]+)|(.+)$")
       if sec then reaper.SetExtState(sec, key, a.v or "", true); rep.ext = rep.ext + 1 end
-    elseif by[k] then by[k][#by[k] + 1] = { id = rest, a = a } end
+    elseif by[k] then by[k][#by[k] + 1] = { id = rest, a = a }
+    elseif M.ADVANCED_APPLY[k] then
+      local ok, res = pcall(M.ADVANCED_APPLY[k], rest, a.v, rep)
+      if ok and res ~= false then rep.advanced = (rep.advanced or 0) + 1 else rep.failed[#rep.failed + 1] = a; if not ok then M.log("sync apply " .. a.item .. ": " .. tostring(res)) end end
+    end
   end
   local function files(kind, path, wrap, count)
     if #by[kind] == 0 then return end
@@ -2353,10 +2479,347 @@ function M.setup_summary(rep) -- "2 personas, 5 settings and Smooth Wheel Scroll
     if n > 0 then parts[#parts + 1] = n .. " " .. x[2] .. (n == 1 and "" or "s") end
   end
   if (rep.ext or 0) > 0 then parts[#parts + 1] = "extension settings" end
+  if (rep.advanced or 0) > 0 then parts[#parts + 1] = rep.advanced .. " of REAPER's own" end
   if #parts == 0 then return "nothing new" end
   return #parts == 1 and parts[1] or (table.concat(parts, ", ", 1, #parts - 1) .. " and " .. parts[#parts])
 end
 M.SETUP_RESTART = "Smooth Wheel Scroll and ReaSmoothPlayhead read their settings when REAPER starts."
+
+-- ---------------------------------------------------------------- advanced: REAPER itself, on your other computers too
+-- (James, 5.11: "all settings and defaults ... and even additional scripts and other things that are used ... as an advanced feature
+-- checkbox ... all my settings saved and loadable across devices including mac (install anything it's missing)".) Each part is switched
+-- on in Settings (ExtState "sync advanced", a list of ids), on each computer: a part that's off is neither sent nor taken there.
+--   pref     REAPER's preferences (reaper.ini's [REAPER] keys), set live through SWS where REAPER has them as config variables; the rest
+--            wait for REAPER's next restart. Never this computer's: window places, recent files, paths, audio and MIDI devices, dockers.
+--   xstate   other scripts' settings (their ExtState), but not ones that hold this computer's paths or StudioSync's machine state.
+--   ini      the keymap, mouse modifiers, menus and toolbars, window sets: merged (never replaced) into this computer's when REAPER
+--            restarts (Apply, like installing shortcuts). The keymap keeps this computer's script registrations and ReaPersona's lines.
+--   tpl      FX chains, track and project templates, MIDI note names, key maps: copied as files.
+--   code     your own scripts and JSFX: the ones ReaPack didn't install (it installs those itself, see pkg), not ReaPersona's own.
+--   theme    the themes in ColorThemes.
+--   repo/pkg ReaPack's repositories, and its packages: the ones another computer has and this one doesn't are offered (Install).
+-- Files travel by content: <folder>/blobs/<hash>, written once, read by the others. Deleting a file doesn't delete it elsewhere.
+M.ADVANCED = {
+  { id = "prefs", name = "REAPER's preferences", kinds = { "pref" }, tip = "Everything in Preferences that isn't this computer's own (paths, audio and MIDI devices, window places, recent files): set straight away where REAPER allows, the rest at its next start." },
+  { id = "xstate", name = "Other scripts' settings", kinds = { "xstate" }, tip = "What your other scripts and extensions remember in REAPER (their ExtState), apart from file paths and StudioSync's own." },
+  { id = "keys", name = "Shortcuts, mouse, menus, toolbars and window sets", kinds = { "ini" }, tip = "Your keymap, mouse modifiers, menus and toolbars, and window sets, merged into this computer's when REAPER restarts (Apply)." },
+  { id = "templates", name = "FX chains and templates", kinds = { "tpl" }, tip = "FX chains, track templates, project templates, MIDI note names and key map files." },
+  { id = "code", name = "Your scripts and JSFX", kinds = { "code" }, tip = "Scripts and JSFX you made or copied in yourself (ReaPack's are installed by ReaPack, below). Needs Python." },
+  { id = "themes", name = "Themes", kinds = { "theme" }, tip = "Every theme file in ColorThemes. Can be large." },
+  { id = "packages", name = "ReaPack repositories and packages", kinds = { "repo", "pkg" }, tip = "Your ReaPack repositories, and the packages your other computers have and this one doesn't, ready to install. Needs Python." },
+}
+function M.advanced_on(id) return (";" .. reaper.GetExtState(M.SECTION, "sync advanced") .. ";"):find(";" .. id .. ";", 1, true) ~= nil end
+function M.set_advanced(id, on)
+  local keep = {}
+  for x in reaper.GetExtState(M.SECTION, "sync advanced"):gmatch("[^;]+") do if x ~= id then keep[#keep + 1] = x end end
+  if on then keep[#keep + 1] = id end
+  reaper.SetExtState(M.SECTION, "sync advanced", table.concat(keep, ";"), true)
+end
+
+-- Preferences that belong to this computer (pure): window places and sizes, recent files and tabs, paths, devices, dockers, splash.
+local PREF_HERE = { "_x$", "_y$", "_w$", "_h$", "_ew$", "_eh$", "_dx$", "_dy$", "_mh$", "^wnd_", "_vis$", "_dock$", "_max$", "wid$", "wid_",
+  "colwid", "_div", "^last", "recent", "projecttab", "path", "dir$", "^mf_", "^midiins", "^midiouts", "^midilat", "^midiinflag", "^csurf",
+  "^docker", "^dockheight", "fullscreenrect", "^splash", "^multinst", "^hwfx", "^vst", "^lv2", "^clap", "^au_", "workthreads", "renderthreads",
+  "^prefs", "^pspage", "^config", "screensetwnd", "^audio", "^asio", "^wasapi", "^dsound", "^coreaudio", "^waveout", "^alsa", "^jack", "^pulse",
+  "hwout", "^zoom$", "^vzoom", "^toppane", "^langpack", "tmpl", "^lastproj", ":", "^ccresettab", "^insertmtracklast", "^errnowarn" }
+function M.pref_synced(k, v) -- (pure)
+  local low = k:lower()
+  for _, pat in ipairs(PREF_HERE) do if low:find(pat) then return false end end
+  if type(v) == "string" and (v:match("^%a:[\\/]") or v:match("^/") or v:match("^\\\\")) then return false end -- (a path on this computer)
+  return true
+end
+local XSTATE_HERE = { ReaPersona = true, BandSync = true, StudioSync = true, ["reaper-daemon"] = true, reaper_daemon = true }
+function M.xstate_synced(section, k, v) -- (pure)
+  if XSTATE_HERE[section] then return false end
+  for _, x in ipairs(M.EXT_SETTINGS) do if x.section == section then return false end end -- (already: the "ext" items)
+  local low = k:lower()
+  if low:find("pos") or low:find("dock") or low:find("^wnd") or low:find("window") or low:find("_x$") or low:find("_y$") or low:find("path") or low:find("dir$") then return false end
+  if type(v) == "string" and (v:match("^%a:[\\/]") or v:match("^/Users/") or v:match("^/home/") or v:match("^\\\\")) then return false end
+  if k:find("{%x%x%x%x%x%x%x%x%-") or low:find("undo") or (type(v) == "string" and #v > 4096) then return false end -- (one project's, or a cache)
+  return true
+end
+
+-- A content hash (64-bit FNV-1a over 8-byte words, then the length), enough to tell files apart for syncing. Pure.
+function M.content_hash(s)
+  local h, prime, n, i = -3750763034362895579, 1099511628211, #s, 1
+  while i + 7 <= n do h = (h ~ string.unpack("<i8", s, i)) * prime; i = i + 8 end
+  for j = i, n do h = (h ~ s:byte(j)) * prime end
+  return string.format("%016x", h ~ n)
+end
+-- The keymap as it goes to your other computers: without ReaPersona's own lines (each computer installs its own) and without
+-- registrations of ReaPersona's scripts (their paths differ between installs). Pure. installed: { ["flags key cmd section"] = true },
+-- midi_cmds: { [command] = true } (the MIDI key scripts).
+function M.kb_shared(text, installed, midi_cmds)
+  local out = {}
+  for line in (text or ""):gmatch("[^\r\n]+") do
+    local f, k, cmd, sec = line:match("^KEY (%d+) (%d+) (%S+) (%d+)")
+    local drop = false
+    if f then drop = installed[f .. " " .. k .. " " .. cmd .. " " .. sec] or (sec == "32060" and midi_cmds[cmd]) or line:find("# ReaPersona", 1, true) ~= nil
+    elseif line:match("^SCR ") then drop = line:find('"?ReaPersona/') ~= nil end
+    if not drop then out[#out + 1] = line end
+  end
+  table.sort(out) -- (a canonical order: two computers that have taken each other's lines end up with the same text, so nothing goes round again)
+  return table.concat(out, "\n") .. "\n"
+end
+function M.ini_canon(text) -- an ini file in a canonical order: sections sorted, and keys within each (pure)
+  local secs, order, cur = {}, {}, nil
+  for line in (text or ""):gmatch("[^\r\n]+") do
+    local name = line:match("^%[(.+)%]%s*$")
+    if name then cur = name; if not secs[name] then secs[name] = {}; order[#order + 1] = name end end
+    if not name and cur and line:find("=", 1, true) then secs[cur][#secs[cur] + 1] = line end
+  end
+  table.sort(order)
+  local out = {}
+  for _, name in ipairs(order) do
+    table.sort(secs[name])
+    out[#out + 1] = "[" .. name .. "]"
+    for _, l in ipairs(secs[name]) do out[#out + 1] = l end
+  end
+  return table.concat(out, "\n") .. "\n"
+end
+
+-- Folders that hold a script's data, not the script (restore points, logs, test results, caches, version control): never walked.
+M.JUNK_DIRS = { backups = 1, autosaves = 1, __pycache__ = 1, [".git"] = 1, [".stfolder"] = 1, [".stversions"] = 1, _tmp = 1, tmp = 1, temp = 1,
+  cache = 1, logs = 1, log = 1, results = 1, restore_points = 1, node_modules = 1, [".svn"] = 1 }
+-- Your own scripts are code and what it needs (images, fonts, text): not projects, audio, logs, archives or programs, nor big files.
+local CODE_NOT = { rpp = 1, ["rpp-bak"] = 1, ["rpp-undo"] = 1, wav = 1, mp3 = 1, flac = 1, ogg = 1, aif = 1, aiff = 1, m4a = 1, mp4 = 1, mov = 1,
+  log = 1, pyc = 1, bak = 1, pack = 1, idx = 1, pdf = 1, zip = 1, rar = 1, ["7z"] = 1, exe = 1, dll = 1, dylib = 1, so = 1, reapeaks = 1 }
+function M.code_file(rel) -- one of your scripts' files worth carrying? (pure)
+  local e = rel:match("%.([^./]+)$")
+  return not (e and CODE_NOT[e:lower()])
+end
+local CODE_MAX = 4 * 1024 * 1024
+-- Files: walk a folder of the resource path. -> { [relative path] = full path }
+local function walk(base, rel, out, keep)
+  local dir = base .. (rel ~= "" and ("/" .. rel) or "")
+  reaper.EnumerateFiles(dir, -1)
+  for i = 0, 100000 do
+    local f = reaper.EnumerateFiles(dir, i)
+    if not f then break end
+    local r = (rel ~= "" and (rel .. "/") or "") .. f
+    if not f:match("%.bak$") and not f:match("%.tmp$") and not f:match("~$") and not f:match("%.bad%-") and (not keep or keep(r)) then out[r] = dir .. "/" .. f end
+  end
+  reaper.EnumerateSubdirectories(dir, -1)
+  for i = 0, 100000 do
+    local d = reaper.EnumerateSubdirectories(dir, i)
+    if not d then break end
+    if not M.JUNK_DIRS[d:lower()] and not d:match("^_tmp") then
+      local r = (rel ~= "" and (rel .. "/") or "") .. d
+      if not keep or keep(r .. "/") then walk(base, r, out, keep) end
+    end
+  end
+  return out
+end
+M.walk = walk
+local MAX_FILE = 64 * 1024 * 1024 -- (bigger files stay where they are)
+local sig_cache -- (path -> { sig = "size|mtime", h = hash }: hashed again only when a file changed; kept in sync_state.json)
+local function file_value(path, max)
+  local sig
+  max = max or MAX_FILE
+  if reaper.JS_File_Stat then
+    local ok, size, _, mtime = reaper.JS_File_Stat(path)
+    if ok == 0 then if size > max then return nil end sig = size .. "|" .. tostring(mtime) end
+  end
+  local c = sig and sig_cache and sig_cache[path]
+  if c and c.sig == sig then return { h = c.h, n = c.n } end
+  local text = M.read(path)
+  if not text or #text > max then return nil end
+  local h = M.content_hash(text)
+  if sig_cache and sig then sig_cache[path] = { sig = sig, h = h, n = #text } end
+  return { h = h, n = #text }, text
+end
+local function blob_dir() return M.sync_folder():gsub("[/\\]+$", "") .. "/blobs" end
+local function publish(path, v, text) -- the file's content into the folder's blobs, once
+  local b = blob_dir() .. "/" .. v.h
+  if reaper.file_exists(b) then return true end
+  reaper.RecursiveCreateDirectory(blob_dir(), 0)
+  text = text or M.read(path)
+  return text ~= nil and M.write(b, text)
+end
+local function collect_files(items, kind, base_rel, keep, max)
+  for rel, full in pairs(walk(res, base_rel, {}, keep)) do
+    local v, text = file_value(full, max)
+    if v and publish(full, v, text) then items[kind .. " " .. rel] = v end
+  end
+end
+local TPL_DIRS = { "FXChains", "TrackTemplates", "ProjectTemplates", "MIDINoteNames", "KeyMaps" }
+-- (ReaPersona and StudioSync are kept apart from package syncing: a computer may run a copy installed by hand, and ReaPack's would be a
+-- second one beside it)
+M.PKG_HERE = { ReaPersona = true, StudioSync = true }
+local CODE_SKIP = { "Scripts/ReaPersona/", "Scripts/__startup.lua", "Scripts/MIDI Control Center/midi_control_center/dev/", "Scripts/StudioSync",
+  "Scripts/Cockos/", "Scripts/reaper-daemon/" } -- (ReaPersona's own; each computer's startup; StudioSync's; REAPER's own; a tool with its data)
+M.owned = nil -- (ReaPack's files, relative to the resource path: from setup_helper.py; nil until read)
+local function read_packages() -- -> { installed = { {remote, category, package, type, desc, author} }, owned = { path } }, or nil + why
+  if not M.python() then return nil, "it needs Python" end
+  local out = M.here .. "/_packages.json" -- (REAPER's ExecProcess stalls on a long answer: it comes back in a file)
+  local code, text = sh(M.py .. ' "' .. M.here .. '/setup_helper.py" packages "' .. res .. '" "' .. out .. '"', 30000)
+  local ok, d = pcall(M.json_decode, code == "0" and M.read(out) or "")
+  os.remove(out)
+  if code ~= "0" or not ok or type(d) ~= "table" then return nil, "setup_helper.py: " .. tostring(text):sub(1, 200) end
+  M.owned = {}
+  for _, f in ipairs(d.owned or {}) do M.owned[f] = true end
+  return d
+end
+local COLLECT = {
+  pref = function(items)
+    local t = M.read(res .. "/reaper.ini") or ""
+    local body = t:match("^%[[Rr][Ee][Aa][Pp][Ee][Rr]%]\r?\n(.-)\n%[") or t:match("\n%[[Rr][Ee][Aa][Pp][Ee][Rr]%]\r?\n(.-)\n%[") or ""
+    for k, v in body:gmatch("([^=\r\n]+)=([^\r\n]*)") do
+      if reaper.get_config_var_string then local ok, live = reaper.get_config_var_string(k); if ok then v = live end end
+      if M.pref_synced(k, v) then items["pref " .. k] = v end
+    end
+  end,
+  xstate = function(items, ini)
+    for section in ini:gmatch("\n%[([^%]\r\n]+)%]") do
+      for _, k in ipairs(M.extstate_keys(ini, section)) do
+        local v = reaper.GetExtState(section, k)
+        if M.xstate_synced(section, k, v) then items["xstate " .. section .. "|" .. k] = v end
+      end
+    end
+    local first = ini:match("^%[([^%]\r\n]+)%]") -- (the file's first section has no newline before it)
+    if first then for _, k in ipairs(M.extstate_keys("\n" .. ini, first)) do
+      local v = reaper.GetExtState(first, k)
+      if M.xstate_synced(first, k, v) then items["xstate " .. first .. "|" .. k] = v end
+    end end
+  end,
+  ini = function(items)
+    local installed, midi = {}, {}
+    for _, l in ipairs((M.load_json(M.here .. "/installed.json") or {}).lines or {}) do installed[l] = true end
+    for _, id in pairs(M.scripts.midi or {}) do midi[tostring(id)] = true end
+    for _, name in ipairs({ "reaper-kb.ini", "reaper-mouse.ini", "reaper-menu.ini", "reaper-screensets.ini" }) do
+      local text = M.read(res .. "/" .. name)
+      if text then
+        if name == "reaper-kb.ini" then text = M.kb_shared(text, installed, midi) else text = M.ini_canon(text) end
+        local v = { h = M.content_hash(text), n = #text }
+        if publish(nil, v, text) then items["ini " .. name] = v end
+      end
+    end
+  end,
+  tpl = function(items) for _, d in ipairs(TPL_DIRS) do collect_files(items, "tpl", d) end end,
+  code = function(items)
+    if not M.owned and not read_packages() then error("ReaPack's file list (needs Python)") end
+    for _, d in ipairs({ "Scripts", "Effects" }) do
+      collect_files(items, "code", d, function(r)
+        for _, x in ipairs(CODE_SKIP) do if r:sub(1, #x) == x then return false end end
+        return not M.owned[r] and (r:sub(-1) == "/" or M.code_file(r))
+      end, CODE_MAX)
+    end
+  end,
+  theme = function(items) collect_files(items, "theme", "ColorThemes") end,
+  repo = function(items)
+    local t = M.read(res .. "/reapack.ini") or ""
+    for name, url, en, auto in (M.ini_section(t, "remotes") or ""):gmatch("\nremote%d+=([^|\r\n]+)|([^|\r\n]+)|(%d)|(%d)") do
+      if not M.PKG_HERE[name] then items["repo " .. name] = url .. "|" .. en .. "|" .. auto end
+    end
+  end,
+  pkg = function(items)
+    local d = assert(read_packages())
+    for _, e in ipairs(d.installed or {}) do
+      if not M.PKG_HERE[e[1]] then items["pkg " .. e[1] .. "|" .. e[2] .. "|" .. e[3]] = { type = e[4], desc = e[5], author = e[6] } end
+    end
+  end,
+}
+for _, a in ipairs(M.ADVANCED) do a.collect = function(items, ini) for _, k in ipairs(a.kinds) do COLLECT[k](items, ini) end end end
+
+-- Taking an item in. A file whose content hasn't arrived yet (Syncthing still copying it) returns false: it's tried again next time.
+local function from_blob(v) local b = blob_dir() .. "/" .. tostring(v.h); return reaper.file_exists(b) and M.read(b) or nil end
+local function put_file(rel, v)
+  if rel:find("%.%.") or rel:match("^[/\\]") or rel:match("^%a:") then return false end -- (only inside the resource path)
+  local text = from_blob(v)
+  if not text or M.content_hash(text) ~= v.h then return false end
+  local full = res .. "/" .. rel
+  reaper.RecursiveCreateDirectory(full:match("^(.*)/[^/]*$"), 0)
+  local ok = M.write(full, text)
+  if ok and sig_cache and reaper.JS_File_Stat then -- (so the copy isn't taken for a change of this computer's)
+    local o, size, _, mtime = reaper.JS_File_Stat(full)
+    if o == 0 then sig_cache[full] = { sig = size .. "|" .. tostring(mtime), h = v.h, n = #text } end
+  end
+  return ok
+end
+function M.restart_pending() -- what waits for REAPER's next restart (Apply): file names under ReaPersona/pending
+  local out = {}
+  reaper.EnumerateFiles(M.here .. "/pending", -1)
+  for i = 0, 100 do local f = reaper.EnumerateFiles(M.here .. "/pending", i); if not f then break end out[#out + 1] = f end
+  return out
+end
+local function pend_pref(k, v)
+  reaper.RecursiveCreateDirectory(M.here .. "/pending", 0)
+  local p = M.here .. "/pending/prefs.json"
+  local d = M.load_json(p) or {}
+  d[k] = v
+  return M.save_json(p, setmetatable(d, M.OBJECT))
+end
+M.ADVANCED_APPLY = {
+  pref = function(k, v)
+    if not v then return true end
+    if reaper.get_config_var_string and reaper.get_config_var_string(k) then
+      local ok
+      if v:match("^%-?%d+$") then ok = reaper.SNM_SetIntConfigVar and reaper.SNM_SetIntConfigVar(k, tonumber(v))
+      elseif v:match("^%-?%d+%.%d+$") then ok = reaper.SNM_SetDoubleConfigVar and reaper.SNM_SetDoubleConfigVar(k, tonumber(v))
+      else ok = reaper.SNM_SetStringConfigVar and reaper.SNM_SetStringConfigVar(k, v) end
+      if ok then return true end
+    end
+    return pend_pref(k, v) and true or false -- (not one REAPER lets a script set: at its next start)
+  end,
+  xstate = function(rest, v)
+    local sec, key = rest:match("^([^|]+)|(.+)$")
+    if not sec then return false end
+    reaper.SetExtState(sec, key, v or "", true)
+  end,
+  ini = function(name, v)
+    if not ({ ["reaper-kb.ini"] = 1, ["reaper-mouse.ini"] = 1, ["reaper-menu.ini"] = 1, ["reaper-screensets.ini"] = 1 })[name] or not v then return false end
+    local text = from_blob(v)
+    if not text then return false end
+    reaper.RecursiveCreateDirectory(M.here .. "/pending", 0)
+    return M.write(M.here .. "/pending/" .. name, text) -- (merged in when REAPER restarts: install_shortcuts.py --apply-setup)
+  end,
+  tpl = function(rel, v) if not v then return true end return put_file(rel, v) end,
+  code = function(rel, v) if not v then return true end return put_file(rel, v) end,
+  theme = function(rel, v) if not v then return true end return put_file(rel, v) end,
+  repo = function(name, v)
+    if M.PKG_HERE[name] then return true end
+    local url, en, auto = (v or ""):match("^(.-)|(%d)|(%d)$")
+    if not url or not reaper.ReaPack_AddSetRepository then return false end
+    local ok = reaper.ReaPack_AddSetRepository(name, url, en == "1", tonumber(auto) or 2, "")
+    M.repos_changed = true
+    return ok and true or false
+  end,
+  pkg = function(rest, v, rep) -- (offered, not installed by itself: Settings > Install what's missing)
+    if not v or M.PKG_HERE[rest:match("^[^|]+")] then return true end
+    local p = M.here .. "/packages_missing.json"
+    local d = M.load_json(p) or {}
+    d[rest] = v
+    rep.packages = (rep.packages or 0) + 1
+    return M.save_json(p, setmetatable(d, M.OBJECT)) and true or false
+  end,
+}
+local missing_cache
+function M.packages_missing(fresh) -- the packages your other computers have and this one doesn't (still): { { key = "remote|category|package", v } }
+  if missing_cache and not fresh then return missing_cache end
+  local d = M.load_json(M.here .. "/packages_missing.json") or {}
+  local have = {}
+  local cur = next(d) and read_packages() or {}
+  for _, e in ipairs((cur or {}).installed or {}) do have[e[1] .. "|" .. e[2] .. "|" .. e[3]] = true end
+  local out = {}
+  for k, v in pairs(d) do if not have[k] then out[#out + 1] = { key = k, v = v } end end
+  table.sort(out, function(a, b) return a.key < b.key end)
+  missing_cache = out
+  return out
+end
+function M.install_missing() -- ReaPack installs them: a placeholder of each in its registry, then its sync. -> how many, or nil + why
+  local list = M.packages_missing(true)
+  if #list == 0 then return 0 end
+  local f = M.here .. "/packages_missing.json"
+  local code, text = sh(M.py .. ' "' .. M.here .. '/setup_helper.py" install "' .. res .. '" "' .. f .. '"', 30000)
+  if code ~= "0" then return nil, tostring(text):sub(1, 300) end
+  if M.repos_changed and reaper.ReaPack_ProcessQueue then reaper.ReaPack_ProcessQueue(true) end
+  local sync = reaper.NamedCommandLookup("_REAPACK_SYNC")
+  if sync == 0 then return nil, "ReaPack isn't here" end
+  reaper.Main_OnCommand(sync, 0) -- (ReaPack fetches each package's newest version for this system, and says what it did)
+  os.remove(f)
+  missing_cache = nil
+  return #list
+end
 
 -- A setup file: everything of yours, to take to another computer by hand.
 function M.computer()
@@ -2383,13 +2846,13 @@ function M.import_setup(d) -- a setup file (decoded, or its path): every item in
   for item, r in pairs(d.items) do
     local k = type(item) == "string" and item:match("^(%a+) ")
     if k and SYNC_KINDS[k] and not skip[k] and type(r) == "table" and not r.del then
-      local good = (k == "setting" or k == "ext") and type(r.v) == "string" or (k ~= "setting" and k ~= "ext" and type(r.v) == "table")
+      local good = TEXT_KINDS[k] and type(r.v) == "string" or (not TEXT_KINDS[k] and type(r.v) == "table")
       if good then list[#list + 1] = { item = item, v = r.v } end
     end
   end
   table.sort(list, function(a, b) return a.item < b.item end)
   local rep = apply_items(list)
-  for k in pairs(skip) do rep.skipped = (rep.skipped and (rep.skipped .. ", ") or "") .. k end
+  for k in pairs(skip) do if GONE_KINDS[k] then rep.skipped = (rep.skipped and (rep.skipped .. ", ") or "") .. k end end
   return rep
 end
 
@@ -2430,12 +2893,19 @@ function M.sync_now(start)
   local state = M.load_json(SYNC_STATE)
   if not state then return nil, "sync_state.json doesn't parse (a copy is next to it): fix or delete it, then sync again" end
   state.items = type(state.items) == "table" and state.items or {}
+  sig_cache = type(state.sigs) == "table" and state.sigs or {}
   local now, first = os.time(), next(state.items) == nil
   local others = M.sync_others(dir)
   local theirs = {}
   for _, o in ipairs(others) do if o.d then theirs[#theirs + 1] = o.d end end
   local mine, skip = M.setup_items()
-  local todo = M.sync_merge(state.items, mine, skip, theirs, now, (first and start == "theirs") and 0 or now)
+  local seed = (first and start == "theirs") and 0 or now
+  if type(state.seed0) == "table" and next(state.seed0) then -- (advanced parts just switched on with "take theirs")
+    seed = { }
+    for k in pairs(state.seed0) do if not skip[k] then seed[k] = 0 end end
+  end
+  local todo = M.sync_merge(state.items, mine, skip, theirs, now, seed)
+  if type(state.seed0) == "table" then for k in pairs(state.seed0) do if not skip[k] then state.seed0[k] = nil end end end
   local rep = apply_items(todo)
   for _, a in ipairs(rep.failed) do state.items[a.item] = a.was end
   rep.others, rep.changed = others, #todo > #rep.failed
@@ -2444,7 +2914,7 @@ function M.sync_now(start)
   local text = M.json_encode({ reapersona_sync = 1, computer = M.computer(), items = items }) .. "\n"
   local keep = setmetatable({}, M.OBJECT) -- (kept before the folder is written: what came in is never sent back as a change of this computer's)
   for item, st in pairs(state.items) do keep[item] = st end
-  M.save_json(SYNC_STATE, { items = keep })
+  M.save_json(SYNC_STATE, { items = keep, sigs = setmetatable(sig_cache or {}, M.OBJECT), seed0 = state.seed0 })
   local path = dir .. "/" .. sync_file_name()
   if M.read(path) ~= text and not M.write(path, text) then return nil, "couldn't write in " .. dir .. " (is the folder there, and its drive connected?)" end
   local bad = {}
@@ -2463,9 +2933,21 @@ function M.stop_sync()
   reaper.DeleteExtState(M.SECTION, "sync folder", true)
   os.remove(SYNC_STATE)
 end
-function M.sync_tick() -- (REAPER's start, and the window's loop: quiet, a problem goes to errors.log)
+function M.advanced_join(id, theirs) -- an advanced part switched on: with theirs, what your other computers have wins the first time
+  M.set_advanced(id, true)
+  if not theirs then return end
+  local state = M.load_json(SYNC_STATE)
+  if not state then return end
+  state.seed0 = type(state.seed0) == "table" and state.seed0 or setmetatable({}, M.OBJECT)
+  for _, a in ipairs(M.ADVANCED) do if a.id == id then for _, k in ipairs(a.kinds) do state.seed0[k] = true end end end
+  -- (items of that kind already known here keep their time: only ones seen for the first time get 0)
+  M.save_json(SYNC_STATE, state)
+end
+function M.sync_tick(quick) -- (REAPER's start, and the window's loop: quiet, a problem goes to errors.log. quick: not the advanced parts)
   if M.sync_folder() == "" then return end
+  M.quick = quick
   local ok, rep, why = pcall(M.sync_now)
+  M.quick = nil
   if not ok then M.log("sync: " .. tostring(rep)) elseif not rep then M.log("sync: " .. tostring(why)) end
   return ok and rep or nil
 end

@@ -33,6 +33,20 @@ reaper = setmetatable({ -- (only what loading the engine and these checks touch)
     end
     return listing[d][i + 1]
   end,
+  EnumerateSubdirectories = function(d, i) -- (and its folders)
+    local key = "dirs " .. d
+    if i < 0 then listing[key] = nil; return end
+    if not listing[key] then
+      listing[key] = {}
+      local p = io.popen(win and ('dir /b /ad "' .. d:gsub("/", "\\") .. '" 2>nul') or ("ls -p '" .. d .. "' 2>/dev/null | grep / | tr -d /"))
+      for l in p:lines() do listing[key][#listing[key] + 1] = l end
+      p:close()
+    end
+    return listing[key][i + 1]
+  end,
+  RecursiveCreateDirectory = function(d)
+    os.execute(win and ('mkdir "' .. d:gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. d .. "'"))
+  end,
 }, { __index = function(_, k) return function() end end })
 local function load_core() return dofile(tmp .. "/reapersona_core.lua") end
 local core = load_core()
@@ -253,6 +267,77 @@ assert(not r.changed and read(share .. "/" .. mine) == before, "nothing new: not
 assert(core.json_decode(before).items["persona built_m"].del, "the deletion goes on to the other computers")
 core.stop_sync()
 assert(core.sync_folder() == "" and not read(tmp .. "/sync_state.json"))
+
+-- 9. Workflows (5.11): a project block's lines, starter tracks as a template's text, and a workflow's blocks built into a persona.
+local pb = core.new_block("project")
+assert(pb.kind == "project" and core.block_title(pb) == "Project" and #core.project_entries(pb) == 0, "an empty project block sets nothing")
+pb.srate, pb.wset, pb.tracks, pb.tracks_name = 48000, 3, core.track_chunk('Say "hi"', true, false, 0), "VO"
+local pe = core.project_entries(pb)
+assert(#pe == 3 and pe[1].value.srate == 48000 and pe[3].value.wset == 3)
+assert(core.track_chunk('Say "hi"', true, false, 0) == "<TRACK\n  NAME \"Say 'hi'\"\n  REC 1 0 0 0 0 0 0 0\n  NCHAN 2\n>\n")
+local chunk = "<TRACK {A}\n  NAME Gtr\n  <FXCHAIN\n    BYPASS 0\n  >\n  <ITEM\n    POSITION 0\n    <SOURCE WAVE\n      FILE \"x.wav\"\n    >\n  >\n  <ITEM\n    POSITION 4\n  >\n>"
+assert(core.strip_items(chunk) == "<TRACK {A}\n  NAME Gtr\n  <FXCHAIN\n    BYPASS 0\n  >\n>\n", "items out, FX kept")
+local vo = core.workflow("voiceover")
+local st_vo = assert(core.build_style(vo.blocks(), "VO", "built_vo"))
+assert(st_vo.project and st_vo.project.srate == 48000 and st_vo.project.tracks:find("Voiceover", 1, true), "the persona carries its project part")
+assert(st_vo.alt == 0, "a workflow alone keeps your own keys")
+local rip
+for _, f in ipairs(st_vo.feel) do if f[1] == "choice" and f[2][1] == 40309 then rip = f[3] end end
+assert(rip == 40310, "voiceover: ripple per track")
+local lower = core.build_style({ vo.blocks()[1], { kind = "project", srate = 44100, tracks = "", wset = 0 } }, "x", "built_x")
+assert(lower.project.srate == 44100 and lower.project.tracks:find("Voiceover", 1, true), "the lower block's sample rate wins, its empty tracks don't")
+for _, w in ipairs(core.WORKFLOWS) do assert(core.build_style(w.blocks(), w.name, "built_" .. w.id), w.id) end
+
+-- 10. Advanced syncing (5.11): what stays this computer's, file identity, the shared keymap and ini files, and seeding per kind.
+assert(core.pref_synced("autosaveint", "5") and core.pref_synced("projsrate", "48000") and core.pref_synced("reccfg", "63616C66"))
+for _, k in ipairs({ "wnd_x", "mixwnd_vis", "lastproject", "projecttab3", "vstpath64", "midiins_cs", "dockermode2", "workthreads", "defrecpath", "csurf_0", "zoom", "toolbar:header" }) do
+  assert(not core.pref_synced(k, "1"), k .. " stays this computer's")
+end
+assert(not core.pref_synced("render_pattern_0", "J:\\Music\\x") and not core.pref_synced("foo", "/Users/chilio/x"), "a path in the value stays too")
+assert(core.xstate_synced("Some Script", "volume", "0.5") and not core.xstate_synced("BandSync", "user", "James"))
+assert(not core.xstate_synced("Some Script", "window_pos", "10 20") and not core.xstate_synced("Some Script", "last", "C:\\x\\y.wav"))
+assert(not core.xstate_synced("SmoothWheelScroll", "window", "200"), "the extensions ReaPersona already carries")
+assert(core.content_hash("abc") ~= core.content_hash("abd") and core.content_hash("") == core.content_hash(""))
+assert(core.content_hash(string.rep("x", 17)) ~= core.content_hash(string.rep("x", 16)), "the length counts")
+local kb = "KEY 1 65 40001 0\r\nKEY 1 90 40029 3\t\t # ReaPersona : x\r\nKEY 1 81 _RSmidi 32060\r\nSCR 4 0 RSaa \"Custom: a\" \"ReaPersona/actions/x.lua\"\r\nSCR 4 0 RSbb \"Custom: b\" b.lua\r\nKEY 1 66 40002 2\r\n"
+local shared = core.kb_shared(kb, { ["1 66 40002 2"] = true }, { _RSmidi = true })
+assert(shared == "KEY 1 65 40001 0\nSCR 4 0 RSbb \"Custom: b\" b.lua\n", "ReaPersona's lines and script registrations stay out; sorted: " .. shared)
+assert(core.ini_canon("[b]\nz=1\na=2\n[a]\nk=v\n[b]\nq=3\n") == "[a]\nk=v\n[b]\na=2\nq=3\nz=1\n")
+state = {}
+core.sync_merge(state, { ["pref autosaveint"] = "5", ["setting look"] = "Dark" }, {}, {}, 100, { pref = 0 })
+assert(state["pref autosaveint"].t == 0 and state["setting look"].t == 100, "only the kind just switched on with 'take theirs' starts at 0")
+out = core.sync_merge({}, {}, {}, { { items = { ["pref autosaveint"] = { t = 5, v = { "not text" } }, ["tpl FXChains/a.RfxChain"] = { t = 5, v = "not a table" } } } }, 9, 9)
+assert(#out == 0, "a pref's value is text, a file's is a table")
+
+-- A template file from another computer arrives through the folder's blobs (and only once its content is there).
+core = load_core()
+set_ext("ReaPersona", "sync folder", share)
+set_ext("ReaPersona", "sync advanced", "templates")
+os.execute(win and ('mkdir "' .. (tmp .. "/FXChains/Vox"):gsub("/", "\\") .. '"') or ("mkdir -p '" .. tmp .. "/FXChains/Vox'"))
+write(tmp .. "/FXChains/Vox/Lead.RfxChain", "BYPASS 0 0 0\n<VST \"VST: ReaComp\">\n")
+r = assert(core.sync_now())
+sent = core.json_decode(read(share .. "/" .. core.sync_file_name()))
+local item = sent.items["tpl FXChains/Vox/Lead.RfxChain"]
+assert(item and item.v.h == core.content_hash("BYPASS 0 0 0\n<VST \"VST: ReaComp\">\n"), "this computer's template went out")
+assert(read(share .. "/blobs/" .. item.v.h) == "BYPASS 0 0 0\n<VST \"VST: ReaComp\">\n", "with its content in the blobs")
+local other = "BYPASS 0 0 0\n<JS \"loser/3BandEQ\">\n"
+local oh = core.content_hash(other)
+write(share .. "/LAPTOP-1234.reapersona-sync.json", core.json_encode({ reapersona_sync = 1, computer = "LAPTOP", items = {
+  ["tpl FXChains/Drums.RfxChain"] = { t = os.time() + 60, v = { h = oh, n = #other } } } }))
+r = assert(core.sync_now())
+assert(not read(tmp .. "/FXChains/Drums.RfxChain"), "its content isn't in the folder yet: nothing written, tried again later")
+write(share .. "/blobs/" .. oh, other)
+r = assert(core.sync_now())
+assert(read(tmp .. "/FXChains/Drums.RfxChain") == other, "now it is")
+r = assert(core.sync_now())
+assert(not r.changed, "and taking it in isn't a change of this computer's that goes back out")
+set_ext("ReaPersona", "sync advanced", "")
+r = assert(core.sync_now())
+write(share .. "/LAPTOP-1234.reapersona-sync.json", core.json_encode({ reapersona_sync = 1, computer = "LAPTOP", items = {
+  ["tpl FXChains/Bass.RfxChain"] = { t = os.time() + 90, v = { h = oh, n = #other } } } }))
+r = assert(core.sync_now())
+assert(not read(tmp .. "/FXChains/Bass.RfxChain"), "a part that's off here isn't taken in")
+core.stop_sync()
 
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))

@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Logic, Ableton Live, FL Studio, Cubase, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.10.0
+-- @version 5.11.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -18,6 +18,8 @@ package.path = reaper.ImGui_GetBuiltinPath() .. "/?.lua"
 local ImGui = require "imgui" "0.10"
 local here = debug.getinfo(1, "S").source:match("^@?(.*)[/\\]")
 local core = dofile(here .. "/reapersona_core.lua")
+local feedback = dofile(here .. "/reapersona_feedback.lua") -- (the Feedback button and its window, as StudioSync has them)
+feedback.VERSION = (core.read(here .. "/ReaPersona.lua") or ""):match("@version%s+(%S+)") or "?"
 local styles, SECTION, themes_dir = core.styles, core.SECTION, core.themes_dir
 local res = reaper.GetResourcePath()
 
@@ -259,6 +261,7 @@ local bld_load -- (opens the Persona Builder on a persona; set up with its page)
 local drop_report, install_theme_ui -- (what came in, and a one-click theme install: set up with the setup helpers)
 local quit_check -- (when the install's quit should be over)
 local removing, remove_finish -- (Settings > Remove ReaPersona: waiting for My REAPER's windows to be back, then the rest; set up with Setup)
+local install_shortcuts -- (REAPER closes, the shortcuts and your synced setup go in, REAPER opens again: set up with Setup)
 local ensure_new = false -- (a merged style needs its one-key action registered)
 local check_msg, toast, toast_until = "", "", 0
 local function say(text) toast, toast_until = tostring(text), reaper.time_precise() + 6 + 0.06 * #tostring(text) end
@@ -292,7 +295,9 @@ local function use(st)
   -- mid-trial kept the trial theme as My REAPER's own. Review, 5.9.3)
   if trying and trying.back then reaper.OpenColorThemeFile(themes_dir .. trying.back) end
   trying = nil
-  core.use(st); say(st.name .. " in use. Undo switch (top) puts " .. (was and was.name or "the last one") .. " back.")
+  core.use(st)
+  local setup = core.last_project_setup or {}
+  say(st.name .. " in use" .. (#setup > 0 and (", and this project has its " .. table.concat(setup, ", ")) or "") .. ". Undo switch (top) puts " .. (was and was.name or "the last one") .. " back.")
   for _, key in ipairs(st.recommends or {}) do -- (offered once: no is remembered)
     local x = core.EXTENSIONS[key]
     if x and core.extension_state(key) == "missing" and reaper.GetExtState(SECTION, "declined " .. key) == "" then
@@ -789,11 +794,14 @@ local function setting_row(id, label, on, tip)
   return clicked
 end
 -- Your other computers (5.10): the folder you pick, the first sync (whose setup wins), and a look every 20 s while the window is open.
-local sync_next, sync_err, sync_seen = 0, nil, ""
-local function sync_step(now) -- (now: Sync now pressed, so the result is said)
+local sync_next, sync_err, sync_seen, sync_full = 0, nil, "", 0
+local function sync_step(now) -- (now: Sync now pressed, so the result is said. The advanced parts every 5 minutes, or on Sync now)
   if core.sync_folder() == "" then return end
   sync_next = reaper.time_precise() + 20
+  core.quick = not (now or reaper.time_precise() >= sync_full)
+  if not core.quick then sync_full = reaper.time_precise() + 300 end
   local ok, rep, why = pcall(core.sync_now)
+  core.quick = nil
   if not ok then why, rep = rep, nil end
   sync_err = not rep and ("Couldn't sync: " .. tostring(why)) or nil
   if not rep then if now then say(sync_err) end return end
@@ -929,6 +937,53 @@ local function settings_page()
       if ImGui.Button(ctx, "Change folder...") then choose_sync_folder() end
       ImGui.SameLine(ctx)
       if ImGui.Button(ctx, "Stop syncing") then core.stop_sync(); sync_err, sync_seen = nil, ""; say("Not syncing any more. Your setup here stays as it is.") end
+    end
+    ImGui.Dummy(ctx, 0, 4)
+    if setting_row("##advsync", "Advanced: REAPER itself too", reaper.GetExtState(SECTION, "sync show advanced") == "1",
+        "Your preferences, other scripts' settings, shortcuts, menus and toolbars, templates, your own scripts and JSFX, themes and ReaPack packages, each part chosen below.") then
+      reaper.SetExtState(SECTION, "sync show advanced", reaper.GetExtState(SECTION, "sync show advanced") == "1" and "" or "1", true)
+    end
+    if reaper.GetExtState(SECTION, "sync show advanced") == "1" then
+      muted("Each part goes in the setup file and the sync folder from this computer, and is taken in here, only while it's ticked here. Paths, audio and MIDI devices and window places always stay this computer's own.")
+      for _, a in ipairs(core.ADVANCED) do
+        local on = core.advanced_on(a.id)
+        local needs_py = (a.id == "code" or a.id == "packages") and not core.python()
+        ImGui.BeginDisabled(ctx, needs_py and not on)
+        if setting_row("##adv" .. a.id, a.name .. (needs_py and " (needs Python)" or ""), on, a.tip) then
+          if on then core.set_advanced(a.id, false)
+          else
+            local theirs = false
+            if core.sync_folder() ~= "" then
+              theirs = reaper.MB("Take your other computers' " .. a.name:lower() .. " here first?\n\nYes: where both have one, theirs wins this first time.\nNo: this computer's win and go to them.", "ReaPersona: " .. a.name, 4) == 6
+            end
+            core.advanced_join(a.id, theirs)
+            if core.sync_folder() ~= "" then sync_step(true) end
+          end
+        end
+        ImGui.EndDisabled(ctx)
+      end
+      local pend = core.restart_pending()
+      if #pend > 0 then
+        ImGui.TextColored(ctx, C.YELLOW, "From your other computers, waiting for REAPER to restart: " .. table.concat(pend, ", "))
+        if primary("Apply (REAPER restarts)##applysetup") then install_shortcuts() end
+        ImGui.SetItemTooltip(ctx, "REAPER closes (asking about anything unsaved), they're merged into this computer's (backed up first), your persona shortcuts go back in, and REAPER opens again.")
+      end
+      if core.advanced_on("packages") then
+        local miss = core.packages_missing()
+        if #miss > 0 then
+          ImGui.TextColored(ctx, C.YELLOW, #miss .. " ReaPack package" .. (#miss == 1 and "" or "s") .. " your other computers have aren't here yet.")
+          if ImGui.IsItemHovered(ctx) then
+            local names = {}
+            for i, m in ipairs(miss) do if i > 25 then names[#names + 1] = "..."; break end names[#names + 1] = m.key:gsub("|", " / ") end
+            ImGui.SetTooltip(ctx, table.concat(names, "\n"))
+          end
+          ImGui.SameLine(ctx)
+          if ImGui.SmallButton(ctx, "Install them##instmiss") then
+            local n, why = core.install_missing()
+            say(n and (n .. " package" .. (n == 1 and "" or "s") .. " handed to ReaPack: it installs this system's versions and shows what it did.") or ("Not installed: " .. tostring(why)))
+          end
+        end
+      end
     end
     card_end()
   end
@@ -1371,7 +1426,7 @@ local function keymap_route() -- (no Python: a keymap file to import by hand)
   reaper.Main_OnCommand(40605, 0)
 end
 -- REAPER reads its keymap only when it starts: install_shortcuts.py waits for REAPER to close, installs, and starts it again.
-local function install_shortcuts(remove) -- (remove: Remove ReaPersona, which has asked already: the lines come out instead)
+function install_shortcuts(remove) -- (remove: Remove ReaPersona, which has asked already: the lines come out instead)
   if not core.python() then return keymap_route() end
   if not remove then
     if reaper.MB("REAPER closes (it asks first if anything is unsaved), the shortcuts install, and REAPER opens again: about 10 seconds.\n\n" ..
@@ -1393,7 +1448,8 @@ local function install_shortcuts(remove) -- (remove: Remove ReaPersona, which ha
     if fn ~= "" and not fn:find('"', 1, true) then open[#open + 1] = ' --open "' .. fn .. '"' end
   end
   local cfg = reaper.get_ini_file():gsub("\\", "/") -- (-cfgfile users get REAPER back on the same configuration)
-  reaper.ExecProcess(core.py .. ' "' .. here .. '/install_shortcuts.py" --after-reaper-quits --relaunch "' .. exe .. '" --cfgfile "' .. cfg .. '"' .. (remove and " --remove" or "") .. table.concat(open), -1) -- (-1: don't wait)
+  local setup = #core.restart_pending() > 0 and not remove and " --apply-setup" or "" -- (your setup from your other computers, waiting for a restart)
+  reaper.ExecProcess(core.py .. ' "' .. here .. '/install_shortcuts.py" --after-reaper-quits --relaunch "' .. exe .. '" --cfgfile "' .. cfg .. '"' .. (remove and " --remove" or "") .. setup .. table.concat(open), -1) -- (-1: don't wait)
   os.remove(here .. "/install_cancelled")
   reaper.Main_OnCommand(40004, 0) -- (File: Quit, with REAPER's own save prompts)
   quit_check = reaper.time_precise() + 4 -- (REAPER still running 4 s after: the quit was cancelled, and the installer is told)
@@ -1670,6 +1726,22 @@ local function bld_palette()
   heading("Blocks", 16)
   muted("Drag a block into your persona, or click it to add it at the bottom.")
   ImGui.Dummy(ctx, 0, 2)
+  ImGui.Text(ctx, "Workflows")
+  muted("A kind of session: a new project's sample rate and starter tracks, and the settings it wants. Click one to add its blocks, then change them.")
+  flow_start()
+  for _, w in ipairs(core.WORKFLOWS) do
+    local pad = ImGui.GetStyleVar(ctx, ImGui.StyleVar_FramePadding)
+    local wd = ImGui.CalcTextSize(ctx, w.name) + 2 * pad
+    if not flow_first then local x2 = ImGui.GetItemRectMax(ctx); if x2 + 6 + wd <= flow_end then ImGui.SameLine(ctx, 0, 6) end end
+    flow_first = false
+    if ImGui.Button(ctx, w.name .. "##wf") then
+      for _, b in ipairs(w.blocks()) do bld.blocks[#bld.blocks + 1] = b end
+      if bld.name == "" then bld.name = w.name end
+    end
+    ImGui.SetItemTooltip(ctx, w.tip)
+  end
+  chip("Project", function() return core.new_block("project") end, "A new project's sample rate, starter tracks and window set, set in the block.")
+  ImGui.Dummy(ctx, 0, 4)
   ImGui.Text(ctx, "From a DAW")
   local cur = core.by_id(bld.daw or "") or core.by_id(core.current().base or core.current().id) or styles[1]
   if cur.kind == "built" or cur.kind == "theme" or #(cur.keys or {}) == 0 then -- (My REAPER has nothing to borrow: the first DAW)
@@ -1776,7 +1848,37 @@ local function block_card(i, b, list, blocks)
       end
       ImGui.NewLine(ctx)
     end
-    if b.kind == "settings" then
+    if b.kind == "project" then
+      ImGui.SetNextItemWidth(ctx, 170 * UI)
+      local sr = tonumber(b.srate) or 0
+      if ImGui.BeginCombo(ctx, "Sample rate##psr", sr > 0 and ((sr / 1000) .. " kHz") or "Leave as it is") then
+        if ImGui.Selectable(ctx, "Leave as it is", sr == 0) then b.srate = 0 end
+        for _, r in ipairs(core.SRATES) do if ImGui.Selectable(ctx, (r / 1000) .. " kHz", sr == r) then b.srate = r end end
+        ImGui.EndCombo(ctx)
+      end
+      ImGui.SetItemTooltip(ctx, "A new (still empty) project gets this sample rate, and the audio device follows it when it can.")
+      local has = type(b.tracks) == "string" and b.tracks ~= ""
+      ImGui.AlignTextToFramePadding(ctx)
+      ImGui.Text(ctx, "Starter tracks: " .. (has and ((b.tracks_name or "") ~= "" and b.tracks_name or "yes") or "none"))
+      ImGui.SameLine(ctx)
+      if ImGui.SmallButton(ctx, "Use the selected tracks##ptr") then
+        local text, n = core.selected_tracks_text()
+        if n > 0 then
+          b.tracks, b.tracks_name = text, n .. " track" .. (n == 1 and "" or "s") .. " from " .. (reaper.GetProjectName(0, "") ~= "" and reaper.GetProjectName(0, "") or "this project")
+          say("The block keeps " .. n .. " track" .. (n == 1 and "" or "s") .. " (their FX, routing and settings, not their items).")
+        else say("No tracks in this project to take.") end
+      end
+      ImGui.SetItemTooltip(ctx, "The selected tracks (or every track, with none selected), with their FX, sends and settings but not their items, go into every new project that uses this persona.")
+      if has then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "None##ptr0") then b.tracks, b.tracks_name = "", "" end end
+      ImGui.SetNextItemWidth(ctx, 170 * UI)
+      local w = tonumber(b.wset) or 0
+      if ImGui.BeginCombo(ctx, "Window set##pws", w > 0 and ("#" .. w) or "Leave as it is") then
+        if ImGui.Selectable(ctx, "Leave as it is", w == 0) then b.wset = 0 end
+        for n = 1, 10 do if ImGui.Selectable(ctx, "#" .. n, w == n) then b.wset = n end end
+        ImGui.EndCombo(ctx)
+      end
+      ImGui.SetItemTooltip(ctx, "A layout you saved in REAPER (View > Screensets/layouts > Windows), loaded each time this persona is used.")
+    elseif b.kind == "settings" then
       local g = core.setting_group(b.group) or { items = {} }
       b.values = b.values or {}
       local lost_slot = {}
@@ -2075,7 +2177,7 @@ local function top_bar(alt)
   end
   if search_q ~= "" and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then search_q = "" end
   local undo = last_style and last_style ~= cur.id and core.by_id(last_style)
-  local right = (undo and 430 or 320) * UI
+  local right = (undo and 520 or 410) * UI
   local after = ImGui.GetItemRectMax(ctx) - ImGui.GetWindowPos(ctx) + 12
   if w - right >= after then ImGui.SameLine(ctx, w - right); ImGui.SetCursorPosY(ctx, y0 + 8) else ImGui.SetCursorPosX(ctx, 16) end
   if undo then
@@ -2090,6 +2192,8 @@ local function top_bar(alt)
   if ImGui.Button(ctx, "Back to My REAPER") then use(core.by_id("my_reaper")) end
   ImGui.EndDisabled(ctx)
   ImGui.SetItemTooltip(ctx, "Your own shortcuts, theme and settings, exactly as you had them.")
+  ImGui.SameLine(ctx)
+  feedback.button(ctx, ImGui)
   ImGui.SetCursorPosY(ctx, math.max(y0 + 48, ImGui.GetCursorPosY(ctx) + 4))
   ImGui.Separator(ctx)
 end
@@ -2219,6 +2323,7 @@ local function frame()
     ImGui.PopStyleVar(ctx)
     if not o2 then adjust_out = false end
   end
+  feedback.draw(ctx, ImGui, core, feedback.VERSION, say)
   ImGui.PopFont(ctx)
   ImGui.PopStyleVar(ctx, #VARS)
   ImGui.PopStyleColor(ctx, #COLS)
