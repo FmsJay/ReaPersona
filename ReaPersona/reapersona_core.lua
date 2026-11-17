@@ -1820,10 +1820,10 @@ function M.make_keymap() -- -> path of the .ReaperKeyMap, how many lines, what w
   M.write(p, table.concat(out, "\n") .. "\n")
   return p, #out, skipped
 end
--- ---------------------------------------------------------------- the one-button install without Python (Windows, 5.14)
+-- ---------------------------------------------------------------- the one-button install without Python (Windows 5.14, Mac and Linux 5.16)
 -- install_shortcuts.py's run() and install_toolbars() in Lua, rule for rule (keep the two in step): planned while REAPER runs, from the
 -- keymap and menus as they are now. The new files wait in ReaPersona/install_staged next to a copy of each file as it was read, and a
--- batch file (cmd, not PowerShell: PowerShell hangs at start while a network drive isn't answering) waits for this REAPER to close,
+-- swap step (a cmd batch file on Windows, a /bin/sh script on a Mac or Linux) waits for this REAPER to close,
 -- swaps them in only if nothing changed them since, backs each up first, and starts REAPER again. Preferences from your other computers
 -- (pending/prefs.json) stay waiting for the Python route: REAPER writes reaper.ini as it quits, so they can't be planned beforehand.
 local KB_TAG, KB_OLD_TAG = "# ReaPersona", "# DAW Styles"
@@ -2063,13 +2063,107 @@ function M.pid_from_tasklist(out, title) -- `tasklist /V /FO CSV /NH` rows for r
   for _, r in ipairs(rows) do if title and r[2] == title then if hit then return nil end hit = r[1] end end -- (two with that title: can't tell)
   return hit
 end
+function M.pid_from_ps(out) -- ExecProcess's "code\n<pid>\n<command>" from the shell REAPER started -> the pid when it's a REAPER, or nil (pure)
+  local code, pid, comm = (out or ""):match("^(%-?%d+)\r?\n(%d+)\r?\n([^\r\n]+)")
+  if code == "0" and comm:lower():match("reaper%s*$") then return pid end -- (a Mac: /Applications/REAPER.app/Contents/MacOS/REAPER; Linux: reaper)
+end
 function M.reaper_pid()
+  if not reaper.GetOS():find("^Win") then -- (a Mac or Linux: the shell REAPER starts has REAPER for its parent; believed only when ps says it's a REAPER)
+    return M.pid_from_ps(reaper.ExecProcess("/bin/sh -c 'echo $PPID; ps -p $PPID -o comm='", 8000))
+  end
   local title = reaper.JS_Window_GetTitle and reaper.JS_Window_GetTitle(reaper.GetMainHwnd()) or nil
   return M.pid_from_tasklist(reaper.ExecProcess('tasklist /V /FO CSV /NH /FI "IMAGENAME eq reaper.exe"', 15000), title)
 end
 
--- Plan the install and write the batch step. o: { remove, no_midi, pid, exe, cfg, projects = {...}, stamp }. Nothing of REAPER's is
--- touched here: the batch file does that once REAPER has closed. -> the batch file's path, or nil + why
+-- The swap step, from the same plan, as Windows' cmd or a Mac's and Linux's /bin/sh (5.16). p: { checks = { {"same", live, seen} |
+-- {"absent", live} }, swaps = { {"copy", from, to} | {"move", from, to} | {"del", path} }, pend = { {was, path} }, pid, exe, args,
+-- projects, cancel, status, mac }. Every check runs before any swap; ok/changed/failed/notclosed.txt in dir say how it ended.
+local function cmd_step(dir, p) -- (cmd, not PowerShell: PowerShell hangs at start while a network drive isn't answering)
+  -- Paths in Windows form, % doubled (cmd reads it as a variable even inside quotes); UTF-8 (chcp 65001) for names like ChiliØ.
+  local function w(x) return '"' .. x:gsub("/", "\\"):gsub("%%", "%%%%") .. '"' end
+  local b = { "@echo off", "chcp 65001 >nul", "rem ReaPersona: the shortcut install without Python, written by reapersona_core.lua (M.stage_install). It waits for",
+    "rem REAPER to close, swaps the staged files in if nothing changed the originals since they were read, and starts REAPER again.", "set n=0", ":wait" }
+  b[#b + 1] = "if exist " .. w(p.cancel) .. " goto cancelled"
+  local sys = '"%SystemRoot%\\System32\\' -- (Windows' own tools by full path: Git's find on the PATH is another program)
+  if p.pid then b[#b + 1] = sys .. 'tasklist.exe" /FI "PID eq ' .. p.pid .. '" /NH 2>nul | ' .. sys .. 'find.exe" " ' .. p.pid .. ' " >nul || goto closed'
+  else b[#b + 1] = sys .. 'tasklist.exe" /FI "IMAGENAME eq reaper.exe" /NH 2>nul | ' .. sys .. 'find.exe" /i "reaper.exe" >nul || goto closed' end -- shortcut: any REAPER counts when this one's id wasn't found
+  for _, l in ipairs({ "set /a n+=1", "if %n% geq 180 goto notclosed", sys .. 'ping.exe" -n 2 127.0.0.1 >nul', "goto wait", ":closed" }) do b[#b + 1] = l end -- (180 x 1 s: REAPER may be asking whether to save)
+  for _, c in ipairs(p.checks) do
+    if c[1] == "same" then b[#b + 1] = sys .. 'fc.exe" /b ' .. w(c[2]) .. " " .. w(c[3]) .. " >nul 2>&1 || goto changed"
+    else b[#b + 1] = "if exist " .. w(c[2]) .. " goto changed" end
+  end
+  for _, s in ipairs(p.swaps) do
+    if s[1] == "del" then b[#b + 1] = "del " .. w(s[2]) .. " 2>nul"
+    else b[#b + 1] = (s[1] == "copy" and "copy /y " or "move /y ") .. w(s[2]) .. " " .. w(s[3]) .. " >nul || goto failed" end
+  end
+  for _, d in ipairs(p.pend) do b[#b + 1] = sys .. 'fc.exe" /b ' .. w(d[1]) .. " " .. w(d[2]) .. " >nul 2>nul && del " .. w(d[2]) .. " 2>nul" end
+  for _, l in ipairs({ "copy /y " .. w(dir .. "/ok.txt") .. " " .. w(p.status) .. " >nul", "goto relaunch",
+    ":changed", "copy /y " .. w(dir .. "/changed.txt") .. " " .. w(p.status) .. " >nul", "goto relaunch",
+    ":failed", "copy /y " .. w(dir .. "/failed.txt") .. " " .. w(p.status) .. " >nul", "goto relaunch",
+    ":notclosed", "copy /y " .. w(dir .. "/notclosed.txt") .. " " .. w(p.status) .. " >nul", "goto done",
+    ":cancelled", "del " .. w(p.cancel) .. " 2>nul", "goto done", ":relaunch" }) do b[#b + 1] = l end
+  if p.exe then
+    local args = ""
+    for _, a in ipairs(p.args) do args = args .. " " .. w(a) end
+    for _, a in ipairs(p.projects) do args = args .. " " .. w(a) end
+    b[#b + 1] = 'start "" ' .. w(p.exe) .. args
+  end
+  b[#b + 1] = ":done"
+  b[#b + 1] = "(goto) 2>nul & rmdir /s /q " .. w(dir) -- (the folder goes, this file with it: cmd stops reading it there)
+  return table.concat(b, "\r\n") .. "\r\n", "install.cmd"
+end
+local function sh_step(dir, p) -- (POSIX sh and the tools every Mac and Linux has: ps, kill, cmp, cp, mv, rm; on a Mac open and lsappinfo)
+  local function q(x) return "'" .. x:gsub("'", "'\\''") .. "'" end
+  local function list(t) local o = {}; for _, x in ipairs(t) do o[#o + 1] = q(x) end return table.concat(o, " ") end
+  local b = { "#!/bin/sh",
+    "# ReaPersona: the shortcut install without Python, written by reapersona_core.lua (M.stage_install). It waits for REAPER to",
+    "# close, swaps the staged files in if nothing changed the originals since they were read, and starts REAPER again.",
+    "PATH=/usr/bin:/bin:/usr/sbin:/sbin; export PATH",
+    "detach() { if command -v setsid >/dev/null 2>&1; then exec setsid \"$@\"; else exec nohup \"$@\"; fi; }", -- (always run with &: the subshell becomes it, nothing left waiting)
+    -- (REAPER starts this and quits: it goes on in a session of its own with nothing tied to REAPER's pipes, or the REAPER it starts
+    -- again is killed writing its first line to the old one's. install_shortcuts.py's Linux VM finding, 5.9.2)
+    'if [ "$1" != --detached ]; then detach /bin/sh "$0" --detached </dev/null >/dev/null 2>&1 & exit 0; fi',
+    "dir=" .. q(dir) .. "; st=" .. q(p.status) .. "; cancel=" .. q(p.cancel),
+    "any_reaper() { ps -A -o comm= 2>/dev/null | grep -i -q -E '(^|/)reaper$'; }",
+    "running() { " .. (p.pid and ("kill -0 " .. p.pid .. " 2>/dev/null") or "any_reaper") .. "; }", -- (no id found: any REAPER counts, as the batch)
+    'finish() { rm -rf "$dir"; exit 0; }',
+    "relaunch() {" }
+  if p.exe and p.mac then -- (install_shortcuts.py's Mac relaunch: open hands REAPER to LaunchServices and returns; right after the quit
+    -- LaunchServices still lists the REAPER going away, and open "activated" that one, said 0, and nothing started (5.8.4). So: wait until it's
+    -- gone from there too, then open, and believe it only once a REAPER runs; once more if not)
+    for _, l in ipairs({ "  n=0",
+      "  while [ $n -lt 15 ] && { lsappinfo find bundleid=com.cockos.reaper 2>/dev/null | grep -q ASN: || any_reaper; }; do n=$((n + 1)); sleep 1; done",
+      "  sleep 1", "  note=\"REAPER didn't start again: open it yourself\"", "  for try in 1 2; do",
+      "    open -a " .. q(p.exe) .. (#p.projects > 0 and (" " .. list(p.projects)) or "") .. (#p.args > 0 and (" --args " .. list(p.args)) or "") ..
+        " >/dev/null 2>&1 || note=\"REAPER didn't start again (open failed): open it yourself\"",
+      "    n=0; while [ $n -lt 15 ] && ! any_reaper; do n=$((n + 1)); sleep 1; done",
+      "    if any_reaper; then note=\"REAPER started again\"; break; fi", "  done", '  printf \'%s\\n\' "$note" >> "$st"' }) do b[#b + 1] = l end
+  elseif p.exe then -- (Linux: the binary, in a session of its own with nothing inherited, believed only once it runs; once more if not)
+    for _, l in ipairs({ "  note=\"REAPER didn't start again: open it yourself\"", "  for try in 1 2; do",
+      "    detach " .. q(p.exe) .. (#p.args > 0 and (" " .. list(p.args)) or "") .. (#p.projects > 0 and (" " .. list(p.projects)) or "") .. " </dev/null >/dev/null 2>&1 &",
+      "    n=0; while [ $n -lt 15 ] && ! any_reaper; do n=$((n + 1)); sleep 1; done",
+      "    if any_reaper; then note=\"REAPER started again\"; break; fi", "  done", '  printf \'%s\\n\' "$note" >> "$st"' }) do b[#b + 1] = l end
+  end
+  for _, l in ipairs({ "  finish", "}",
+    'outcome() { cp -f "$dir/$1.txt" "$st"; [ "$1" = notclosed ] && finish; relaunch; }',
+    "n=0", "while :; do", '  if [ -e "$cancel" ]; then rm -f "$cancel"; finish; fi', "  running || break",
+    "  n=$((n + 1)); [ $n -ge 180 ] && outcome notclosed", "  sleep 1", "done" }) do b[#b + 1] = l end -- (180 x 1 s: REAPER may be asking whether to save)
+  for _, c in ipairs(p.checks) do
+    if c[1] == "same" then b[#b + 1] = "cmp -s " .. q(c[2]) .. " " .. q(c[3]) .. " || outcome changed"
+    else b[#b + 1] = "[ -e " .. q(c[2]) .. " ] && outcome changed" end
+  end
+  for _, s in ipairs(p.swaps) do
+    if s[1] == "del" then b[#b + 1] = "rm -f " .. q(s[2])
+    else b[#b + 1] = (s[1] == "copy" and "cp -f " or "mv -f ") .. q(s[2]) .. " " .. q(s[3]) .. " || outcome failed" end
+  end
+  for _, d in ipairs(p.pend) do b[#b + 1] = "cmp -s " .. q(d[1]) .. " " .. q(d[2]) .. " && rm -f " .. q(d[2]) end
+  b[#b + 1] = "outcome ok"
+  return table.concat(b, "\n") .. "\n", "install.sh"
+end
+
+-- Plan the install and write the swap step. o: { remove, no_midi, pid, exe, cfg, projects = {...}, stamp }. Nothing of REAPER's is
+-- touched here: the swap step does that once REAPER has closed. Windows: install.cmd, run with cmd; a Mac or Linux: install.sh, run
+-- with /bin/sh (5.16). -> the step's path, or nil + why
 function M.stage_install(o)
   local function slurp(p) local f = io.open(p, "rb"); if not f then return nil end local t = f:read("a"); f:close(); return t end
   local dir = M.here .. "/install_staged"
@@ -2116,22 +2210,13 @@ function M.stage_install(o)
   if reaper.file_exists(M.here .. "/pending/prefs.json") and not o.remove then
     status[#status + 1] = "REAPER's preferences from your other computers still wait: putting them in needs Python (REAPER writes them as it quits)"
   end
-  -- The batch file. Paths in Windows form, % doubled (cmd reads it as a variable even inside quotes); UTF-8 (chcp 65001) for names like ChiliØ.
-  local function w(p) return '"' .. p:gsub("/", "\\"):gsub("%%", "%%%%") .. '"' end
+  -- The swap step's plan: the checks (each live file as it was read), then the swaps, in order. Rendered as cmd or sh below.
   local stamp = o.stamp or os.date("%Y%m%d-%H%M%S")
-  local b = { "@echo off", "chcp 65001 >nul", "rem ReaPersona: the shortcut install without Python, written by reapersona_core.lua (M.stage_install). It waits for",
-    "rem REAPER to close, swaps the staged files in if nothing changed the originals since they were read, and starts REAPER again.", "set n=0", ":wait" }
-  local cancel = M.here .. "/install_cancelled"
-  b[#b + 1] = "if exist " .. w(cancel) .. " goto cancelled"
-  local sys = '"%SystemRoot%\\System32\\' -- (Windows' own tools by full path: Git's find on the PATH is another program)
-  if o.pid then b[#b + 1] = sys .. 'tasklist.exe" /FI "PID eq ' .. o.pid .. '" /NH 2>nul | ' .. sys .. 'find.exe" " ' .. o.pid .. ' " >nul || goto closed'
-  else b[#b + 1] = sys .. 'tasklist.exe" /FI "IMAGENAME eq reaper.exe" /NH 2>nul | ' .. sys .. 'find.exe" /i "reaper.exe" >nul || goto closed' end -- shortcut: any REAPER counts when this one's id wasn't found
-  for _, l in ipairs({ "set /a n+=1", "if %n% geq 180 goto notclosed", sys .. 'ping.exe" -n 2 127.0.0.1 >nul', "goto wait", ":closed" }) do b[#b + 1] = l end -- (180 x 1 s: REAPER may be asking whether to save)
-  local swaps, backup_of = {}, {}
+  local checks, swaps, backup_of = {}, {}, {}
   local own_copy = {}
   for _, own in ipairs({ { "midi_fallback.json", M.json_encode(fallback) .. "\n" }, { "installed.json", M.json_encode({ lines = written }) .. "\n" } }) do
     if not M.write(dir .. "/" .. own[1], own[2]) then return nil, "couldn't write in " .. dir end
-    own_copy[own[1]] = "copy /y " .. w(dir .. "/" .. own[1]) .. " " .. w(M.here .. "/" .. own[1]) .. " >nul || goto failed"
+    own_copy[own[1]] = { "copy", dir .. "/" .. own[1], M.here .. "/" .. own[1] }
   end
   swaps[#swaps + 1] = own_copy["midi_fallback.json"] -- (as install_shortcuts.py: the fallback first, the keymap, then installed.json. Review 5.14, M2)
   for i, m in ipairs(moves) do
@@ -2140,13 +2225,13 @@ function M.stage_install(o)
     if live == new and name ~= "reaper-kb.ini" then goto next_move end -- (unchanged menus: nothing to check or swap)
     if not M.write(dir .. "/" .. i .. ".new", new) then return nil, "couldn't write in " .. dir end
     if live then
-      M.write(dir .. "/" .. i .. ".seen", live)
-      b[#b + 1] = sys .. 'fc.exe" /b ' .. w(dst) .. " " .. w(dir .. "/" .. i .. ".seen") .. " >nul 2>&1 || goto changed"
+      if not M.write(dir .. "/" .. i .. ".seen", live) then return nil, "couldn't write in " .. dir end
+      checks[#checks + 1] = { "same", dst, dir .. "/" .. i .. ".seen" }
       local base = name .. ".before-reapersona-" .. (kind == "sync" and "sync-" or "")
       local bk, n = res .. "/" .. base .. stamp, 1
       while reaper.file_exists(bk) do n = n + 1; bk = res .. "/" .. base .. stamp .. "-" .. n end
       backup_of[name] = bk
-      swaps[#swaps + 1] = "copy /y " .. w(dst) .. " " .. w(bk) .. " >nul || goto failed"
+      swaps[#swaps + 1] = { "copy", dst, bk }
       if kind == "rotate" then -- (install_shortcuts.backup_of: the first backup, your keymap before ReaPersona, and the newest 4 are kept)
         local have = {}
         reaper.EnumerateFiles(res, -1)
@@ -2156,11 +2241,11 @@ function M.stage_install(o)
           if f:sub(1, #name + 19) == name .. ".before-reapersona-" and not f:find(".before-reapersona-sync-", 1, true) then have[#have + 1] = f end -- (sync backups: their own, review 5.14)
         end
         table.sort(have)
-        for j = 2, #have - 3 do swaps[#swaps + 1] = "del " .. w(res .. "/" .. have[j]) .. " 2>nul" end
+        for j = 2, #have - 3 do swaps[#swaps + 1] = { "del", res .. "/" .. have[j] } end
       end
-    else b[#b + 1] = "if exist " .. w(dst) .. " goto changed" end
-    swaps[#swaps + 1] = "copy /y " .. w(dir .. "/" .. i .. ".new") .. " " .. w(dst .. ".tmp") .. " >nul || goto failed"
-    swaps[#swaps + 1] = "move /y " .. w(dst .. ".tmp") .. " " .. w(dst) .. " >nul || goto failed"
+    else checks[#checks + 1] = { "absent", dst } end
+    swaps[#swaps + 1] = { "copy", dir .. "/" .. i .. ".new", dst .. ".tmp" }
+    swaps[#swaps + 1] = { "move", dst .. ".tmp", dst }
     if name == "reaper-kb.ini" then swaps[#swaps + 1] = own_copy["installed.json"] end
     ::next_move::
   end
@@ -2170,27 +2255,19 @@ function M.stage_install(o)
   M.write(dir .. "/changed.txt", "not installed: REAPER's keymap or menus changed after ReaPersona read them, so nothing was swapped in. Press Install again.\n")
   M.write(dir .. "/failed.txt", "not installed: a file couldn't be written (your keymap was backed up first, next to reaper-kb.ini)\n")
   M.write(dir .. "/notclosed.txt", "REAPER didn't close, so the shortcuts weren't installed.\n")
-  for _, l in ipairs(swaps) do b[#b + 1] = l end
+  local pend_dels = {}
   for i, d in ipairs(deletes) do -- (only if it's still what was merged: a newer one, synced in as REAPER quit, waits for the next install. Review 5.14, M3)
     local copy = dir .. "/pend" .. i .. ".was"
     if not M.write(copy, d[2]) then return nil, "couldn't write in " .. dir end
-    b[#b + 1] = sys .. 'fc.exe" /b ' .. w(copy) .. " " .. w(d[1]) .. " >nul 2>nul && del " .. w(d[1]) .. " 2>nul"
+    pend_dels[#pend_dels + 1] = { copy, d[1] }
   end
-  for _, l in ipairs({ "copy /y " .. w(dir .. "/ok.txt") .. " " .. w(st_file) .. " >nul", "goto relaunch",
-    ":changed", "copy /y " .. w(dir .. "/changed.txt") .. " " .. w(st_file) .. " >nul", "goto relaunch",
-    ":failed", "copy /y " .. w(dir .. "/failed.txt") .. " " .. w(st_file) .. " >nul", "goto relaunch",
-    ":notclosed", "copy /y " .. w(dir .. "/notclosed.txt") .. " " .. w(st_file) .. " >nul", "goto done",
-    ":cancelled", "del " .. w(cancel) .. " 2>nul", "goto done", ":relaunch" }) do b[#b + 1] = l end
-  if o.exe then
-    local args = (o.cfg and reaper.file_exists(o.cfg)) and (" -cfgfile " .. w(o.cfg)) or ""
-    for _, p in ipairs(o.projects or {}) do args = args .. " " .. w(p) end
-    b[#b + 1] = 'start "" ' .. w(o.exe) .. args
-  end
-  b[#b + 1] = ":done"
-  b[#b + 1] = "(goto) 2>nul & rmdir /s /q " .. w(dir) -- (the folder goes, this file with it: cmd stops reading it there)
-  local bat = dir .. "/install.cmd"
-  if not M.write(bat, table.concat(b, "\r\n") .. "\r\n") then return nil, "couldn't write " .. bat end
-  return bat
+  local os_name = reaper.GetOS()
+  local text, file = (windows and cmd_step or sh_step)(dir, { checks = checks, swaps = swaps, pend = pend_dels, pid = o.pid, exe = o.exe,
+    args = (o.cfg and reaper.file_exists(o.cfg)) and { "-cfgfile", o.cfg } or {}, projects = o.projects or {},
+    cancel = M.here .. "/install_cancelled", status = st_file, mac = os_name:find("^OSX") ~= nil or os_name:find("^macOS") ~= nil })
+  local step = dir .. "/" .. file
+  if not M.write(step, text) then return nil, "couldn't write " .. step end
+  return step
 end
 
 function M.toolbar_installed(section) -- is [Floating toolbar N] / [Floating MIDI toolbar N] one of ours in reaper-menu.ini?
@@ -2232,16 +2309,46 @@ function M.python() -- -> "Python 3.x" when a Python 3 runs here, else nil (cach
   end
   return M._py or nil
 end
-function M.python_libs() -- -> true when this Python has Pillow and numpy (theme building needs them); cached
-  if M._libs == nil then M._libs = M.python() ~= nil and sh(M.py .. ' -c "import PIL, numpy"', 15000) == "0" end
+-- Pillow and numpy go in a venv of ReaPersona's own (5.16): `pip install --user` failed on Homebrew's Python 3.12+ and recent Debian and
+-- Ubuntu ("externally-managed-environment", PEP 668), and REAPER waited up to 10 minutes while it ran. install_libs.py makes the venv
+-- and runs pip in the background; Home shows it running and says how it ended. (The folder is called venv: syncing your scripts skips it.)
+M.VENV = M.here .. "/venv"
+local LIBS_STATUS = M.here .. "/venv_status.txt"
+function M.venv_python() -- -> the venv's Python when it's there, else nil
+  local p = M.VENV .. (reaper.GetOS():find("^Win") and "/Scripts/python.exe" or "/bin/python3")
+  return reaper.file_exists(p) and p or nil
+end
+function M.theme_python() -- the Python the theme builder runs with: the venv's when there is one, else the one found (it may have them already)
+  local v = M.venv_python()
+  return v and ('"' .. v .. '"') or M.py
+end
+function M.python_libs() -- -> true when the theme builder's Python has Pillow and numpy; cached
+  if M._libs == nil then M._libs = M.python() ~= nil and sh(M.theme_python() .. ' -c "import PIL, numpy"', 15000) == "0" end
   return M._libs
 end
-function M.install_python_libs() -- pip install --user pillow numpy (REAPER waits while it downloads). -> true, or nil + what pip said
+function M.install_python_libs() -- starts install_libs.py, and REAPER doesn't wait. -> true, or nil + why (M.libs_job says how it goes)
   if not M.python() then return nil, "no Python 3 here (python.org)" end
-  local code, text = sh(M.py .. " -m pip install --user pillow numpy", 600000)
-  M._libs = nil
-  if code == "0" and M.python_libs() then return true end
-  return nil, (text or ""):sub(-400)
+  if not M.write(LIBS_STATUS, "running " .. os.time() .. "\n") then return nil, "couldn't write in " .. M.here end
+  M._libs_seen = nil
+  reaper.ExecProcess(M.py .. ' "' .. M.here .. '/install_libs.py" "' .. M.VENV .. '" "' .. LIBS_STATUS .. '"', -1) -- (-1: don't wait)
+  return true
+end
+-- How the background install goes: nil (none), "running", or once when it ends "ok" / "failed" + why (the status file goes then).
+-- Read at most once a second (Home asks every frame). One running for over 40 minutes stopped without saying (REAPER closed, say).
+function M.libs_job()
+  local now = reaper.time_precise()
+  if M._libs_seen and now - M._libs_seen[1] < 1 then return M._libs_seen[2] end
+  local t = M.read(LIBS_STATUS)
+  local state, rest = (t or ""):match("^(%a+)[ \r\n]*(.*)$")
+  local why
+  if state == "running" and os.time() - (tonumber(rest:match("^%d+")) or 0) > 2400 then state, rest = "failed", "it stopped without finishing: press Install them again" end
+  if state == "ok" or state == "failed" then
+    os.remove(LIBS_STATUS)
+    M._libs = nil
+    why = rest:gsub("%s+$", "")
+  elseif state ~= "running" then state = nil end
+  M._libs_seen = { now, state == "running" and "running" or nil } -- (an end is told once, never from the cache)
+  return state, why
 end
 M.OWN = M.styles_json.own_themes or {}
 for k, v in pairs(M.load_json(M.here .. "/user_themes.json") or {}) do M.OWN[k] = v end -- (theme recipes you imported, e.g. from an Ableton Live theme)
@@ -2284,8 +2391,8 @@ end
 M.apply_own_params = apply_own_params
 function M.build_own_themes() -- -> list of themes written, or nil + why
   if not M.python() then return nil, "it needs Python 3 (python.org), with Pillow and numpy" end
-  if not M.python_libs() then return nil, "Python needs Pillow and numpy: Setup > Install them (or: python -m pip install --user pillow numpy)" end
-  local code, text = sh(M.py .. ' "' .. M.here .. '/build_themes.py" "' .. M.themes_dir:gsub("/$", "") .. '"', 180000)
+  if not M.python_libs() then return nil, "it needs Pillow and numpy: Home > Pillow and numpy > Install them" end
+  local code, text = sh(M.theme_python() .. ' "' .. M.here .. '/build_themes.py" "' .. M.themes_dir:gsub("/$", "") .. '"', 180000)
   local first, rest = (text or ""):match("^(%d)\r?\n(.*)$") -- (Python writes \r\n into a pipe on Windows)
   if code ~= "0" or first ~= "0" then return nil, (rest or text or ""):sub(1, 400) end
   apply_own_params()

@@ -497,6 +497,92 @@ if win then -- (the staged install, swapped in by its batch file: a process id t
   os.execute('cmd /c ""' .. bat:gsub("/", "\\") .. '""')
   assert(read(tmp .. "/reaper-kb.ini") == after .. "KEY 1 66 40002 0\r\n" and read(tmp .. "/last_install.txt"):find("changed", 1, true))
 end
+-- The theme libraries' background install (5.16): running, then how it ended, told once; one that never ended counts as failed
+write(tmp .. "/venv_status.txt", "running " .. os.time() .. "\n"); core._libs_seen = nil
+assert(core.libs_job() == "running" and read(tmp .. "/venv_status.txt"), "running: the file stays")
+write(tmp .. "/venv_status.txt", "failed\npip didn't finish: no network\n"); core._libs_seen = nil
+local lj, lwhy = core.libs_job()
+assert(lj == "failed" and lwhy == "pip didn't finish: no network" and not read(tmp .. "/venv_status.txt") and core.libs_job() == nil, "told once")
+write(tmp .. "/venv_status.txt", "running " .. (os.time() - 3000) .. "\n"); core._libs_seen = nil
+assert(core.libs_job() == "failed", "a run that never ended")
+write(tmp .. "/venv_status.txt", "ok\n"); core._libs_seen = nil
+assert(core.libs_job() == "ok" and core._libs == nil, "ok: Pillow and numpy are checked again")
+assert(core.theme_python() == core.py and not core.venv_python(), "no venv: the Python found")
+reaper.RecursiveCreateDirectory(tmp .. "/venv/Scripts"); write(tmp .. "/venv/Scripts/python.exe", "")
+assert(core.theme_python() == '"' .. tmp .. '/venv/Scripts/python.exe"', "the venv's, quoted (paths with spaces)")
+assert(core.pid_from_ps("0\n4242\n/Applications/REAPER.app/Contents/MacOS/REAPER\n") == "4242" and core.pid_from_ps("0\n77\nreaper\n") == "77")
+assert(core.pid_from_ps("0\n4242\n/bin/zsh\n") == nil and core.pid_from_ps("-999\n") == nil, "a parent that isn't REAPER: no id")
+-- The same install as a Mac's or Linux's /bin/sh step (5.16), run for real where a sh is found (Git's on Windows)
+local sh_exe = not win and "/bin/sh" or nil
+for _, p in ipairs(win and { "C:/Program Files/Git/usr/bin/sh.exe", "C:/Program Files/Git/bin/sh.exe" } or {}) do if not sh_exe and read(p) then sh_exe = p end end
+if sh_exe then
+  local was_os = reaper.GetOS
+  reaper.GetOS = function() return "linux-x86_64" end
+  for _, f in ipairs({ "reaper-kb.ini", "reaper-menu.ini", "reaper-mouse.ini", "installed.json", "midi_fallback.json", "last_install.txt",
+    "pending/reaper-kb.ini", "pending/reaper-menu.ini", "pending/reaper-mouse.ini", "pending/reaper-screensets.ini", "pending/prefs.json" }) do os.remove(tmp .. "/" .. f) end
+  reaper.RecursiveCreateDirectory(tmp .. "/pending")
+  write(tmp .. "/styles.json", '{"styles": [{"id": "a", "name": "A", "alt": 3, "keys": [["Ctrl+Shift+L", 40001, "x"]], "toolbar_slot": 5, "toolbar": [[40001, "Play"]]}]}')
+  write(tmp .. "/installed.json", '{"lines": []}'); write(tmp .. "/midi_fallback.json", "{}")
+  write(tmp .. "/reaper-kb.ini", "KEY 1 65 40001 0\n")
+  for f in ("20200101-000000 20250101-000000 20250102-000000 20250103-000000 20250104-000000 20250105-000000 20260101-000000 20260101-000001"):gmatch("%S+") do
+    os.remove(tmp .. "/reaper-kb.ini.before-reapersona-" .. f)
+  end
+  write(tmp .. "/reaper-kb.ini.before-reapersona-20200101-000000", "first\n")
+  for i = 1, 5 do write(tmp .. "/reaper-kb.ini.before-reapersona-2025010" .. i .. "-000000", "x") end
+  write(tmp .. "/reaper-kb.ini.before-reapersona-sync-20990101-000000", "sync") -- (sync backups aren't rotated)
+  write(tmp .. "/pending/reaper-mouse.ini", "[m]\nx=1\n") -- (a sync waiting: merged in, and its pending file goes once it's swapped in)
+  local function run(step)
+    local c = '"' .. sh_exe .. '" "' .. step .. '" --detached'
+    return os.execute(win and ('"' .. c .. '"') or c)
+  end
+  local step = assert(core.stage_install({ pid = "999999", stamp = "20260101-000000" }))
+  local text = read(step)
+  assert(step:match("install%.sh$") and text:find("^#!/bin/sh\n") and not text:find("\r", 1, true), "a /bin/sh script with LF lines")
+  assert(text:find("kill -0 999999", 1, true) and not text:find("open -a", 1, true), "waits on REAPER's id; no relaunch without an exe")
+  local order = { text:find("midi_fallback.json' '", 1, true), text:find("reaper-kb.ini.tmp' '", 1, true), text:find("installed.json' '", 1, true) }
+  assert(order[1] and order[2] and order[3] and order[1] < order[2] and order[2] < order[3], "the fallback first, then the keymap, then installed.json")
+  assert(not read(tmp .. "/reaper-kb.ini"):find("40001 3", 1, true), "nothing of REAPER's is touched before it closes")
+  run(step)
+  local after = read(tmp .. "/reaper-kb.ini")
+  assert(after:find("KEY 13 76 40001 3", 1, true) and after:find("KEY 1 65 40001 0", 1, true), after)
+  assert(read(tmp .. "/reaper-kb.ini.before-reapersona-20260101-000000") == "KEY 1 65 40001 0\n", "backed up first")
+  assert(read(tmp .. "/reaper-kb.ini.before-reapersona-20200101-000000") and not read(tmp .. "/reaper-kb.ini.before-reapersona-20250102-000000")
+    and read(tmp .. "/reaper-kb.ini.before-reapersona-20250103-000000") and read(tmp .. "/reaper-kb.ini.before-reapersona-sync-20990101-000000"),
+    "the first backup and the newest 4 kept, the sync backup left alone")
+  assert(read(tmp .. "/reaper-mouse.ini") == "[m]\nx=1\n" and not read(tmp .. "/pending/reaper-mouse.ini"), "the sync went in and its pending file went")
+  assert(read(tmp .. "/reaper-menu.ini"):find("title=ReaPersona: A", 1, true) and read(tmp .. "/installed.json"):find("13 76 40001 3", 1, true))
+  assert(read(tmp .. "/last_install.txt"):find("installed 1 shortcut", 1, true) and not read(tmp .. "/install_staged/install.sh"), "told, and the folder gone")
+  -- a keymap changed after it was read: nothing swapped in (not even the fallback), and you're told
+  local fb_before = read(tmp .. "/midi_fallback.json")
+  step = assert(core.stage_install({ pid = "999999", stamp = "20260101-000001", remove = true }))
+  write(tmp .. "/reaper-kb.ini", after .. "KEY 1 66 40002 0\n")
+  run(step)
+  assert(read(tmp .. "/reaper-kb.ini") == after .. "KEY 1 66 40002 0\n" and read(tmp .. "/last_install.txt"):find("changed", 1, true))
+  assert(read(tmp .. "/midi_fallback.json") == fb_before and not read(tmp .. "/reaper-kb.ini.before-reapersona-20260101-000001"), "nothing swapped, no backup")
+  -- a pending file that changed after it was merged stays for the next install
+  write(tmp .. "/pending/reaper-mouse.ini", "[m]\nx=2\n")
+  step = assert(core.stage_install({ pid = "999999", stamp = "20260101-000002" }))
+  write(tmp .. "/pending/reaper-mouse.ini", "[m]\nx=3\n")
+  run(step)
+  assert(read(tmp .. "/pending/reaper-mouse.ini") == "[m]\nx=3\n" and read(tmp .. "/reaper-mouse.ini") == "[m]\nx=2\n", "a newer sync waits")
+  os.remove(tmp .. "/pending/reaper-mouse.ini")
+  -- the quit cancelled: nothing at all
+  local kb_now = read(tmp .. "/reaper-kb.ini")
+  step = assert(core.stage_install({ pid = "999999", stamp = "20260101-000003", remove = true }))
+  write(tmp .. "/install_cancelled", "x")
+  run(step)
+  assert(read(tmp .. "/reaper-kb.ini") == kb_now and not read(tmp .. "/install_cancelled") and not read(tmp .. "/install_staged/install.sh"), "cancelled")
+  -- the relaunch lines: a Mac opens the app through LaunchServices once it's gone from there; Linux starts the binary
+  write(tmp .. "/reaper.ini", "x")
+  reaper.GetOS = function() return "macOS-arm64" end
+  text = read(assert(core.stage_install({ exe = "/Applications/REAPER.app", cfg = tmp .. "/reaper.ini", projects = { "/p/it's.rpp" } })))
+  assert(text:find("open -a '/Applications/REAPER.app' '/p/it'\\''s.rpp' --args '-cfgfile' '" .. tmp .. "/reaper.ini'", 1, true) and text:find("lsappinfo", 1, true), text)
+  assert(text:find("running() { any_reaper; }", 1, true), "no id: any REAPER counts")
+  reaper.GetOS = function() return "linux-x86_64" end
+  text = read(assert(core.stage_install({ exe = "/opt/REAPER/reaper", projects = {} })))
+  assert(text:find("detach '/opt/REAPER/reaper' </dev/null", 1, true) and not text:find("open -a", 1, true))
+  reaper.GetOS = was_os
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")

@@ -17,7 +17,7 @@ def files():
     for root, _, names in os.walk(os.path.join(HERE, "ReaPersona")):
         for n in sorted(names):
             rel = os.path.relpath(os.path.join(root, n), os.path.join(HERE, "ReaPersona")).replace("\\", "/")
-            if not rel.startswith("__pycache__"):
+            if not rel.startswith(("__pycache__", "venv/", "install_staged/")):  # (each computer's own: the theme builder's venv, a staged install)
                 out.append(rel)
     return sorted(out, key=lambda f: (f != "ReaPersona.lua", f))
 

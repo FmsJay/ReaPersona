@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+- **One-button shortcut install on a Mac and Linux without Python.** macOS ships without Python, so until now a Mac got a keymap file to import by hand and no toolbars. Install and restart now works everywhere: ReaPersona plans the install inside REAPER (the same rules as install_shortcuts.py, which stays the route where Python is), and a small shell script waits for REAPER to close, checks that nothing changed the keymap or menus since, backs your keymap up first (the same backups as before), swaps the new keymap and toolbars in, and opens REAPER again (with `open` on a Mac, with the projects you had open). Remove ReaPersona takes the shortcut layers out the same way. Tested against install_shortcuts.py on a Mac's real keymap: the same keymap, toolbars and saved MIDI keys.
+- **Pillow and numpy install in the background, into ReaPersona's own Python environment.** *Install them* used `pip install --user`, which Homebrew's Python 3.12+ and recent Debian and Ubuntu refuse ("externally-managed-environment"), and REAPER froze for up to 10 minutes while it ran. ReaPersona now makes a venv in its folder (`ReaPersona/venv`) and installs into it while you keep working; Home says when they're in, or what went wrong (on Debian or Ubuntu: install `python3-venv` first). A Python that already has them keeps working as before.
+
 ## 5.15.0
 Fixes from a three-reviewer pass over 5.13 and 5.14:
 - **Screen readers:** a new action, *ReaPersona - screen-reader menu*, always opens the menu, so turning it off can't lock anyone out. The menu also saves what you're using, opens a new project with a workflow, keeps a workflow's inputs and opens the cheat sheet. Results are no longer spoken twice. The menu setting stays on each computer instead of syncing.

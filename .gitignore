@@ -30,3 +30,8 @@ ReaPersona/packages_missing.json
 ReaPersona/_packages.json
 ReaPersona/feedback/
 ReaPersona/_starter.RTrackTemplate
+# ReaPersona's own Python for the theme builder (install_libs.py), and the shortcut install's swap step: each computer's own
+ReaPersona/venv/
+ReaPersona/venv_status.txt
+ReaPersona/install_staged/
+ReaPersona/last_install.txt

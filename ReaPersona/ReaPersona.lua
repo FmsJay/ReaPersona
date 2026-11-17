@@ -1060,12 +1060,11 @@ local function settings_page()
   end
   if card("set remove") then -- (removed with ReaPack alone, its startup block, actions and settings stayed behind. Review, 5.9.4)
     heading("Remove ReaPersona")
-    muted("Puts My REAPER back, then takes out the startup block, ReaPersona's actions and its settings, and (REAPER restarting; on a Mac or Linux only with Python) its shortcut layers and toolbars. Your personas, presets and themes stay in their files. Then uninstall it in ReaPack.")
+    muted("Puts My REAPER back, then takes out the startup block, ReaPersona's actions and its settings, and (REAPER restarting) its shortcut layers and toolbars. Your personas, presets and themes stay in their files. Then uninstall it in ReaPack.")
     ImGui.BeginDisabled(ctx, removing ~= nil)
     if ImGui.Button(ctx, "Remove ReaPersona...") and reaper.MB("Take ReaPersona out of REAPER?\n\n" ..
         "- My REAPER comes back: your own shortcuts, theme, layout and settings\n- the startup block, ReaPersona's actions and its settings go\n" ..
-        ((core.python() or reaper.GetOS():find("^Win")) and "- REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap (backed up first), and REAPER opens again\n"
-          or "- without Python the shortcut layers stay in your keymap (they do nothing without ReaPersona)\n") ..
+        "- REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap (backed up first), and REAPER opens again\n" ..
         "\nYour personas, presets and themes stay in their files. Last, uninstall ReaPersona in Extensions > ReaPack > Browse packages.", "ReaPersona: remove", 4) == 6 then
       reaper.SetExtState(SECTION, "follow projects", "0", true) -- (the project-following script stops)
       use(core.by_id("my_reaper") or styles[1])
@@ -1329,9 +1328,9 @@ local function check_page()
   if card("check install") then
     heading("Install the shortcuts")
     muted("REAPER reads its keymap when it starts, so the shortcut layers go in once, after adding or changing a persona. Two ways:")
-    ImGui.Bullet(ctx); ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, "In one step: Home > Install and restart (on Windows, or anywhere with Python). REAPER closes, the layers and the personas' toolbars go in, your keymap is backed up first, and REAPER opens again. By hand: close REAPER, run install_shortcuts.py in this folder, start REAPER.")
+    ImGui.Bullet(ctx); ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, "In one step: Home > Install and restart (Windows, Mac or Linux; no Python needed). REAPER closes, the layers and the personas' toolbars go in, your keymap is backed up first, and REAPER opens again. By hand: close REAPER, run install_shortcuts.py in this folder, start REAPER.")
     if ImGui.SmallButton(ctx, "Show the folder") then core.open_url(core.here) end
-    ImGui.Bullet(ctx); ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, "Without Python: make a keymap file, then in REAPER's Actions window open Key Map > Import... and pick it (choose to merge, not replace). Toolbars aren't included: personas keep your own toolbar.")
+    ImGui.Bullet(ctx); ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, "Without restarting: make a keymap file, then in REAPER's Actions window open Key Map > Import... and pick it (choose to merge, not replace). Toolbars aren't included: personas keep your own toolbar.")
     if ImGui.SmallButton(ctx, "Make the keymap file") then
       local path, n, skipped = core.make_keymap()
       if not path then return reaper.MB("No keymap made: " .. tostring(skipped[1]), "ReaPersona", 0) end
@@ -1473,18 +1472,10 @@ local function build_themes()
   reaper.MB(made and (#made .. " themes built in ColorThemes, from your REAPER's own Default 7:\n\n" .. table.concat(made, "\n") ..
     "\n\nEach DAW persona uses its ReaPersona theme unless you've picked another.") or ("Not built: " .. tostring(why)), "ReaPersona", 0)
 end
-local function keymap_route() -- (no Python: a keymap file to import by hand)
-  local path, n, why = core.make_keymap()
-  if not path then return reaper.MB("No keymap made: " .. tostring(why[1]), "ReaPersona", 0) end
-  reaper.MB(n .. " shortcuts are in this file:\n" .. path .. "\n\nThe Actions window opens next. In it:\n1. Key Map > Import...\n2. Pick that file.\n" ..
-    "3. Choose MERGE. (Replace would remove your own shortcuts.)\n\nToolbars need the Python install.", "ReaPersona: shortcuts", 0)
-  reaper.Main_OnCommand(40605, 0)
-end
--- REAPER reads its keymap only when it starts: install_shortcuts.py waits for REAPER to close, installs, and starts it again. On Windows
--- without Python the same install is planned here and a batch file swaps it in (core.stage_install, 5.14).
-local function one_button() return core.python() ~= nil or reaper.GetOS():find("^Win") ~= nil end -- (else: a keymap to import by hand)
+-- REAPER reads its keymap only when it starts: install_shortcuts.py waits for REAPER to close, installs, and starts it again. Without
+-- Python the same install is planned here and a swap step puts it in: a batch file on Windows (5.14), a /bin/sh script on a Mac or
+-- Linux (5.16; until then a Mac without Python got a keymap to import by hand, and no toolbars). core.stage_install.
 function install_shortcuts(remove) -- (remove: Remove ReaPersona, which has asked already: the lines come out instead)
-  if not one_button() then return keymap_route() end
   if not remove then
     if reaper.MB("REAPER closes (it asks first if anything is unsaved), the shortcuts install, and REAPER opens again: about 10 seconds.\n\n" ..
       "A backup of your keymap is made first.", "ReaPersona: install shortcuts", 1) ~= 1 then return end
@@ -1505,25 +1496,27 @@ function install_shortcuts(remove) -- (remove: Remove ReaPersona, which has aske
     if fn ~= "" and not fn:find('"', 1, true) then projects[#projects + 1] = fn; open[#open + 1] = ' --open "' .. fn .. '"' end
   end
   local cfg = reaper.get_ini_file():gsub("\\", "/") -- (-cfgfile users get REAPER back on the same configuration)
+  os.remove(here .. "/install_cancelled") -- (before the installer starts: an old one would stop it at its first look)
   if core.python() then
     local setup = #core.restart_pending() > 0 and not remove and " --apply-setup" or "" -- (your setup from your other computers, waiting for a restart)
     reaper.ExecProcess(core.py .. ' "' .. here .. '/install_shortcuts.py" --after-reaper-quits --relaunch "' .. exe .. '" --cfgfile "' .. cfg .. '"' .. (remove and " --remove" or "") .. setup .. table.concat(open), -1) -- (-1: don't wait)
   else
-    local bat, why = core.stage_install({ remove = remove, pid = core.reaper_pid(), exe = exe, cfg = cfg, projects = projects })
-    if not bat then return reaper.MB("Nothing was installed: " .. tostring(why), "ReaPersona", 0) end
-    reaper.ExecProcess('cmd.exe /c ""' .. bat:gsub("/", "\\") .. '""', -2) -- (-2: minimized, so it isn't closed halfway by mistake)
+    local step, why = core.stage_install({ remove = remove, pid = core.reaper_pid(), exe = exe, cfg = cfg, projects = projects })
+    if not step then return reaper.MB("Nothing was installed: " .. tostring(why), "ReaPersona", 0) end
+    if reaper.GetOS():find("^Win") then
+      reaper.ExecProcess('cmd.exe /c ""' .. step:gsub("/", "\\") .. '""', -2) -- (-2: minimized, so it isn't closed halfway by mistake)
+    else
+      reaper.ExecProcess('/bin/sh "' .. step .. '"', -1) -- (it starts itself again detached from REAPER and returns; a full path: a Mac runs a bare name as nothing)
+    end
   end
-  os.remove(here .. "/install_cancelled")
   reaper.Main_OnCommand(40004, 0) -- (File: Quit, with REAPER's own save prompts)
   quit_check = reaper.time_precise() + 4 -- (REAPER still running 4 s after: the quit was cancelled, and the installer is told)
 end
 remove_finish = function() -- (Remove ReaPersona, once My REAPER is back) -> false: the window closes
   local done = core.uninstall()
-  local py = one_button()
-  reaper.MB(table.concat(done, "\n") .. "\n\n" .. (py and "Next: REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap, and REAPER opens again."
-    or "Without Python the shortcut layers stay in your keymap; they do nothing without ReaPersona. The MIDI editor keys ReaPersona took over do nothing now: set them again in the Actions window if you used them.") ..
+  reaper.MB(table.concat(done, "\n") .. "\n\nNext: REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap, and REAPER opens again." ..
     "\n\nLast: Extensions > ReaPack > Browse packages, right-click ReaPersona > Uninstall.", "ReaPersona: removed", 0)
-  if py then install_shortcuts(true) end
+  install_shortcuts(true)
   return false
 end
 local function setup_all()
@@ -1613,14 +1606,21 @@ local function setup_page()
       local rp = reaper.ReaPack_BrowsePackages ~= nil
       setup_row("rp", rp, "ReaPack", "Installs the smooth playhead and keeps ReaPersona up to date.", not rp and "Get it" or nil, function() core.open_url("https://reapack.com/") end)
       local py = core.python()
-      setup_row("py", py ~= nil, "Python 3" .. (py and (" (" .. py .. ")") or ""), "Builds ReaPersona's themes (pip install pillow numpy)" .. (reaper.GetOS():find("^Win") and "." or ", and installs the shortcuts in one step."),
+      setup_row("py", py ~= nil, "Python 3" .. (py and (" (" .. py .. ")") or ""), "Builds ReaPersona's own themes. The shortcut install doesn't need it.",
         not py and "Get it" or nil, function() core.open_url("https://www.python.org/downloads/") end)
       if py then
-        local libs = core.python_libs()
-        setup_row("libs", libs, "Pillow and numpy for Python", "The image tools the theme builder uses.", not libs and "Install them" or nil, function()
-          if reaper.MB("Run: python -m pip install --user pillow numpy\n\nREAPER waits while pip downloads them (a minute or two).", "ReaPersona", 1) ~= 1 then return end
+        local job, jwhy = core.libs_job() -- (the background install: running, or how it just ended)
+        if job == "ok" then say("Pillow and numpy are installed: Build makes ReaPersona's themes.")
+        elseif job == "failed" then reaper.MB("Pillow and numpy weren't installed: " .. tostring(jwhy), "ReaPersona", 0) end
+        local libs = job ~= "running" and core.python_libs()
+        setup_row("libs", libs, "Pillow and numpy for Python" .. (job == "running" and " (installing...)" or ""),
+          job == "running" and "pip is downloading them in the background (a minute or two). Keep working: this says when they're in."
+            or "The image tools the theme builder uses, in a folder of ReaPersona's own (ReaPersona/venv), so your system's Python isn't changed.",
+          not libs and job ~= "running" and "Install them" or nil, function()
+          if reaper.MB("ReaPersona makes a Python environment of its own in its folder (venv) and pip installs Pillow and numpy into it, " ..
+            "in the background: REAPER keeps working, and this row says when they're in (a minute or two).", "ReaPersona", 1) ~= 1 then return end
           local ok, why = core.install_python_libs()
-          reaper.MB(ok and "Installed." or ("pip didn't finish: " .. tostring(why)), "ReaPersona", 0)
+          if ok then say("Installing Pillow and numpy in the background...") else reaper.MB("Not started: " .. tostring(why), "ReaPersona", 0) end
         end)
       end
       local n, total = core.own_themes_built()
@@ -2194,7 +2194,7 @@ local GUIDE = {
   { "Your own setup is safe", {
     "A persona's keys sit in a shortcut layer of their own; keys it doesn't define fall through to yours, and Back to My REAPER puts back whatever a persona changed.",
     "Every install backs up your keymap first, next to it in REAPER's resource folder (reaper-kb.ini.before-reapersona-...). The first backup, from before ReaPersona, is always kept.",
-    "On Windows without Python, the install is planned while REAPER runs and a small batch file swaps it in once REAPER has closed. If anything changed the keymap in between, nothing is swapped in and ReaPersona says so." } },
+    "Without Python, the install is planned while REAPER runs and a small script (a batch file on Windows, a shell script on a Mac or Linux) swaps it in once REAPER has closed. If anything changed the keymap in between, nothing is swapped in and ReaPersona says so." } },
 }
 local function guide_text() -- (the whole guide as plain text)
   local out = {}
