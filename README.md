@@ -1,6 +1,6 @@
 # ReaPersona
 
-Make REAPER feel like the DAW you know: **Pro Tools, Logic Pro, Ableton Live, FL Studio, Cubase, Studio One / Fender Studio Pro, Bitwig Studio, Cakewalk / Sonar or Reason**, or the audio editors **Audacity** and **Adobe Audition**. You can also set it back to **stock REAPER**, use **your own setup**, or build **your own personas** from blocks. Everything switches on the fly from one window, and each project can have its own persona.
+Make REAPER feel like the DAW you know: **Pro Tools, Pro Tools Intro, Logic Pro, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One / Fender Studio Pro, Bitwig Studio, Cakewalk / Sonar or Reason**, or the audio editors **Audacity** and **Adobe Audition**. You can also set it back to **stock REAPER**, use **your own setup**, or build **your own personas** from blocks. Everything switches on the fly from one window, and each project can have its own persona.
 
 ![Switching personas](docs/demo.gif)
 
@@ -19,7 +19,7 @@ A **persona** is everything REAPER feels like: shortcuts, theme, layout, mouse b
 - **Layout.**
   - Where the transport sits.
   - The mixer docked or in its own window, with the master on the left or right, and insert/send slots.
-  - The Media Explorer docked where that DAW keeps its browser: left for Live, FL and Reason; right for Logic, Cubase, Studio One, Bitwig and Cakewalk; its own window for Pro Tools.
+  - The Media Explorer docked where that DAW keeps its browser: left for Live, FL and Reason; right for Logic, GarageBand, Cubase, Nuendo, Studio One, Bitwig and Cakewalk; its own window for Pro Tools and Pro Tools Intro.
 - **Mouse.**
   - The wheel as that DAW has it: scrolling and zooming with its modifiers (Shift+wheel scrolls sideways in Studio One, Reason, Live and Audacity; Ctrl+wheel zooms in Cubase, Reason and FL; Alt+wheel zooms in Pro Tools), each from the maker's documentation.
   - Drags and clicks such as Pro Tools' Smart Tool (top half selects, bottom half moves), Cubase's Alt+click split, Studio One's Ctrl+Alt slip, Alt+drag stretching in Logic, Bitwig and Audacity, and FL Studio's right-click delete.

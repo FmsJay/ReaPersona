@@ -86,17 +86,18 @@ assert(#clash == 2 and clash[1].id == "c" and clash[2].id == "d", "on a built-in
 write(tmp .. "/user_styles.json", '{"styles": [{"id": "keymap_1", "name": "Old keymap", "kind": "daw", "alt": 11, "keys": [["Ctrl+J", 40001, "x"]]}]}')
 core = load_core()
 local moved = core.by_id("keymap_1")
-assert(moved.alt == 13, "moved to the first free layer, got " .. tostring(moved.alt))
-assert(read(tmp .. "/user_styles.json"):find('"alt": 13', 1, true), "and saved")
+assert(moved.alt == 16, "moved to the first free layer (13-15: Nuendo, Pro Tools Intro, GarageBand), got " .. tostring(moved.alt))
+assert(read(tmp .. "/user_styles.json"):find('"alt": 16', 1, true), "and saved")
 -- "Make them its own": a copy of the DAW's keys on a free layer, no longer tied to the DAW.
 write(tmp .. "/user_styles.json", '{"styles": [{"id": "built_2", "name": "Mixing", "kind": "built", "keys_from": "logic"}]}')
 core = load_core()
 local mixing, logic = core.by_id("built_2"), core.by_id("logic")
 assert(mixing.alt == logic.alt and mixing.keys == logic.keys)
 assert(core.own_layer(mixing))
-assert(mixing.alt == 13 and mixing.keys_from == nil and mixing.keys ~= logic.keys and #mixing.keys == #logic.keys)
+assert(mixing.alt == 16 and mixing.keys_from == nil and mixing.keys ~= logic.keys and #mixing.keys == #logic.keys)
 assert(logic.alt == 2 and core.by_id("logic").keys == logic.keys, "the DAW keeps its own")
-assert(load_core().by_id("built_2").alt == 13, "saved with its own layer")
+assert(load_core().by_id("built_2").alt == 16, "saved with its own layer")
+for i = #core.styles, 1, -1 do if core.styles[i].id == "built_2" then table.remove(core.styles, i) end end -- (alt-16 is the last free layer: 6. needs it)
 
 -- 3. Trimming the Actions list: ids a mouse modifier or an SWS cycle action runs count as used.
 local mouse = "[MM_CTX_ITEM]\nmm_0=_RSa1b2c3 m\nmm_4=13 m\n"
@@ -132,9 +133,10 @@ for _, spec in ipairs({ "Mousewheel", "Ctrl+Mousewheel", "Alt+Shift+Mousewheel",
 end
 
 -- 6. The mouse in the Persona Builder (5.10): a DAW block's mouse part, and a Mouse block that takes over the whole mouse above it.
-local A = { id = "t_a", name = "A", alt = 15, keys = { { "Ctrl+Z", 40029, "Undo" }, { "Mousewheel", 989, "Scroll" }, { "Alt+Mousewheel", 990, "Zoom" } },
+local A = { id = "t_a", name = "A", alt = 14, -- (layers a built-in has already: alt-16, the one free layer, stays free for build_style)
+  keys = { { "Ctrl+Z", 40029, "Undo" }, { "Mousewheel", 989, "Scroll" }, { "Alt+Mousewheel", 990, "Zoom" } },
   feel = { { "mouse", "MM_CTX_ITEM", 4, "Copy item", "Alt+drag copies" }, { "toggle", 1157, 1, "Snap on" } } }
-local B = { id = "t_b", name = "B", alt = 16, keys = { { "Ctrl+Y", 40030, "Redo" }, { "Mousewheel", 988, "Scroll sideways" }, { "Ctrl+Mousewheel", 990, "Zoom" } },
+local B = { id = "t_b", name = "B", alt = 15, keys = { { "Ctrl+Y", 40030, "Redo" }, { "Mousewheel", 988, "Scroll sideways" }, { "Ctrl+Mousewheel", 990, "Zoom" } },
   feel = { { "mouse", "MM_CTX_ITEM", 2, "Copy item", "Ctrl+drag copies" } } }
 core.styles[#core.styles + 1] = A
 core.styles[#core.styles + 1] = B

@@ -1,5 +1,13 @@
 # Changelog
 
+## 5.13.1
+Three new DAW personas, every key checked against the maker's own documentation and cited in the persona's docs list:
+- **Nuendo** (alt-13): Steinberg's Nuendo 14 default key commands are the same list as Cubase 14's, so it has Cubase's keys, MIDI editor keys, toolbars and layout. Its mouse follows Nuendo's Tool Modifiers page: Alt+drag copies, Alt+click splits, Alt+Shift+drag slips an event's contents.
+- **Pro Tools Intro** (alt-14): Avid's Shortcuts Guide marks the keys only some tiers have (Studio or Ultimate only), and none of the Pro Tools persona's keys is one of them; Avid's comparison gives Intro every feature they use (comping, Elastic Audio, retrospective MIDI, freeze, clip gain, folders). So it has the Pro Tools keys, Smart Tool and toolbar, with Intro's track limits on its page.
+- **GarageBand** (alt-15): GarageBand 10.4.14's Main window, Editors and Global tracks shortcuts, with Command as Ctrl and Option as Alt (Control-key commands on a Mac only), on Logic's look and toolbars and without a mixer. Drag in empty space selects regions, Option-drag copies, as Apple's guide says. Apple's GarageBand for Mac guide was offline at support.apple.com, so the links are Apple's own pages as the Internet Archive kept them.
+- **Fixed:** Cubase's F2 is Rename Selected Events (here: the item/take properties), and Ctrl+Alt+T shows and hides the transport, as Cubase 14's key list has them.
+- Only alt-16 is now left for personas of yours with a layer of their own. Install the shortcuts again (Home > Reinstall) to get the new layers.
+
 ## 5.13.0
 - **Workflows from a whole project.** *Save what I'm using...* with "Make it a workflow too?" now keeps the whole project as the workflow's template: every track with its FX, routing and folders, the sample rate, recording format, render settings, tempo and time signature, markers and regions (not its audio, MIDI, media bay or scripts' data). The Builder's Project block can take one too (*Use this whole project*). A new, empty project with the persona starts as that project did.
 - **New project with it** on a workflow's page opens a new tab set up by it.
