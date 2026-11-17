@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.11.3
+- **A ReaPack repository that comes from another computer never installs everything in it.** 5.11.2 added it "as ReaPack is set here", and where ReaPack installs new packages by itself, a whole repository came in; its packages now come one by one (Install them), only the ones your other computers have.
+- StudioSync's per-computer tab scripts (its old BandSync name too) aren't synced as your scripts.
+
 ## 5.11.2
 - **Syncing REAPER's preferences can't crash REAPER any more.** 5.11.0-5.11.1 set them live through SWS, guessing each one's type; SWS reports whole-number preferences as doubles too, so some were written into memory too small for them, and REAPER crashed seconds later. Preferences now wait for REAPER's restart (Apply) and go into reaper.ini, which REAPER reads itself.
 - **Syncing doesn't hold REAPER up.** The sync state and the other computers' files stay in memory while they're unchanged, and nothing is written when nothing changed: a look takes milliseconds instead of a second with every advanced part on. REAPER's own parts sync when the window has been open 10 seconds, on Sync now and every 30 minutes; at REAPER's start, 10 seconds after it opens.

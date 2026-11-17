@@ -2754,7 +2754,7 @@ local TPL_DIRS = { "FXChains", "TrackTemplates", "ProjectTemplates", "MIDINoteNa
 -- second one beside it)
 M.PKG_HERE = { ReaPersona = true, StudioSync = true }
 local CODE_SKIP = { "Scripts/ReaPersona/", "Scripts/__startup.lua", "Scripts/MIDI Control Center/midi_control_center/dev/", "Scripts/StudioSync",
-  "Scripts/Cockos/", "Scripts/reaper-daemon/" } -- (ReaPersona's own; each computer's startup; StudioSync's; REAPER's own; a tool with its data)
+  "Scripts/Cockos/", "Scripts/reaper-daemon/", "Scripts/BandSync" } -- (ReaPersona's own; each computer's startup; StudioSync's (and its old BandSync name); REAPER's own; a tool with its data)
 M.CODE_SKIP = CODE_SKIP
 M.owned = nil -- (ReaPack's files, relative to the resource path: from setup_helper.py; nil until read)
 local function read_packages() -- -> { installed = { {remote, category, package, type, desc, author} }, owned = { path } }, or nil + why
@@ -2896,7 +2896,7 @@ M.ADVANCED_APPLY = {
     if M.PKG_HERE[name] then return true end
     local url, en, auto = (v or ""):match("^(.-)|(%d)|(%d)$")
     if not url or not reaper.ReaPack_AddSetRepository then return false end
-    local ok = reaper.ReaPack_AddSetRepository(name, url, en == "1", 2, "") -- (2: as ReaPack is set here, never "install everything")
+    local ok = reaper.ReaPack_AddSetRepository(name, url, en == "1", 0, "") -- (0: never "install everything in it": its packages come one by one, Install them)
     M.repos_changed = true
     return ok and true or false
   end,
