@@ -760,7 +760,7 @@ end
 
 -- ---------------------------------------------------------------- helper scripts (written and registered once, by the picker)
 local function safe(spec) return (spec:gsub("[^%w]", function(c) return string.format("_%02X", c:byte()) end)) end
-local STUBS = 4 -- (bump when the stubs below change, so they're written again. 4: the Actions list sorted once, M.ensure_scripts)
+local STUBS = 5 -- (bump when the stubs below change, so they're written again. 4: the Actions list sorted once, M.ensure_scripts. 5: duplicate, gap, autopunch)
 local HEAD = '-- @noindex\n-- (made by ReaPersona)\nlocal p = debug.getinfo(1, "S").source:match("^@?(.*)[/\\\\]")\n'
 local function stub(path, fn, arg) -- a one-line action: core.<fn>(arg), arg written as a Lua string literal
   return M.write(path, HEAD .. 'dofile(p .. "/../reapersona_core.lua").' .. fn .. "(" .. (arg and string.format("%q", arg) or "") .. ")\n")
@@ -807,7 +807,9 @@ function M.ensure_scripts()
   reaper.RecursiveCreateDirectory(M.here .. "/actions", 0)
   reaper.RecursiveCreateDirectory(M.here .. "/midi_keys", 0)
   local main = { ["next style"] = { "next_style" }, ["restore last style"] = { "restore_last" }, ["memory location"] = { "memory_location" },
-                 ["play from start"] = { "play_from_start" }, ["follow projects"] = { "follow_projects" } }
+                 ["play from start"] = { "play_from_start" }, ["follow projects"] = { "follow_projects" },
+                 ["duplicate to new track"] = { "duplicate_to_new_track" }, ["autopunch"] = { "autopunch" },
+                 ["remove leaving a gap"] = { "without_ripple", "40312" }, ["cut leaving a gap"] = { "without_ripple", "40307" } }
   local names = {}
   for _, st in ipairs(M.styles) do main["use " .. st.id] = { "use_id", st.id }; local l = (st.short or st.name):lower(); names[l] = (names[l] or 0) + 1 end
   local todo, off, all, used = {}, {}, M.all_actions(), used_ids()
@@ -860,6 +862,45 @@ function M.memory_location() -- Pro Tools: period, number, period on the numeric
 end
 function M.play_from_start() -- Bitwig: Alt+Space plays the arrangement from the beginning
   reaper.CSurf_GoStart(); reaper.OnPlayButton()
+end
+-- Audacity: Ctrl+D puts a copy of the selection (the time selection's part of the selected items, else the items) on a new track below,
+-- at the same time. shortcut: one new track, below the first selected item's track; items on several tracks paste onto the tracks under it.
+function M.duplicate_to_new_track()
+  local item = reaper.GetSelectedMediaItem(0, 0)
+  if not item then return end
+  local s, e = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
+  local pos = s
+  if s >= e then
+    pos = math.huge
+    for i = 0, reaper.CountSelectedMediaItems(0) - 1 do pos = math.min(pos, reaper.GetMediaItemInfo_Value(reaper.GetSelectedMediaItem(0, i), "D_POSITION")) end
+  end
+  local cur = reaper.GetCursorPosition()
+  reaper.Undo_BeginBlock(); reaper.PreventUIRefresh(1)
+  reaper.Main_OnCommand(s < e and 40060 or 40698, 0) -- (Item: Copy selected area of items / Edit: Copy items)
+  local idx = math.floor(reaper.GetMediaTrackInfo_Value(reaper.GetMediaItem_Track(item), "IP_TRACKNUMBER"))
+  reaper.InsertTrackAtIndex(idx, true)
+  reaper.SetOnlyTrackSelected(reaper.GetTrack(0, idx))
+  reaper.Main_OnCommand(40914, 0) -- (the new track is the last touched one, where Paste goes)
+  reaper.SetEditCurPos(pos, false, false)
+  reaper.Main_OnCommand(42398, 0) -- (Item: Paste items/tracks)
+  reaper.SetEditCurPos(cur, false, false)
+  reaper.PreventUIRefresh(-1); reaper.Undo_EndBlock("Duplicate to a new track", -1)
+end
+-- Audacity's Silence, "Delete and leave gap" and "Cut and leave gap": remove or cut the selected area of the items with ripple editing off
+-- for this one edit (REAPER's own actions: SWS's smart remove took whole items when run from a script).
+function M.without_ripple(cmd)
+  local id = tonumber(cmd) or reaper.NamedCommandLookup(cmd)
+  if id == 0 then return end
+  local per, all = reaper.GetToggleCommandState(41990) == 1, reaper.GetToggleCommandState(41991) == 1
+  reaper.Undo_BeginBlock()
+  if per or all then reaper.Main_OnCommand(40309, 0) end -- (ripple off)
+  reaper.Main_OnCommand(id, 0)
+  if all then reaper.Main_OnCommand(40311, 0) elseif per then reaper.Main_OnCommand(40310, 0) end
+  reaper.Undo_EndBlock("Delete leaving a gap", -1)
+end
+-- Logic and Studio One: one key turns Autopunch on and off (here: REAPER's time-selection auto-punch, else normal recording).
+function M.autopunch()
+  reaper.Main_OnCommand(reaper.GetToggleCommandState(40076) == 1 and 40252 or 40076, 0)
 end
 
 -- ---------------------------------------------------------------- extensions some styles recommend (smooth playhead, smooth scroll and zoom)

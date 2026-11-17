@@ -201,7 +201,20 @@
         ["Alt+Shift+Z", 40211, "Retrospective MIDI record"],
         ["Ctrl+Shift+E", 40200, "Insert silence"],
         ["Ctrl+U", 40315, "Strip silence..."],
-        ["Alt+Mousewheel", 990, "Zoom in and out horizontally (Option+wheel on a Mac)"]
+        ["Alt+Mousewheel", 990, "Zoom in and out horizontally (Option+wheel on a Mac)"],
+        ["A", 41305, "Trim Clip Start To Cursor (Commands Keyboard Focus)"],
+        ["S", 41311, "Trim Clip End To Cursor (Commands Keyboard Focus)"],
+        ["D", 40509, "Fade from Start (to the cursor; Commands Keyboard Focus)"],
+        ["F", 40916, "Crossfade With No Dialog (over the selection; Commands Keyboard Focus)"],
+        ["G", 40510, "Fade Out From Cursor To End Of Clip (Commands Keyboard Focus)"],
+        ["B", "_SWS_SMARTSPLIT2", "Separate (Commands Keyboard Focus)"],
+        ["E", 41622, "Zoom Toggle (here: zoom to the selected clips and back; Commands Keyboard Focus)"],
+        ["P", 40286, "Move Edit Insertion To Previous Track (Commands Keyboard Focus)"],
+        [";", 40285, "Move Edit Insertion To Next Track (Commands Keyboard Focus)"],
+        ["L", 40318, "Move Edit Insertion To Previous Edit (here: the previous clip boundary; Commands Keyboard Focus)"],
+        ["'", 40319, "Move Edit Insertion To Next Edit (here: the next clip boundary; Commands Keyboard Focus)"],
+        ["Num1", 40084, "Rewind (numeric keypad, Transport mode)"],
+        ["Num2", 40085, "Fast Forward (numeric keypad, Transport mode)"]
       ],
       "midi_keys": [
         ["Up", "Edit: Move notes up one semitone", "Transpose up one semitone"],
@@ -316,7 +329,9 @@
       "docs": [
         "https://support.apple.com/guide/logicpro/global-commands-lgcp02bf31b6/mac",
         "https://support.apple.com/guide/logicpro/main-window-tracks-and-various-editors-lgcpe8314fe2/mac",
-        "https://support.apple.com/guide/logicpro/tracks-area-lgcpea796663/mac"
+        "https://support.apple.com/guide/logicpro/tracks-area-lgcpea796663/mac",
+        "https://support.apple.com/guide/logicpro/undo-and-redo-edits-lgcp1dbd67ab/mac",
+        "https://support.apple.com/guide/logicpro/create-recall-and-switch-screensets-lgcp9bbbcb23/mac"
       ],
       "keys": [
         ["Space", 40328, "Play or Stop (the playhead stays where it stopped)"],
@@ -339,7 +354,7 @@
         ["Ctrl+A", 40035, "Select All"],
         ["X", 40078, "Show/Hide Mixer"],
         ["P", 40153, "Show/Hide Piano Roll"],
-        ["Y", 40271, "Show/hide the Library (here: the FX browser)"],
+        ["Y", 40291, "Show/Hide Smart Controls (here: the track's FX chain)"],
         ["Ctrl+Left", 1011, "Zoom out horizontally"],
         ["Ctrl+Right", 1012, "Zoom in horizontally"],
         ["Z", 40031, "Zoom to fit selection"],
@@ -355,8 +370,7 @@
         ["Ctrl+S", 40026, "Save"],
         ["Ctrl+Shift+S", 40022, "Save Project as"],
         ["Ctrl+B", 40015, "Bounce"],
-        ["B", 40291, "Show/hide Smart Controls (here: the track's FX chain)"],
-        ["O", 50124, "Show/hide the Loop Browser (here: the Media Explorer)"],
+        ["B", 50124, "Show/Hide Browser (here: the Media Explorer)"],
         ["Ctrl+Shift+D", 42785, "Create Track Stack (here: move the selected tracks into a new folder)"],
         ["Num0", 1016, "Stop"],
         ["NumEnter", 1007, "Play"],
@@ -395,8 +409,26 @@
         ["mac:Win+R", 9, "Track record enable (Control-R)"],
         ["mac:Win+B", 41999, "Bounce in place (Control-B)"],
         ["mac:Win+S", 7, "Solo the selected regions' tracks (Control-S)"],
-        ["F", 50124, "Show/hide the Browsers (here: the Media Explorer)"],
-        ["Alt+Mousewheel", 1000, "Option+scroll zooms all tracks vertically"]
+        ["Alt+Mousewheel", 1000, "Option+scroll zooms all tracks vertically"],
+        [".", 40085, "Forward"],
+        ["Ctrl+U", 41039, "Set Locators by Regions and Enable Cycle (here: the loop to the selected regions)"],
+        ["Ctrl+Alt+Z", 40072, "Undo History"],
+        ["Ctrl+K", 40377, "Show/Hide Play Surface (here: REAPER's virtual MIDI keyboard)"],
+        ["Ctrl+Alt+A", 40001, "New Audio Track"],
+        ["Ctrl+Alt+S", 40701, "New Software Instrument Track"],
+        ["mac:Ctrl+Shift+Win+R", 40086, "Set All Tracks to Automation Read (Control-Shift-Command-R)"],
+        ["mac:Ctrl+Shift+Win+T", 40087, "Set All Tracks to Automation Touch (Control-Shift-Command-T)"],
+        ["mac:Ctrl+Shift+Win+L", 40266, "Set All Tracks to Automation Latch (Control-Shift-Command-L)"],
+        ["mac:Ctrl+Alt+Win+P", "script:autopunch", "Toggle Autopunch Mode (Control-Option-Command-P; here: auto-punch at the time selection)"],
+        ["1", 40454, "Recall Screenset 1 (here: REAPER's screenset 1)"],
+        ["2", 40455, "Recall Screenset 2 (here: REAPER's screenset 2)"],
+        ["3", 40456, "Recall Screenset 3 (here: REAPER's screenset 3)"],
+        ["4", 40457, "Recall Screenset 4 (here: REAPER's screenset 4)"],
+        ["5", 40458, "Recall Screenset 5 (here: REAPER's screenset 5)"],
+        ["6", 40459, "Recall Screenset 6 (here: REAPER's screenset 6)"],
+        ["7", 40460, "Recall Screenset 7 (here: REAPER's screenset 7)"],
+        ["8", 40461, "Recall Screenset 8 (here: REAPER's screenset 8)"],
+        ["9", 40462, "Recall Screenset 9 (here: REAPER's screenset 9)"]
       ],
       "midi_keys": [
         ["Alt+Up", "Edit: Move notes up one semitone", "Transpose Event +1 Semitone"],
@@ -441,7 +473,7 @@
         ["mouse", "MM_CTX_ITEMEDGE", 4, "Stretch item", "Option+drag a region border: the Resize tool becomes the Stretch tool"]
       ],
       "extras": [
-        ["Smart Controls: the track's plug-in chain (B).", 40291, "B"],
+        ["Smart Controls: the track's plug-in chain (Y).", 40291, "Y"],
         ["Live Loops: Helgobox's Playtime clip launcher.", "_HB_SHOW_HIDE_PLAYTIME", null],
         ["Step Sequencer: MPL's RS5k step sequencer.", "_RSa31e94c408150d20aad669ba609f01c4083975ae", null],
         ["Track Stacks: REAPER's folder tracks (Cmd+Shift+D moves the selected tracks into a new folder).", 42785, "Ctrl+Shift+D"],
@@ -496,10 +528,11 @@
         "ReAbleton.ReaperThemeZip",
         "Live.ReaperThemeZip"
       ],
-      "description": "Ableton Live 12 (Windows keys), Arrangement view. Space plays from the start marker and stops, Shift+Space continues, F9 records, Ctrl+E splits, Ctrl+J consolidates, O is the metronome, Ctrl+Alt+M the mixer, C arms, Ctrl+T adds a track, Ctrl+Shift+C captures MIDI. Session View is Helgobox's Playtime; racks are REAPER's FX containers.",
+      "description": "Ableton Live 12 (Windows keys), Arrangement view. Space plays from the start marker and stops, Shift+Space continues, F9 records, Ctrl+E splits, Ctrl+J consolidates, O is the metronome, Ctrl+Alt+M the mixer, C arms, Ctrl+T adds a track. Session View is Helgobox's Playtime; racks are REAPER's FX containers.",
       "docs": [
         "https://www.ableton.com/en/manual/live-keyboard-shortcuts/",
-        "https://www.ableton.com/en/manual/arrangement-view/"
+        "https://www.ableton.com/en/manual/arrangement-view/",
+        "https://www.ableton.com/en/manual/managing-files-and-sets/"
       ],
       "keys": [
         ["Space", 40044, "Play from Start Marker/Stop"],
@@ -540,7 +573,6 @@
         ["Shift+Tab", 40291, "Toggle Between Device/Clip View (here: the track's devices)"],
         ["Ctrl+Alt+3", 40153, "Hide/Show Clip View (here: the MIDI editor)"],
         ["Ctrl+Shift+M", 40214, "Insert MIDI clip"],
-        ["Ctrl+Shift+C", 40211, "Capture MIDI"],
         ["M", 40377, "Computer MIDI Keyboard (here: REAPER's virtual MIDI keyboard)"],
         ["Tab", "_HB_SHOW_HIDE_PLAYTIME", "Toggle Session/Arrangement View (here: Helgobox Playtime)"],
         ["Ctrl+G", 42785, "Group tracks"],
@@ -573,7 +605,9 @@
         ["F8", 78, "Activate/deactivate track 8"],
         ["Ctrl+Mousewheel", 990, "Zoom (Cmd+wheel on a Mac)"],
         ["Alt+Mousewheel", 1000, "Track height (Option+wheel on a Mac; REAPER sizes every track)"],
-        ["Shift+Mousewheel", 977, "Scroll left/right"]
+        ["Shift+Mousewheel", 977, "Scroll left/right"],
+        ["Ctrl+Alt+Z", 40072, "Undo History"],
+        ["A", 40926, "Toggle Automation Mode (here: show every track's active envelopes)"]
       ],
       "midi_keys": [
         ["Ctrl+A", "Edit: Select all events", "Select All Notes"],
@@ -619,7 +653,7 @@
       "extras": [
         ["Session View: Helgobox's Playtime clip launcher (scenes, clips, follow actions).", "_HB_SHOW_HIDE_PLAYTIME", null],
         ["Racks: REAPER's FX containers (FX browser > Container), with macro knobs mapped from parameters.", 40291, null],
-        ["Capture MIDI: REAPER keeps what you play while stopped or not recording (retroactive record): Ctrl+Shift+C puts it on the armed, selected tracks.", 40211, "Ctrl+Shift+C"],
+        ["Capture MIDI: REAPER keeps what you play while stopped or not recording (retroactive record). Live gives Capture MIDI no default key: the Ableton toolbar's Capture MIDI button puts it on the armed, selected tracks.", 40211, null],
         ["Device View: the track's FX chain (Shift+Tab); Clip View: the MIDI editor (Ctrl+Alt+3).", 40291, "Shift+Tab"],
         ["Warping: REAPER's stretch markers and item timebase.", null, null],
         ["Follow: auto-scroll during playback (Ctrl+Shift+F).", 40036, "Ctrl+Shift+F"],
@@ -702,7 +736,8 @@
       "description": "Image-Line FL Studio (Windows keys). Space starts and stops, Ctrl+Space pauses, R records, F6 channel rack (step sequencer), F7 piano roll, F8 plug-in picker, F9 mixer, Alt+F8 browser, Ctrl+B duplicates, Insert slices, Backspace toggles snap, Ctrl+M the metronome. In the piano roll right-click deletes notes. Patterns are pooled MIDI items.",
       "docs": [
         "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/basics_shortcuts.htm",
-        "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/playlist.htm"
+        "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/playlist.htm",
+        "https://www.image-line.com/fl-studio-learning/fl-studio-online-manual/html/pianoroll_menu.htm"
       ],
       "keys": [
         ["Space", 40044, "Start/Stop Playback"],
@@ -756,7 +791,8 @@
         ["Alt+Num*", 40173, "Next song marker"],
         ["Alt+Num/", 40172, "Previous song marker"],
         ["F12", "_S&M_WNCLS3", "Close all plug-in windows"],
-        ["Ctrl+Mousewheel", 990, "Zoom at the mouse"]
+        ["Ctrl+Mousewheel", 990, "Zoom at the mouse"],
+        ["Ctrl+P", "_SWS_AWCOUNTRECTOG", "Toggle recording metronome precount"]
       ],
       "midi_keys": [
         ["Ctrl+A", "Edit: Select all events", "Select All"],
@@ -776,7 +812,7 @@
         ["PgUp", "View: Zoom in horizontally", "Zoom in"],
         ["PgDn", "View: Zoom out horizontally", "Zoom out"],
         ["Ctrl+U", "Split notes on grid", "Quick chop"],
-        ["Ctrl+Alt+Q", "Quantize notes position to grid", "Quick quantize"]
+        ["Ctrl+Q", "Quantize notes position to grid", "Quick quantize"]
       ],
       "feel": [
         ["switch", 42735, 41646, "FL Studio toolbar in place of your main toolbar (REAPER toolbar 23; My REAPER switches yours back)"],
@@ -1098,7 +1134,11 @@
       "docs": [
         "https://pae-web.presonusmusic.com/downloads/products/pdf/Studio_One_Pro_7_Key_Command_Sheet.pdf",
         "https://fenderstudiopromanual.fender.com/en/Content/Editing_Topics/Arrange_View_Mouse_Tools.htm",
-        "https://fenderstudiopromanual.fender.com/en/Content/Editing_Topics/Navigating_With_Zoom.htm"
+        "https://fenderstudiopromanual.fender.com/en/Content/Editing_Topics/Navigating_With_Zoom.htm",
+        "https://fenderstudiopromanual.fender.com/en/Content/Automation_Topics/Automation_Modes.htm",
+        "https://fenderstudiopromanual.fender.com/en/Content/Recording_Topics/Activating_Recording.htm",
+        "https://fenderstudiopromanual.fender.com/en/Content/Fundamentals_Topics/Retrospective_Record.htm",
+        "https://fenderstudiopromanual.fender.com/en/Content/Editing_Topics/Note%20Editor.htm"
       ],
       "keys": [
         ["Space", 40044, "Play/Stop"],
@@ -1211,7 +1251,11 @@
         ["Mousewheel", 989, "Scroll vertically"],
         ["Shift+Mousewheel", 977, "Scroll horizontally"],
         ["Ctrl+Mousewheel", 1000, "Zoom vertically"],
-        ["Ctrl+Shift+Mousewheel", 990, "Zoom horizontally"]
+        ["Ctrl+Shift+Mousewheel", 990, "Zoom horizontally"],
+        ["J", 40401, "Read automation on the selected tracks"],
+        ["K", 40402, "Touch automation on the selected tracks"],
+        ["I", "script:autopunch", "Auto Punch (here: auto-punch at the time selection)"],
+        ["Shift+Num*", 40211, "Recall Retrospective Recording to the selected track"]
       ],
       "midi_keys": [
         ["Ctrl+A", "Edit: Select all events", "Select all notes in the focused Part"],
@@ -1223,7 +1267,8 @@
         ["Backspace", "Edit: Delete events", "Delete"],
         ["Ctrl+D", "Edit: Unselect all", "Deselect all"],
         ["Ctrl+I", "Invert selection", "Invert selection"],
-        ["G", "Edit: Join notes", "Merge notes"]
+        ["G", "Edit: Join notes", "Merge notes"],
+        ["Ctrl+Shift+A", "Edit: Select all events", "Select all notes in all Parts on the Track"]
       ],
       "feel": [
         ["switch", 42737, 41646, "Studio One toolbar in place of your main toolbar (REAPER toolbar 25; My REAPER switches yours back)"],
@@ -1540,7 +1585,12 @@
         ["Shift+J", 40527, "Reset all meters"],
         ["Alt+4", "_RSa31e94c408150d20aad669ba609f01c4083975ae", "Step sequencer"],
         ["Alt+Mousewheel", 990, "Fast Zoom (Cakewalk zooms both ways at once by default; here the timeline)"],
-        ["Ctrl+Alt+Mousewheel", 1000, "Track scale"]
+        ["Ctrl+Alt+Mousewheel", 1000, "Track scale"],
+        ["Ctrl+Shift+A", 40289, "Select None"],
+        ["Alt+Z", 40848, "View Undo (zoom)"],
+        ["Alt+Shift+Z", 40762, "View Redo (zoom)"],
+        ["F12", 40086, "Global Write Automation off (here: every track to Read)"],
+        ["Ctrl+F12", 40908, "Global Read Automation on/off (here: bypass all automation)"]
       ],
       "midi_keys": [
         ["Tab", "Navigate: Select next note", "Go to the next note"],
@@ -1799,7 +1849,7 @@
         ["Ctrl+K", "_SWS_SMARTREMOVE", "Delete (the selected range, else the clips)"],
         ["Delete", "_SWS_SMARTREMOVE", "Delete (the selected range, else the clips)"],
         ["Backspace", "_SWS_SMARTREMOVE", "Delete (the selected range, else the clips)"],
-        ["Ctrl+D", 41296, "Duplicate the selection"],
+        ["Ctrl+D", "script:duplicate to new track", "Duplicate (a new track holding only the selection)"],
         ["Ctrl+I", "_SWS_SMARTSPLIT2", "Split"],
         ["Ctrl+T", 40508, "Trim audio to the selection"],
         ["Ctrl+B", 40157, "Add label (marker) at the selection"],
@@ -1828,7 +1878,12 @@
         ["Shift+S", 7, "Solo/unsolo the track"],
         ["Mousewheel", 989, "Scroll the tracks"],
         ["Shift+Mousewheel", 977, "Scroll horizontally"],
-        ["Ctrl+Mousewheel", 990, "Zoom: up zooms in (Cmd on a Mac)"]
+        ["Ctrl+Mousewheel", 990, "Zoom: up zooms in (Cmd on a Mac)"],
+        ["Ctrl+L", "script:remove leaving a gap", "Silence Audio (here: removes it, leaving a gap)"],
+        ["Ctrl+Alt+K", "script:remove leaving a gap", "Delete and leave gap"],
+        ["Ctrl+Alt+X", "script:cut leaving a gap", "Cut and leave gap"],
+        ["Z", 41995, "At Zero Crossings (here: the edit cursor)"],
+        ["Ctrl+P", 40016, "Preferences"]
       ],
       "midi_keys": [],
       "feel": [

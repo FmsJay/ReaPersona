@@ -1,5 +1,13 @@
 # Changelog
 
+## 5.12.0
+Keys from a review of the DAW personas, each checked against the maker's own documentation (and cited in the persona's docs list):
+- **Fixed:** Live's Ctrl+Shift+C is Copy Time in Arrangement View, not Capture MIDI (Live gives Capture MIDI no default key; the Ableton toolbar's button still runs it), so ReaPersona no longer takes the key. Logic's B is now the Browser and Y Smart Controls, as Apple's current key list has them (its O and F browser keys are gone). FL Studio's piano roll Quick quantize is Ctrl+Q on Windows. Audacity's Ctrl+D makes a new track holding only the selection, as Audacity's Duplicate does.
+- **Pro Tools:** the Commands Keyboard Focus single keys A/S (trim clip start/end to the cursor), D/G (fades to and from the cursor), F (crossfade), B (separate), E (zoom toggle), P/; (previous/next track), L/' (previous/next edit), and keypad 1/2 rewind and fast forward.
+- **Logic Pro:** Forward (.), Cmd+U (loop to the selected regions), Undo History (Option-Cmd-Z), Play Surface (Cmd+K), New Audio / Software Instrument Track, screensets 1-9, and on a Mac all-tracks automation Read/Touch/Latch and Toggle Autopunch.
+- **Ableton Live:** Undo History (Ctrl+Alt+Z) and A, Toggle Automation Mode. **Studio One:** J/K read and touch automation, I Auto Punch, Shift+NumPad* recalls the retrospective recording, Ctrl+Shift+A in the note editor. **Cakewalk:** Select None, zoom undo/redo (Alt+Z, Alt+Shift+Z), F12 / Ctrl+F12 global automation write off and read on/off. **FL Studio:** Ctrl+P recording precount. **Audacity:** Silence (Ctrl+L), Delete and Cut leaving a gap (Ctrl+Alt+K, Ctrl+Alt+X), zero crossings (Z), Preferences (Ctrl+P).
+- New actions those keys run: *duplicate to new track*, *remove/cut leaving a gap* (ripple off for that one edit) and *autopunch* (time-selection auto-punch on and off). ReaPersona registers them the next time its window opens; install the shortcuts again (Home > Reinstall) to get the new keys.
+
 ## 5.11.4
 - An audio interface's recording latency offsets and buffer sizes stay each computer's own when REAPER's preferences sync (one computer's offset would shift every recording on another).
 
