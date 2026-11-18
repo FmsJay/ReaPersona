@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.26.0
+- **Make a persona from every tab.** *New persona* (Your personas) starts one; then *Use in my persona* wherever the part lives: on a DAW's page (everything, or just its shortcuts, mouse, mixer, transport and so on, or its theme), on Shortcuts (these keys), on any theme (Themes), for the colour look (Colours), and for any group of REAPER tweaks (Settings). What there's one of (a theme, a colour look, the mouse, a settings group) replaces the one in it. A bar at the top of every tab shows what's in it, with the name, *Save*, *Open in the Builder* and *Stop*. The Persona Builder is the same persona as blocks in order, each line to untick.
+- **Edit any persona the same way.** *Edit* on a persona's page opens it as the persona being made: one you built opens as its blocks and saves over itself; a saved setup opens with its colours; a DAW persona opens whole and saves as your own version, so the original stays.
+
 ## 5.25.0
 - **Set up everything no longer builds ReaPersona's own DAW themes.** That was the slow part, and the themes by other people look closer to the real DAWs. Building them (with Python and its image tools) is under Home > *Advanced: ReaPersona's own DAW themes*.
 - **Set up everything shows its progress.** Each step runs behind a small window with a progress bar, one at a time, so REAPER never looks frozen and you can see what's left.

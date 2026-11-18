@@ -1439,6 +1439,30 @@ function M.new_block(kind, a, b) -- every part on; a settings block starts as RE
   elseif kind == "colours" then return { kind = "colours", set = M.colours_now() or {} }
   elseif kind == "project" then return { kind = "project", srate = 0, tracks = "", tracks_name = "", wset = 0 } end
 end
+-- A persona being made from every tab (5.26; James: "blocks should maybe be split up into the main tabs and the things you choose in all of
+-- them are what makes the persona", and "everything from every persona should also be editable in the same way"). The tabs add blocks to one
+-- draft; what there can be only one of (a theme, a colour look, the persona's colour, a group of settings, the whole mouse) replaces the one
+-- already there, and adding a block that's already in moves it to the bottom (lower wins). -> the list, true when one was replaced (pure)
+local function same_block(a, b)
+  if a.kind ~= b.kind then return false end
+  if a.kind == "theme" or a.kind == "colour" or a.kind == "colours" or a.kind == "mouse" or a.kind == "project" then return true end
+  if a.kind == "settings" then return a.group == b.group end
+  if a.kind == "feel" then return a.id == b.id and a.aspect == b.aspect end
+  if a.kind == "daw" then return a.id == b.id and not a.keys == not b.keys and not a.feel == not b.feel and not a.theme == not b.theme and not a.mouse == not b.mouse end
+  return false
+end
+function M.draft_add(blocks, b)
+  local replaced = false
+  for i = #blocks, 1, -1 do if same_block(blocks[i], b) then table.remove(blocks, i); replaced = true end end
+  blocks[#blocks + 1] = b
+  return blocks, replaced
+end
+function M.blocks_of(st) -- a persona as blocks to edit: the Builder's own, or the persona whole (a saved setup with its colours)
+  if type(st.blocks) == "table" then return M.json_decode(M.json_encode(st.blocks)) end
+  local out = { M.new_block("daw", st.id) }
+  if st.preset and st.colours then out[2] = { kind = "colours", set = st.colours } end
+  return out
+end
 function M.block_title(b)
   local st = b.id and M.by_id(b.id)
   local name = st and st.name or tostring(b.id)

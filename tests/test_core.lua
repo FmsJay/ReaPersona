@@ -835,6 +835,36 @@ do
   reaper.NamedCommandLookup = nl
   ext["ReaPersona/style"], ext["ReaPersona/orig"] = nil, nil
 end
+-- 19. A persona made from every tab (5.26): one of a kind replaces, the same block again moves to the bottom, different ones stack, and
+-- any persona opens as blocks to edit.
+do
+  local list = {}
+  core.draft_add(list, core.new_block("theme", "A.ReaperThemeZip"))
+  core.draft_add(list, core.new_block("daw", "pro_tools"))
+  local _, rep = core.draft_add(list, core.new_block("theme", "B.ReaperThemeZip"))
+  assert(rep and #list == 2 and list[2].file == "B.ReaperThemeZip", "a second theme replaces the first, and goes to the bottom")
+  local keys = core.new_block("daw", "ableton"); keys.feel, keys.theme, keys.mouse = false, false, false
+  core.draft_add(list, keys)
+  core.draft_add(list, core.new_block("mouse", "logic"))
+  _, rep = core.draft_add(list, core.new_block("mouse", "bitwig"))
+  assert(rep and #list == 4 and list[4].id == "bitwig", "one mouse")
+  _, rep = core.draft_add(list, core.new_block("daw", "pro_tools"))
+  assert(rep and #list == 4 and list[4].kind == "daw" and list[4].id == "pro_tools", "the same block again moves to the bottom (lower wins)")
+  _, rep = core.draft_add(list, core.new_block("daw", "ableton"))
+  assert(not rep and #list == 5, "Ableton whole is not Ableton's shortcuts: both stay")
+  local g = core.SETTING_GROUPS[1].id
+  core.draft_add(list, core.new_block("settings", g)); _, rep = core.draft_add(list, core.new_block("settings", g))
+  assert(rep and #list == 6, "a settings group once")
+  -- editing: a built persona as its blocks (a copy), a DAW persona whole, a saved setup with its colours
+  local built = { blocks = { core.new_block("daw", "logic") }, name = "B" }
+  local bb = core.blocks_of(built)
+  bb[1].keys = false
+  assert(built.blocks[1].keys == true and #bb == 1, "a copy: editing doesn't change the saved persona until it's saved")
+  local d = core.blocks_of(core.by_id("pro_tools"))
+  assert(#d == 1 and d[1].kind == "daw" and d[1].id == "pro_tools" and d[1].keys and d[1].feel and d[1].theme and d[1].mouse)
+  local p = core.blocks_of({ id = "preset_x", preset = true, colours = { ["colour look"] = "{}" } })
+  assert(#p == 2 and p[1].id == "preset_x" and p[2].kind == "colours", "a saved setup keeps its colours")
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")
