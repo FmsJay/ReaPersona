@@ -1,8 +1,8 @@
 -- @noindex
 -- ReaPersona: a preview picture of each style, in previews/<id>.png. Opens the demo song (demo/ReaPersona demo.rpp, made by
--- make_demo.lua) in its own tab, uses each style in turn (theme, toolbar, transport, everything) with the mixer docked so its look
--- shows, hides other scripts' windows (StudioSync's) while it captures, then puts back the style, tab and windows you had.
--- Each style is on for about two seconds. Run it as an action (or through a dev hook); js_ReaScriptAPI captures the window.
+-- make_demo.lua) in its own tab, uses each style in turn (its recommended theme, toolbar, transport, mixer and browser, exactly as
+-- using it does), hides other scripts' windows and ReaPersona's while it captures, then puts back the style, tab and windows you had.
+-- Each style is on for about three seconds. Run it as an action (or through a dev hook); js_ReaScriptAPI captures the window.
 local here = debug.getinfo(1, "S").source:match("^@?(.*)[/\\]")
 local core = dofile(here .. "/reapersona_core.lua")
 local only = reaper.GetExtState("ReaPersona", "preview only") -- (a style id to retake just that one; "" = all)
@@ -83,10 +83,7 @@ local function step()
   if shots[i].kind == "theme" then ships = core.theme_for(shots[i]) end
   ships = ships or "Default_7.0.ReaperThemeZip"
   if reaper.file_exists(core.themes_dir .. ships) then reaper.OpenColorThemeFile(core.themes_dir .. ships) end
-  local docked = true -- (a style whose mixer is its own window shows its edit window instead: a floating mixer isn't in the capture)
-  for _, f in ipairs(shots[i].feel or {}) do if f[1] == "toggle" and f[2] == 40083 then docked = f[3] == 1 end end
-  if reaper.GetToggleCommandState(40078) ~= (docked and 1 or 0) then reaper.Main_OnCommand(40078, 0) end
-  if docked and reaper.GetToggleCommandState(40083) ~= 1 then reaper.Main_OnCommand(40083, 0) end
+  -- (the mixer, browser and transport are left exactly as the persona puts them: the picture is what using it looks like)
   reaper.Main_OnCommand(40295, 0)
   hide_others(true)
   at = reaper.time_precise()

@@ -361,7 +361,7 @@ end
 -- Which parts of a persona's feel you let personas change (Settings). All on by default, so each persona does what its DAW does
 -- (Pro Tools, FL Studio and Cubase keep the mixer in its own window); switch one off to keep your own way.
 M.ASPECTS = {
-  { "mixer_dock", "Dock or undock the mixer (Pro Tools, FL and Cubase keep theirs in its own window)", true, "Mixer docking" },
+  { "mixer_dock", "Show, hide, dock or undock the mixer as the DAW opens (most open on their edit window; Pro Tools, FL and Cubase keep the mixer in its own window)", true, "Mixer" },
   { "mixer_layout", "Mixer layout: master on the left or right, insert and send slots", true, "Mixer layout" },
   { "transport", "Where the transport sits", true, "Transport position" },
   { "browser", "Where the Media Explorer docks", true, "Media Explorer" },
@@ -390,6 +390,11 @@ local function apply_feel(st, windows_left)
   local list = {}
   windows_left = windows_left or {}
   local function save() reaper.SetExtState(M.SECTION, "orig", table.concat(list, ";;"), true) end -- (after every entry: a switch cut short can still be put back)
+  local moves = {}
+  for _, f in ipairs(st.feel or {}) do if f[1] == "dock" and M.aspect_on(M.aspect_of(f)) then moves[f[2]] = true end end
+  for w, line in pairs(windows_left) do -- (windows the last style moved and this one doesn't: put back first, so this style's mixer
+    if not moves[w] then window_back(line); windows_left[w] = nil end -- shown/hidden comes after, not under, the move back)
+  end
   for _, f in ipairs(st.feel or {}) do
     local ok, err = pcall(function()
     if not M.aspect_on(M.aspect_of(f)) then return end
@@ -401,12 +406,17 @@ local function apply_feel(st, windows_left)
       windows_left[f[2]] = nil
       move_window(f[2], { shown = f[4] == 1, docker = d, side = made })
     elseif f[1] == "toggle" then
-      local id = cmd_id(f[2])
-      local now = id ~= 0 and reaper.GetToggleCommandState(id) or -1
-      if now >= 0 then
-        list[#list + 1] = "t|" .. tostring(f[2]) .. "|" .. now
-        if now ~= f[3] then reaper.Main_OnCommand(id, 0) end
+      local function set()
+        local id = cmd_id(f[2])
+        local now = id ~= 0 and reaper.GetToggleCommandState(id) or -1
+        if now >= 0 then
+          list[#list + 1] = "t|" .. tostring(f[2]) .. "|" .. now
+          if now ~= f[3] then reaper.Main_OnCommand(id, 0) end
+        end
       end
+      -- (the mixer shown or docked waits behind window moves still going, such as the last persona's mixer being put back: run
+      -- now, the move would undo it, and what it was would be read mid-move)
+      if (f[2] == 40078 or f[2] == 40083) and busy then later(function() set(); save() end) else set() end
     elseif f[1] == "switch" then -- ["switch", command, command that undoes it, what]: no on/off state to read (main toolbar contents)
       local id = cmd_id(f[2])
       local slot = type(f[2]) == "number" and ((f[2] >= 42729 and f[2] <= 42744 and ("Floating toolbar " .. (f[2] - 42729 + 17)))
@@ -442,7 +452,7 @@ local function apply_feel(st, windows_left)
     if not ok then M.log("apply " .. tostring(st.id) .. " " .. tostring(f[1]) .. " " .. tostring(f[2]) .. ": " .. tostring(err)) end
     save()
   end
-  for _, line in pairs(windows_left) do window_back(line) end -- (windows the last style moved and this one doesn't: put back)
+  for _, line in pairs(windows_left) do window_back(line) end -- (one this style meant to move but couldn't, no docker for it: put back)
   save()
 end
 -- what a mouse entry is set to now matches the style? (for the picker's "not applied" warnings)

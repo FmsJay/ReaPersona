@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.18.1
+- **Each persona opens the way its DAW does.** Switching to a persona now also sets whether the mixer is showing, as that DAW opens: its edit window first, mixer closed, for Pro Tools (Ctrl+=), Logic (X), FL Studio (F9), Cubase and Nuendo (F3), Studio One (F3), Bitwig (M), Cakewalk (Alt+2), Ableton, GarageBand, Audacity and Audition; Base REAPER shows it docked at the bottom, as REAPER does. Reason's Main Mixer docks at the top when you open it (F5) instead of filling the window. Switching away puts your mixer back. (Settings > what personas may change > Mixer turns this off.)
+- **A persona's mixer setting no longer gets undone by the last persona's windows.** Leaving a persona that moved the mixer (Reason) put it back after the next persona had set it, so that one showed the mixer anyway and then hid yours when you switched back. The last persona's windows now go back first.
+- **Previews are exactly what a persona looks like.** The pictures no longer force the mixer open and docked (that made the tall mixers): each shows what using the persona gives, in its recommended theme. The README's pictures are made from the same ones.
+
 ## 5.18.0
 - **Each DAW persona's best look-alike theme is its default.** Picked from all 44 community themes ReaPersona knows by capturing each one: Pro Tools and Pro Tools Intro now recommend PRO TOOLS GOLD 2026 (was ProTools2020), Bitwig INQUASAR DARK MATTER (was Reapertips Purple), Reason Dark_Side_Imperial (was ReaPersona's own); Logic and GarageBand (I Logic V3 WC), Ableton Live (rLive), FL Studio (FL Studio Theme beta 4), Cubase and Nuendo (CubeXR) and Studio One (HYDRA) keep theirs. Switching to a persona still offers its look once, and a theme you picked yourself stays yours.
 - **The installer puts that look on too.** Setting up a new REAPER as a DAW now downloads the persona's recommended theme first (where there's a download for it), so the first start already looks like that DAW. If the download doesn't work, setup says so and carries on; the Themes page has it.
