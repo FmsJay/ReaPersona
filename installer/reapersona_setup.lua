@@ -123,7 +123,9 @@ end
 -- A new REAPER's first-start windows (the evaluation reminder, the audio device question or error, ReaPack's windows) block File: Quit:
 -- on a clean Linux the quit was refused, the install gave up and REAPER never restarted. So the restart waits for them to be answered
 -- (up to 20 minutes, then it tries anyway). Needs js_ReaScriptAPI's window search; without it, as before. (Linux VM, 5.17.2)
-local BLOCKERS = { { "About REAPER", false }, { "Error opening devices", true }, { "REAPER", true }, { "ReaPack Notice", true },
+-- (not a window titled just "REAPER": on Windows that's also the splash screen; the audio device question it would catch is modal, and no
+-- script runs until it's answered)
+local BLOCKERS = { { "About REAPER", false }, { "Error opening devices", true }, { "ReaPack Notice", true },
                    { "Notice", true }, { "Transaction report", true }, { "Manage repositories", true } }
 local function blocker()
   if not reaper.JS_Window_Find then return nil end
