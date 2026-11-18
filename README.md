@@ -4,7 +4,9 @@ ReaPersona makes REAPER fit you: the look you prefer, the way you work, or the D
 
 ![Switching personas](docs/demo.gif)
 
-![All the personas](docs/styles.png)
+![Personas with their closest look-alike themes](docs/styles.png)
+
+*Each persona shown with the closest community look-alike theme for that DAW, to show what's possible: PRO TOOLS GOLD 2026, I Logic V3 WC, rLive, FL Studio Theme (beta 4), CubeXR, HYDRA, INQUASAR DARK MATTER and Dark_Side_Imperial. These themes are by their own authors and installed separately; without them, each persona uses a theme ReaPersona builds or REAPER's own.*
 
 A **persona** is everything REAPER feels like: shortcuts, theme, layout, mouse behaviour and REAPER's own options. ReaPersona ships one per DAW, and you can make your own.
 
