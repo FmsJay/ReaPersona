@@ -90,7 +90,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
 
 ## On a Mac
 
-REAPER treats Ctrl as Cmd, so the personas should work unchanged, and keys show as Cmd and Option. Keys that differ on a Mac (Pro Tools' Option+Return, Logic's Control-key commands, Option-drag to copy in Ableton, Bitwig and Reason) are stored separately. Theme building and the shortcut install use `python3`. Smooth Wheel Scroll's bundled build is Windows-only; see its own page for macOS. Not yet tested on a Mac: reports welcome.
+REAPER treats Ctrl as Cmd, so the personas should work unchanged, and keys show as Cmd and Option. Keys that differ on a Mac (Pro Tools' Option+Return, Logic's Control-key commands, Option-drag to copy in Ableton, Bitwig and Reason) are stored separately. Theme building needs `python3`; the shortcut install uses it when it's there and a shell script when it isn't. Smooth Wheel Scroll's bundled build is Windows-only; see its own page for macOS. Tested on an Apple-silicon Mac (macOS, REAPER 7.86): personas, sync with Windows computers, and the shortcut install both ways.
 
 ## Install
 
