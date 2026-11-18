@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.21.1
+- **A look saved on one computer reaches the others.** A computer that had never saved a look sent an empty one, stamped newer than the look you'd just saved elsewhere, so it won. An unsaved look isn't sent now, and *Forget* is sent as a change, so your other computers forget it too.
+
 ## 5.21.0
 - **Your look on every computer.** My REAPER was whatever each computer had, so a Mac kept REAPER's Default 7 theme and the transport under the arrange view while your PCs had Reapertips and the transport above the ruler. On My REAPER's page, *Use this look on all my computers* keeps this computer's theme, transport place, mixer (docked or not, showing or not, master side, inserts and sends), docked windows, snap, ripple, auto-scroll and mouse drags as your look. It syncs through your sync folder and goes in exported setup files like any setting, and My REAPER uses it on every computer as that computer's own setup: every persona sits on top of it and leaving one comes back to it. A look that comes in while you're on My REAPER is used straight away. Its theme is used where that computer has the file (Themes sync brings it), and mouse drags marked for the other system are skipped. Press it again after you change your look; *Forget* makes My REAPER each computer's own again.
 

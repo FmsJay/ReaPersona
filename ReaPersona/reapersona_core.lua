@@ -691,7 +691,7 @@ function M.save_my_look() -- -> the look, or nil + why. Only from My REAPER: a p
   reaper.SetExtState(M.SECTION, M.LOOK_KEY, (M.json_encode(look):gsub("\r?\n%s*", "")), true) -- (one line: REAPER keeps only the first across restarts)
   return look
 end
-function M.forget_my_look() reaper.DeleteExtState(M.SECTION, M.LOOK_KEY, true) end
+function M.forget_my_look() reaper.SetExtState(M.SECTION, M.LOOK_KEY, "{}", true) end -- (not deleted: "{}" is a change, so your other computers forget it too)
 function M.look_label(look) -- "Reapertips Theme, transport at the top of the main window, mixer docked bottom, from JAMES-MAIN on ..." (pure)
   if not look then return nil end
   local bits = { look.theme and (look.theme:gsub("%.ReaperTheme%a*$", "")) or "your theme" }
@@ -3381,7 +3381,11 @@ function M.setup_items() -- -> everything of yours as items; the kinds whose fil
   local ini, keys = M.read(res .. "/reaper-extstate.ini") or "", {}
   for _, k in ipairs(M.extstate_keys(ini, M.SECTION)) do keys[k] = true end
   for _, k in ipairs(extstate_names()) do keys[k] = true end -- (some may not be in the file yet: REAPER writes it later)
-  for k in pairs(keys) do if M.synced_setting(k) then items["setting " .. k] = reaper.GetExtState(M.SECTION, k) end end
+  for k in pairs(keys) do
+    local v = reaper.GetExtState(M.SECTION, k)
+    -- (a look never saved here isn't a change: sent as "", it was newer than the look another computer saved, and won. 5.21.1)
+    if M.synced_setting(k) and not (k == M.LOOK_KEY and v == "") then items["setting " .. k] = v end
+  end
   for _, x in ipairs(M.EXT_SETTINGS) do
     for _, k in ipairs(M.extstate_keys(ini, x.section)) do
       if not x.here[k] then items["ext " .. x.section .. "|" .. k] = reaper.GetExtState(x.section, k) end

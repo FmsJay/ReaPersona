@@ -736,8 +736,11 @@ do
   states[1157] = 0
   local rep = assert(core.import_setup({ reapersona_setup = 1, items = { ["setting my look"] = { t = 1, v = ext["ReaPersona/my look"] } } }))
   assert(rep.look and states[1157] == 1, "a look that comes in is used at once on My REAPER")
+  assert(core.setup_items()["setting my look"], "a saved look syncs")
   core.forget_my_look()
-  assert(core.my_look() == nil)
+  assert(core.my_look() == nil and core.setup_items()["setting my look"] == "{}", "forgetting it is a change your other computers take")
+  ext["ReaPersona/my look"] = nil
+  assert(core.setup_items()["setting my look"] == nil, "a look never saved here isn't sent (it would win over the one you saved elsewhere)")
   reaper.GetToggleCommandState, reaper.Main_OnCommand, reaper.GetLastColorThemeFile = gt, mo, lt
   ext["ReaPersona/style"], ext["ReaPersona/theme my_reaper"], ext["ReaPersona/orig"] = nil, nil, nil
 end
