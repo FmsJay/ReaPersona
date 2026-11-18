@@ -390,18 +390,19 @@ function M.aspect_of(f)
   end
   return "settings"
 end
-local function apply_feel(st, windows_left)
+local function apply_feel(st, windows_left, as_base) -- (as_base: your own look under every persona, so nothing kept to put back)
   local list = {}
   windows_left = windows_left or {}
-  local function save() reaper.SetExtState(M.SECTION, "orig", table.concat(list, ";;"), true) end -- (after every entry: a switch cut short can still be put back)
+  local function save() if not as_base then reaper.SetExtState(M.SECTION, "orig", table.concat(list, ";;"), true) end end -- (after every entry: a switch cut short can still be put back)
   local moves = {}
-  for _, f in ipairs(st.feel or {}) do if f[1] == "dock" and M.aspect_on(M.aspect_of(f)) then moves[f[2]] = true end end
+  local function wanted(f) return as_base or M.aspect_on(M.aspect_of(f)) end -- (the aspect switches are about personas, not your look)
+  for _, f in ipairs(st.feel or {}) do if f[1] == "dock" and wanted(f) then moves[f[2]] = true end end
   for w, line in pairs(windows_left) do -- (windows the last style moved and this one doesn't: put back first, so this style's mixer
     if not moves[w] then window_back(line); windows_left[w] = nil end -- shown/hidden comes after, not under, the move back)
   end
   for _, f in ipairs(st.feel or {}) do
     local ok, err = pcall(function()
-    if not M.aspect_on(M.aspect_of(f)) then return end
+    if not wanted(f) then return end
     if f[1] == "dock" and WINDOWS[f[2]] and reaper.JS_Window_OnCommand then
       local d, made = f[3] ~= "float" and docker_at(f[3]) or nil, nil
       if f[3] ~= "float" and not d then d = spare_docker(f[3]); made = d and f[3] end -- (no docker on that side yet: one is set up)
@@ -668,6 +669,37 @@ function M.save_first_setup() -- -> the preset made, or nil when the setup is RE
   reaper.SetExtState(M.SECTION, "first setup", st.id, true)
   return st
 end
+-- Your look on every computer (5.21; James: "on mac the my reaper persona doesn't get my transport at the top and other things I've
+-- changed in my default look ... import the same look and settings everything across devices"). My REAPER is whatever each computer
+-- had, so one computer's look is kept as ExtState "my look" (one line of JSON: theme, and feel_now's layout, mixer, transport, snap and
+-- mouse settings), which syncs and travels in setup files like any setting. Using My REAPER applies it as your own setup: not kept to
+-- put back, so every persona sits on it and leaving one comes back to it.
+M.LOOK_KEY = "my look"
+function M.my_look() -- -> { theme, feel, from, saved } or nil (from a file or another computer: only what a persona could set)
+  local ok, d = pcall(M.json_decode, reaper.GetExtState(M.SECTION, M.LOOK_KEY))
+  if not ok or type(d) ~= "table" or type(d.feel) ~= "table" then return nil end
+  return { theme = type(d.theme) == "string" and d.theme:match("[^/\\]+$") or nil, feel = M.safe_feel(d.feel),
+           from = type(d.from) == "string" and d.from:gsub("%c", " ") or nil, saved = type(d.saved) == "string" and d.saved:gsub("%c", " ") or nil }
+end
+function M.save_my_look() -- -> the look, or nil + why. Only from My REAPER: a persona's settings aren't your look
+  if (M.current() or {}).id ~= "my_reaper" then return nil, "switch to My REAPER first: your look is what you have there" end
+  local feel = {}
+  for _, f in ipairs(feel_now(M.by_id("my_reaper") or M.styles[1])) do
+    if f[1] ~= "switch" and not (f[1] == "mouse" and (f[4] or "") == "") then feel[#feel + 1] = f end -- (a mouse context left at REAPER's default: each computer's own)
+  end
+  local look = { theme = M.loaded_theme(), feel = feel, from = M.computer(), saved = os.date("%Y-%m-%d %H:%M") }
+  reaper.SetExtState(M.SECTION, M.LOOK_KEY, (M.json_encode(look):gsub("\r?\n%s*", "")), true) -- (one line: REAPER keeps only the first across restarts)
+  return look
+end
+function M.forget_my_look() reaper.DeleteExtState(M.SECTION, M.LOOK_KEY, true) end
+function M.look_label(look) -- "Reapertips Theme, transport at the top of the main window, mixer docked bottom, from JAMES-MAIN on ..." (pure)
+  if not look then return nil end
+  local bits = { look.theme and (look.theme:gsub("%.ReaperTheme%a*$", "")) or "your theme" }
+  for _, f in ipairs(look.feel or {}) do
+    if f[1] == "radio" or f[1] == "dock" then bits[#bits + 1] = tostring(f[#f]) end
+  end
+  return table.concat(bits, ", ") .. " (" .. #(look.feel or {}) .. " settings" .. (look.from and (", from " .. look.from) or "") .. (look.saved and (", " .. look.saved) or "") .. ")"
+end
 -- Mix and match: one style's keys (its shortcut layer and MIDI keys), another style's layout, toolbar and feel, any theme. -> the profile
 function M.save_mix(name, keys_id, feel_id, theme)
   local list = load_presets()
@@ -746,6 +778,14 @@ function M.use(st)
   end
   restore_feel(left)
   if back then reaper.SelectProjectInstance(back) end
+  local look = st.id == "my_reaper" and M.my_look()
+  if look then -- (your look from wherever you saved it, as this computer's own setup; its theme when this computer has it)
+    apply_feel({ id = "my look", feel = look.feel }, left, true)
+    if look.theme and reaper.file_exists(M.themes_dir .. look.theme) then
+      reaper.SetExtState(M.SECTION, "theme my_reaper", look.theme, true)
+      reaper.SetExtState(M.SECTION, "theme path my_reaper", "", true)
+    end
+  end
   M.last_project_setup = M.apply_project(st) -- (a workflow's project first: a template loaded after the feel replaced its per-project options)
   apply_feel(st, left)
   if st.project and #M.last_project_setup == 0 and (tonumber(st.project.srate) or 0) + #(st.project.tracks or "") + #(st.project.template or "") > 0 and not M.fresh_project(0) then
@@ -2676,7 +2716,7 @@ function M.extstate_keys(text, section) -- the keys reaper-extstate.ini's text k
 end
 local function extstate_names() -- every key this version sets: some may not be in reaper-extstate.ini yet (REAPER writes it later)
   local t = { "style", "orig", "orig project", "view", "look", "migrated", "page", "welcomed", "text size", "all actions", "follow projects",
-    "follow beat", "project default", "midi dock", "workflow", "search", "theme my_reaper", "theme path my_reaper", "sync folder", "sync id", "sync last", "sync file" }
+    "follow beat", "project default", "midi dock", "workflow", "search", "theme my_reaper", "theme path my_reaper", "sync folder", "sync id", "sync last", "sync file", M.LOOK_KEY }
   for _, list in ipairs({ M.styles, M.presets }) do
     for _, st in ipairs(list) do for _, k in ipairs({ "theme ", "forks ", "declined theme " }) do t[#t + 1] = k .. st.id end end
   end
@@ -3447,6 +3487,7 @@ local function apply_items(list)
     if k == "setting" then reaper.SetExtState(M.SECTION, rest, a.v or "", true); rep.settings = rep.settings + 1
       if rest == "follow projects" and a.v == "1" then M.start_following() end
       if rest == "sync advanced" then M.repos_changed = true end
+      if rest == M.LOOK_KEY then rep.look = true end
     elseif k == "ext" then
       local sec, key = rest:match("^([^|]+)|(.+)$")
       if sec then reaper.SetExtState(sec, key, a.v or "", true); rep.ext = rep.ext + 1 end
@@ -3483,6 +3524,7 @@ local function apply_items(list)
   files("recipe", M.here .. "/user_themes.json", nil, "recipes")
   if rep.personas + rep.presets + rep.recipes > 0 then M.reload_users() end
   if M.repos_changed and reaper.ReaPack_ProcessQueue then M.repos_changed = nil; reaper.ReaPack_ProcessQueue(true) end -- (repositories kept)
+  if rep.look and (M.current() or {}).id == "my_reaper" then M.use(M.current()) end -- (your look came in while you're on it: shown now; otherwise next time)
   return rep
 end
 function M.setup_summary(rep) -- "2 personas, 5 settings and Smooth Wheel Scroll's settings" (pure)

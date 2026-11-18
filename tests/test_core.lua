@@ -692,6 +692,55 @@ do
   table.remove(core.styles)
   ext["ReaPersona/colour look"] = nil
 end
+-- 15. Your look on every computer (5.21): saved on My REAPER only, one line, applied by My REAPER as your own setup (nothing kept to put
+-- back, so a persona's switch comes back to it), checked when it comes from elsewhere, and taken in from a setup file while you're on it.
+do
+  local TRANSPORT = { 41603, 41604, 41605, 41606, 41608 }
+  local states = { [41606] = 1, [40083] = 1, [40078] = 1, [1157] = 0 }
+  local gt, mo, lt = reaper.GetToggleCommandState, reaper.Main_OnCommand, reaper.GetLastColorThemeFile
+  reaper.GetToggleCommandState = function(id) return states[id] or 0 end
+  reaper.Main_OnCommand = function(id)
+    for _, c in ipairs(TRANSPORT) do if c == id then for _, o in ipairs(TRANSPORT) do states[o] = 0 end; states[id] = 1; return end end
+    states[id] = (states[id] == 1) and 0 or 1
+  end
+  os.execute(win and ('mkdir "' .. (tmp .. "/ColorThemes"):gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. tmp .. "/ColorThemes'"))
+  write(tmp .. "/ColorThemes/Reapertips Theme.ReaperThemeZip", "zip")
+  reaper.GetLastColorThemeFile = function() return tmp .. "/ColorThemes/Reapertips Theme.ReaperTheme" end
+  ext["ReaPersona/style"] = "base_reaper"
+  local none, why = core.save_my_look()
+  assert(not none and why:find("My REAPER", 1, true), "a persona's settings aren't your look")
+  ext["ReaPersona/style"] = "my_reaper"
+  local look = assert(core.save_my_look())
+  assert(not ext["ReaPersona/my look"]:find("\n", 1, true), "one line, so REAPER keeps all of it across a restart")
+  local back = core.my_look()
+  assert(back.theme == "Reapertips Theme.ReaperThemeZip" and #back.feel == #look.feel and core.look_label(back):find("Reapertips Theme", 1, true))
+  local top = false
+  for _, f in ipairs(back.feel) do if f[1] == "radio" and f[3] == 41606 then top = true end end
+  assert(top, "the transport's place is in it")
+  -- another computer: transport under the arrange view, its own theme. My REAPER gives it your look, as its own setup
+  states = { [41603] = 1, [40083] = 0, [40078] = 0, [1157] = 1 }
+  ext["ReaPersona/theme my_reaper"] = "Default_7.0.ReaperThemeZip"
+  ext["ReaPersona/orig"] = ""
+  core.use(core.by_id("my_reaper"))
+  assert(states[41606] == 1 and states[41603] == 0 and states[40083] == 1 and states[40078] == 1 and states[1157] == 0, "your transport, mixer and snap")
+  assert(ext["ReaPersona/theme my_reaper"] == "Reapertips Theme.ReaperThemeZip" and ext["ReaPersona/orig"] == "", "your theme, and nothing kept to put back")
+  core.use(core.by_id("base_reaper")) -- (Base REAPER puts the transport under the arrange view...)
+  assert(states[41603] == 1)
+  core.use(core.by_id("my_reaper")) -- (...and leaving it comes back to your look)
+  assert(states[41606] == 1 and states[41603] == 0, "back to your look")
+  -- from a file or another computer: only what a persona could set, a theme by its file name
+  ext["ReaPersona/my look"] = core.json_encode({ theme = "../../evil.ReaperThemeZip", feel = { { "toggle", 99999, 1, "x" }, { "toggle", 1157, 1, "snap" } } }):gsub("\n%s*", "")
+  local bad = core.my_look()
+  assert(bad.theme == "evil.ReaperThemeZip" and #bad.feel == 1 and bad.feel[1][2] == 1157, "an unknown command is dropped")
+  -- a setup file brings it in while you're on My REAPER: used straight away
+  states[1157] = 0
+  local rep = assert(core.import_setup({ reapersona_setup = 1, items = { ["setting my look"] = { t = 1, v = ext["ReaPersona/my look"] } } }))
+  assert(rep.look and states[1157] == 1, "a look that comes in is used at once on My REAPER")
+  core.forget_my_look()
+  assert(core.my_look() == nil)
+  reaper.GetToggleCommandState, reaper.Main_OnCommand, reaper.GetLastColorThemeFile = gt, mo, lt
+  ext["ReaPersona/style"], ext["ReaPersona/theme my_reaper"], ext["ReaPersona/orig"] = nil, nil, nil
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")

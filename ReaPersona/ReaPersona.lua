@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.20.1
+-- @version 5.21.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -547,6 +547,22 @@ local function detail(sel, alt)
     ImGui.SameLine(ctx)
     if ImGui.Button(ctx, "Cheat sheet") then local p, why = core.cheat_sheet(sel); if p then core.open_url(p) else say(why) end end
     ImGui.SetItemTooltip(ctx, "Every key, setting and feature of this persona on one page, laid out for printing.")
+    if sel.id == "my_reaper" then -- (your look on every computer, 5.21)
+      ImGui.SameLine(ctx)
+      ImGui.BeginDisabled(ctx, not on)
+      if ImGui.Button(ctx, "Use this look on all my computers") then
+        local look, why = core.save_my_look()
+        say(look and ("Saved: " .. core.look_label(look) .. ". Your other computers take it at their next sync (or in a setup file you export).") or why)
+      end
+      ImGui.EndDisabled(ctx)
+      ImGui.SetItemTooltip(ctx, "Keeps this computer's theme, transport and mixer places, docked windows, snap, ripple and mouse drags as your look. My REAPER uses it on every computer you sync with, and every persona goes back to it. Press it again after you change your look.")
+      local look = core.my_look()
+      if look then
+        muted("Your look: " .. core.look_label(look))
+        ImGui.SameLine(ctx)
+        if ImGui.SmallButton(ctx, "Forget##look") then core.forget_my_look(); say("My REAPER is each computer's own setup again.") end
+      end
+    end
     local tpl = here .. "/templates/" .. (sel.preset and sel.base or sel.id) .. ".RPP"
     if reaper.file_exists(tpl) then
       ImGui.SameLine(ctx)

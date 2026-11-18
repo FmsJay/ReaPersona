@@ -34,7 +34,7 @@ A **persona** is everything REAPER feels like: shortcuts, theme, layout, mouse b
 - **Where things are.** Each persona lists the DAW's features with the REAPER equivalent and an Open button: Pro Tools playlists, Logic Track Stacks, Live's Session View, FL patterns, Cubase's Pool, Reason's Rack, and so on.
 - **More of that DAW.** Each persona suggests other people's tools that bring more of it (Playtime, SideFX, ReaDrum Machine, Reaticulate, Lil Chordbox, the Reason Rack Plugin...) with a *Get it* button that opens ReaPack at the package, and links to keymaps others have made.
 
-Switching away puts back everything a persona changed, so **My REAPER** is always exactly your setup. **Base REAPER** is REAPER 7.85's factory keys and settings, with tips.
+Switching away puts back everything a persona changed, so **My REAPER** is always exactly your setup. *Use this look on all my computers* (on My REAPER's page) makes that setup the same everywhere: your theme, transport and mixer places, docked windows, snap and mouse drags, carried by sync or a setup file. **Base REAPER** is REAPER 7.85's factory keys and settings, with tips.
 
 ## Setup, in one place
 
