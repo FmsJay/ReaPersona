@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.19.0
+-- @version 5.20.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -1952,6 +1952,7 @@ local function bld_palette()
   ImGui.SetItemTooltip(ctx, "The persona's colour in ReaPersona: its card, buttons and badge.")
   flow_first = false
   chip("This colour", function() return core.new_block("colour", string.format("#%06X", bld.colour)) end)
+  chip("Colours", function() return core.new_block("colours") end, "The colour look in use now (Themes > Colours): how tracks, items and regions are coloured, and your instrument, folder and section colours. Switching to the persona brings it back; as a workflow, its new projects are coloured in it.")
 end
 local function entry_line(e, blocks, b)
   local ch, v = ImGui.Checkbox(ctx, "##on" .. e.slot, not e.off)

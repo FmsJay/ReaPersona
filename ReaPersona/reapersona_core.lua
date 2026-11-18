@@ -341,6 +341,9 @@ local function restore_feel(windows_left) -- (windows_left: a window's original 
     elseif kind == "s" then -- (a one-way switch: run its way back)
       local id = cmd_id(tonumber(a) or a)
       if id ~= 0 then reaper.Main_OnCommand(id, 0) end
+    elseif kind == "x" and M.COLOUR_KEY[a] then -- (a colour setting the persona brought: yours back)
+      local was = b:gsub("%x%x", function(h) return string.char(tonumber(h, 16)) end)
+      if was == "" then reaper.DeleteExtState(M.SECTION, a, true) else reaper.SetExtState(M.SECTION, a, was, true) end
     elseif kind == "e" then -- (the MIDI editor's docking)
       M.want_midi_dock(a == "1")
     elseif kind == "c" then -- (a choice: its "set" action, run)
@@ -453,6 +456,15 @@ local function apply_feel(st, windows_left)
     save()
   end
   for _, line in pairs(windows_left) do window_back(line) end -- (one this style meant to move but couldn't, no docker for it: put back)
+  if st.colours then -- (its colour look becomes yours while it's in use)
+    for _, k in ipairs(M.COLOUR_KEYS) do
+      local v = st.colours[k]
+      if v then
+        list[#list + 1] = "x|" .. k .. "|" .. (reaper.GetExtState(M.SECTION, k):gsub(".", function(ch) return string.format("%02x", ch:byte()) end))
+        reaper.SetExtState(M.SECTION, k, v, true)
+      end
+    end
+  end
   save()
 end
 -- what a mouse entry is set to now matches the style? (for the picker's "not applied" warnings)
@@ -466,6 +478,45 @@ local EXTRA_TOGGLES = { 40389, 40549, 40557, 40036 } -- (mixer master on the rig
 local function action_name(id)
   local s = reaper.CF_GetCommandText and reaper.CF_GetCommandText(0, id)
   return ((type(s) == "string" and s or ""):gsub("^[^:]+: ", ""))
+end
+-- ---------------------------------------------------------------- colours with a persona (5.20)
+-- The colour look Themes > Colours keeps (colours.lua): each one ExtState text, JSON. A persona, preset or workflow can carry them
+-- (st.colours = { [key] = text }): switching to it makes them your current look (put back when you switch away), and a project its
+-- workflow sets up gets its tracks and regions coloured in it.
+M.COLOUR_KEYS = { "colour look", "colour kinds", "colour folders", "colour sections", "colour itemkinds" }
+local COLOUR_KEY = {}
+for _, k in ipairs(M.COLOUR_KEYS) do COLOUR_KEY[k] = true end
+M.COLOUR_KEY = COLOUR_KEY -- (restore_feel, above, reads it through M)
+function M.colours_now() -- -> the colour set in use here, or nil when no look has been picked yet
+  if reaper.GetExtState(M.SECTION, "colour look") == "" then return nil end
+  local set = {}
+  for _, k in ipairs(M.COLOUR_KEYS) do local v = reaper.GetExtState(M.SECTION, k); if v ~= "" then set[k] = v end end
+  return set
+end
+function M.safe_colours(c) -- a colour set from a file or another computer: only its known keys, each JSON text of an object (pure)
+  if type(c) ~= "table" then return nil end
+  local out, any = {}, false
+  for k, v in pairs(c) do
+    if type(v) == "string" then v = v:gsub("\r?\n%s*", "") end -- (one line, as ExtState keeps it)
+    if COLOUR_KEY[k] and type(v) == "string" and #v < 20000 and not v:find("%c") then
+      local ok, d = pcall(M.json_decode, v)
+      if ok and type(d) == "table" then out[k] = v; any = true end
+    end
+  end
+  return any and out or nil
+end
+function M.colours_label(c) -- "Colours: Gradient in Sunset" (pure)
+  local ok, look = pcall(M.json_decode, type(c) == "table" and c["colour look"] or "")
+  if not (ok and type(look) == "table") then return "Colours" end
+  local names = { gradient = "Gradient", folders = "By folder", instrument = "By instrument", stripes = "Stripes", rainbow = "Rainbow", confetti = "Confetti" }
+  local s = names[look.scheme] or tostring(look.scheme or "?")
+  local uses = look.scheme == "gradient" or look.scheme == "folders" or look.scheme == "stripes"
+  return "Colours: " .. s .. (uses and look.palette and (" in " .. tostring(look.palette)) or "")
+end
+local colours_mod
+function M.colours() -- the colour module (colours.lua), loaded once
+  if not colours_mod then colours_mod = assert(loadfile(M.here .. "/colours.lua"))(M) end
+  return colours_mod
 end
 function M.preset_style(p)
   local base = M.by_id(p.base) or M.styles[1]
@@ -482,6 +533,8 @@ function M.preset_style(p)
       "'s layout, toolbar and feel, and the theme " .. tostring(p.theme) .. "."
   end
   st.extras, st.tips, st.description_base = base.extras, base.tips, base.description
+  st.colours = M.safe_colours(p.colours)
+  if st.colours then st.description = st.description .. " " .. M.colours_label(st.colours) .. "." end
   if type(p.project) == "table" then -- (a workflow: a new project's sample rate and starter tracks, or a whole project template)
     st.project = { srate = tonumber(p.project.srate) or 0, tracks = type(p.project.tracks) == "string" and p.project.tracks or "",
       tracks_name = tostring(p.project.tracks_name or ""), wset = tonumber(p.project.wset) or 0,
@@ -563,7 +616,7 @@ function M.save_preset(name, with_project) -- -> the new preset (as a style). wi
   local feel = feel_now(base)
   local list = load_presets()
   local p = { id = M.new_id("preset_"), name = name, base = base.id, saved = os.date("%Y-%m-%d"), feel = feel,
-              theme = M.loaded_theme() or M.theme_for(base), project = with_project and M.project_now(true) or nil }
+              theme = M.loaded_theme() or M.theme_for(base), project = with_project and M.project_now(true) or nil, colours = M.colours_now() }
   list[#list + 1] = p
   local ok, why = M.save_json(PRESETS, { presets = list })
   if not ok then return nil, why end
@@ -635,6 +688,7 @@ function M.import_preset(d)
   if p.feel_from ~= nil and not (type(p.feel_from) == "string" and M.by_id(p.feel_from)) then return nil, "its layout comes from a persona that isn't here" end
   if p.theme ~= nil then p.theme = type(p.theme) == "string" and p.theme:match("[^/\\]+$") or nil end -- (a file name in ColorThemes, nothing more)
   p.feel = p.feel and M.safe_feel(p.feel)
+  p.colours = M.safe_colours(p.colours)
   local list = load_presets()
   p.id = M.new_id(p.feel_from and "mix_" or "preset_")
   list[#list + 1] = p
@@ -1249,6 +1303,7 @@ function M.new_block(kind, a, b) -- every part on; a settings block starts as RE
     return { kind = "settings", group = a, values = values }
   elseif kind == "theme" then return { kind = "theme", file = a }
   elseif kind == "colour" then return { kind = "colour", hex = a }
+  elseif kind == "colours" then return { kind = "colours", set = M.colours_now() or {} }
   elseif kind == "project" then return { kind = "project", srate = 0, tracks = "", tracks_name = "", wset = 0 } end
 end
 function M.block_title(b)
@@ -1260,6 +1315,7 @@ function M.block_title(b)
   elseif b.kind == "settings" then return (group_by_id(b.group) or { name = tostring(b.group) }).name
   elseif b.kind == "theme" then return "Theme: " .. tostring(b.file):gsub("%.ReaperTheme%a*$", "")
   elseif b.kind == "colour" then return "Colour " .. tostring(b.hex)
+  elseif b.kind == "colours" then return M.colours_label(b.set)
   elseif b.kind == "project" then return "Project" .. ((b.name or "") ~= "" and (": " .. b.name) or "") end
   return "?"
 end
@@ -1319,6 +1375,8 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
     end
   elseif b.kind == "theme" and b.file then out[1] = { slot = "theme", kind = "theme", label = b.file, value = b.file }
   elseif b.kind == "colour" and b.hex then out[1] = { slot = "accent", kind = "accent", label = "Colour " .. b.hex, value = b.hex }
+  elseif b.kind == "colours" and M.safe_colours(b.set) then
+    out[1] = { slot = "colours", kind = "colours", label = M.colours_label(b.set) .. " (tracks, items and regions)", value = M.safe_colours(b.set) }
   elseif b.kind == "project" then
     for _, e in ipairs(M.project_entries(b)) do out[#out + 1] = e end
   end
@@ -1352,6 +1410,7 @@ function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true
         elseif e.kind == "feel" then st.feel[#st.feel + 1] = copy(e.entry)
         elseif e.kind == "theme" then st.theme = e.value
         elseif e.kind == "accent" then st.accent = e.value
+        elseif e.kind == "colours" then st.colours = e.value
         elseif e.kind == "project" then st.project = st.project or {}; for k, v in pairs(e.value) do st.project[k] = v end end
       end
     end
@@ -1594,6 +1653,10 @@ function M.apply_project(st) -- the persona's project part, in the project in fr
   end
   local w = tonumber(p.wset) or 0
   if w >= 1 and w <= 10 then reaper.Main_OnCommand(M.WSET_LOAD + w - 1, 0); done[#done + 1] = "window set #" .. w end
+  if st.colours and st.colours["colour look"] and #done > 0 and reaper.CountTracks(0) > 0 then -- (the tracks it brought, in its colours)
+    local ok, n = pcall(function() return M.colours().colour_project(0, st.colours) end)
+    if ok and n and n > 0 then done[#done + 1] = M.colours_label(st.colours):lower() elseif not ok then M.log("colouring the new project: " .. tostring(n)) end
+  end
   return done
 end
 -- Starter workflows for the Builder: a project block and settings blocks, each set the way that kind of session usually wants.
@@ -1661,23 +1724,24 @@ local layers = {}
 function M.workflow_list() -- -> { id, name, tip, mine } for every workflow you can pick
   local out = {}
   for _, w in ipairs(M.WORKFLOWS) do out[#out + 1] = { id = w.id, name = w.name, tip = w.tip } end
-  for _, st in ipairs(M.styles) do if st.user and st.project then out[#out + 1] = { id = st.id, name = st.name, tip = st.description, mine = true } end end
-  for _, st in ipairs(M.presets) do if st.project then out[#out + 1] = { id = st.id, name = st.name, tip = st.description, mine = true } end end
+  for _, st in ipairs(M.styles) do if st.user and (st.project or st.colours) then out[#out + 1] = { id = st.id, name = st.name, tip = st.description, mine = true } end end
+  for _, st in ipairs(M.presets) do if st.project or st.colours then out[#out + 1] = { id = st.id, name = st.name, tip = st.description, mine = true } end end
   return out
 end
 function M.workflow_layer(id) -- -> { id, name, feel, project } or nil
   if not id or id == "" then return nil end
   local w, st = M.workflow(id), M.by_id(id)
   local src = w or st
-  if not src or (not w and not st.project) then return nil end
+  if not src or (not w and not st.project and not st.colours) then return nil end
   if layers[id] and layers[id].src == src then return layers[id] end
   local blocks = {}
   if w then blocks = w.blocks()
-  else for _, b in ipairs(st.blocks or {}) do if b.kind == "settings" then blocks[#blocks + 1] = b end end end
+  else for _, b in ipairs(st.blocks or {}) do if b.kind == "settings" or b.kind == "colours" then blocks[#blocks + 1] = b end end end
   local built = M.build_style(blocks, src.name, "workflow_" .. id)
   local feel = {}
   for _, f in ipairs(built and built.feel or {}) do if f[1] == "toggle" or f[1] == "choice" then feel[#feel + 1] = f end end -- (toggle actions only)
-  layers[id] = { src = src, id = id, name = src.name, feel = feel, project = w and built and built.project or (st and st.project) }
+  layers[id] = { src = src, id = id, name = src.name, feel = feel, project = w and built and built.project or (st and st.project),
+    colours = (built and built.colours) or (st and st.colours) }
   return layers[id]
 end
 function M.current_workflow() return M.workflow_layer(reaper.GetExtState(M.SECTION, "workflow")) end
@@ -1690,6 +1754,7 @@ function M.layered(st) -- the persona with the workflow in use over it (a copy),
   for _, f in ipairs(st.feel or {}) do t.feel[#t.feel + 1] = f end
   for _, f in ipairs(w.feel) do t.feel[#t.feel + 1] = f end -- (after the persona's: the workflow's win, and switching away puts back both)
   if w.project then t.project, t.project_id = w.project, w.id end -- (no project part, as Mixing: the persona's own stays)
+  if w.colours then t.colours = w.colours end -- (its colour look over the persona's)
   t.workflow = w
   return t
 end
@@ -3176,6 +3241,7 @@ function M.import(path) -- -> the style, or nil + why. Shortcuts need install_sh
     if not st.alt then return nil, "all 16 shortcut layers are in use" end
   end
   st.feel = M.safe_feel(st.feel)
+  st.colours = M.safe_colours(st.colours)
   st.keys_from, st.blocks = nil, nil
   if type(st.theme_file) == "table" and type(st.theme_file.name) == "string" and type(st.theme_file.text) == "string" then
     local name = st.theme_file.name:match("[^/\\]+$") or ""
@@ -3402,6 +3468,7 @@ local function apply_items(list)
           v.id = x.id
           if type(v.name) == "string" then v.name = v.name:gsub("%c", " ") end
           if kind == "persona" and v.feel ~= nil then v.feel = M.safe_feel(v.feel) end
+          if (kind == "persona" or kind == "preset") and v.colours ~= nil then v.colours = M.safe_colours(v.colours) end
           list[#list + 1] = v
           if kind == "persona" and not v.keys_from and (tonumber(v.alt) or 0) > 0 and #(v.keys or {}) > 0 then rep.install = true end
         end

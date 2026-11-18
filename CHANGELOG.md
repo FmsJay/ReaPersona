@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.20.0
+- **Colours go with personas and workflows.** *Save what I'm using...* keeps the colour look in use (Themes > Colours: how tracks, items and regions are coloured, and your instrument, folder and section colours) with the persona; the Persona Builder has a *Colours* block for the same. Switching to a persona with colours makes them your look while it's in use, and switching away gives you yours back exactly. A persona of yours with colours can be a workflow on top of any persona, and a workflow's new projects get their starter tracks (and regions) coloured in its look. Colour sets from shared files and other computers are checked: only the colour settings, each JSON.
+- **The colour look survives a restart.** It was saved as several lines of JSON, and REAPER keeps only the first line of a saved setting: it's one line now.
+
 ## 5.19.0
 - **Colours: StudioSync's colour system, in ReaPersona** (Themes > Colours). Colour a whole project at once: tracks by gradient, folder, instrument (from their names), stripes, rainbow or confetti; items by section, along the song, lane, takes or kind; regions by section or along the song. Seven palettes or two colours of your own, your own colours per instrument, folder and section (kept on this computer, for every project), a preview bar for each, and Try it first (Keep it, or Put it back exactly). A project remembers its look; a new one starts from your last pick. One computer only: StudioSync's "by who made it", "newest work" and studio look stay in StudioSync. (`colours.lua`, from StudioSync 0.59.7's `lib/colours.lua`.)
 

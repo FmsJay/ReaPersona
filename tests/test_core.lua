@@ -651,6 +651,47 @@ do
   assert(colours.look_of(0).scheme == "rainbow", "this computer's last pick")
   ext["ReaPersona/colour look"] = nil
 end
+-- 14. Colours with personas and workflows (5.20): saved, checked, built, layered, and put back after a switch.
+do
+  local look = core.json_encode({ scheme = "gradient", palette = "Ocean" }):gsub("\n%s*", "") -- (one line, as ExtState keeps it)
+  assert(core.safe_colours({ ["colour look"] = core.json_encode({ scheme = "gradient", palette = "Ocean" }) })["colour look"] == look, "a multi-line one is made one line")
+  local safe = core.safe_colours({ ["colour look"] = look, ["colour kinds"] = "{}", ["evil"] = "{}", ["colour folders"] = "not json", ["colour sections"] = { "a table" } })
+  assert(safe["colour look"] == look and safe["colour kinds"] == "{}" and not safe.evil and not safe["colour folders"] and not safe["colour sections"], "only known keys, each JSON text")
+  assert(core.safe_colours({ evil = "{}" }) == nil and core.safe_colours("x") == nil)
+  assert(core.colours_label({ ["colour look"] = look }) == "Colours: Gradient in Ocean")
+  assert(core.colours_now() == nil, "no look picked: nothing to save")
+  ext["ReaPersona/colour look"] = look
+  ext["ReaPersona/colour kinds"] = core.json_encode({ Drums = "FF0000" })
+  local now = core.colours_now()
+  assert(now["colour look"] == look and now["colour kinds"]:find("FF0000", 1, true) and now["colour folders"] == nil)
+  local cb = core.new_block("colours")
+  assert(cb.kind == "colours" and core.block_title(cb) == "Colours: Gradient in Ocean")
+  local built = assert(core.build_style({ core.new_block("daw", "logic"), cb }, "Coloured", "built_col"))
+  assert(built.colours and built.colours["colour look"] == look, "the Builder's Colours block goes into the persona")
+  local ps = core.preset_style({ id = "preset_col", name = "C", base = "pro_tools", feel = {}, colours = { ["colour look"] = look, evil = "{}" } })
+  assert(ps.colours["colour look"] == look and not ps.colours.evil and ps.description:find("Gradient in Ocean", 1, true), "a preset carries its colours, checked")
+  -- a persona of yours with colours (no project part) is a workflow too, and brings its colours over the persona in use
+  built.user = true
+  core.styles[#core.styles + 1] = built
+  local listed = false
+  for _, x in ipairs(core.workflow_list()) do if x.id == "built_col" then listed = true end end
+  assert(listed, "a persona of yours with colours is a workflow")
+  ext["ReaPersona/workflow"] = "built_col"
+  local lay = core.layered(core.by_id("pro_tools"))
+  assert(lay.colours and lay.colours["colour look"] == look, "its colours over Pro Tools")
+  ext["ReaPersona/workflow"] = nil
+  -- switching to it makes its colours yours; switching back puts yours back exactly
+  local mine = core.json_encode({ scheme = "rainbow" })
+  ext["ReaPersona/colour look"] = mine
+  ext["ReaPersona/colour kinds"] = nil
+  ext["ReaPersona/style"] = "my_reaper"
+  core.use(built)
+  assert(ext["ReaPersona/colour look"] == look and ext["ReaPersona/colour kinds"]:find("FF0000", 1, true), "its colours are in use")
+  core.use(core.by_id("my_reaper"))
+  assert(ext["ReaPersona/colour look"] == mine and ext["ReaPersona/colour kinds"] == nil, "and yours are back, the one you hadn't set gone again")
+  table.remove(core.styles)
+  ext["ReaPersona/colour look"] = nil
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")

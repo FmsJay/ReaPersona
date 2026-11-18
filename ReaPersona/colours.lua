@@ -6,7 +6,7 @@ local core = ...
 local colours = {}
 local band = { SECTION = "ReaPersona" } -- (the few things StudioSync's band module gave it)
 function band.json_decode(s) if not s or s == "" then return nil end local ok, v = pcall(core.json_decode, s); return ok and v or nil end
-function band.json_encode(v) return core.json_encode(v) end
+function band.json_encode(v) return (core.json_encode(v):gsub("\n%s*", "")) end -- (one line: REAPER keeps only the first line of an ExtState across a restart)
 function band.set_track_colour(tr, c) reaper.SetMediaTrackInfo_Value(tr, "I_CUSTOMCOLOR", c) end
 function band.track_colour(tr) return math.floor(reaper.GetMediaTrackInfo_Value(tr, "I_CUSTOMCOLOR")) end
 function band.log(msg) if colours.say then colours.say(msg) end end
@@ -64,15 +64,17 @@ colours.OTHER = 0xA9B0BD
 -- computer (ExtState "colour kinds": { [name] = "RRGGBB" }).
 colours.KIND_NAMES = { "Buses and effects", "Drums", "Bass", "Guitars", "Keys", "Synths", "Vocals", "Strings and horns" }
 local kind_cache, kind_at = nil, -math.huge
+-- (colours.override: a persona's colour set, used for a moment while a new project is coloured in it, before it's this computer's own)
+local function saved_text(key) return colours.override and colours.override[key] or reaper.GetExtState(band.SECTION, key) end
 function colours.kind_colours()
-  if kind_cache and reaper.time_precise() - kind_at < 2 then return kind_cache end
-  local saved = band.json_decode(reaper.GetExtState(band.SECTION, "colour kinds"))
+  if kind_cache and not colours.override and reaper.time_precise() - kind_at < 2 then return kind_cache end
+  local saved = band.json_decode(saved_text("colour kinds"))
   local out = {}
   for i, k in ipairs(KINDS) do
     local v = type(saved) == "table" and tonumber(tostring(saved[colours.KIND_NAMES[i]] or ""), 16)
     out[i] = v or k[1]
   end
-  kind_cache, kind_at = out, reaper.time_precise()
+  if not colours.override then kind_cache, kind_at = out, reaper.time_precise() end
   return out
 end
 function colours.set_kind_colour(i, rgb)
@@ -97,12 +99,12 @@ end
 local named_cache = {}
 function colours.named(kind)
   local c = named_cache[kind]
-  if c and reaper.time_precise() - c.at < 2 then return c.v end
-  local saved, out = band.json_decode(reaper.GetExtState(band.SECTION, "colour " .. kind)), {}
+  if c and not colours.override and reaper.time_precise() - c.at < 2 then return c.v end
+  local saved, out = band.json_decode(saved_text("colour " .. kind)), {}
   if type(saved) == "table" then
     for k, v in pairs(saved) do local n = type(k) == "string" and tonumber(tostring(v), 16); if n then out[k] = n end end
   end
-  named_cache[kind] = { at = reaper.time_precise(), v = out }
+  if not colours.override then named_cache[kind] = { at = reaper.time_precise(), v = out } end
   return out
 end
 function colours.set_named(kind, key, rgb)
@@ -687,11 +689,33 @@ function colours.draw(ctx, ImGui, proj)
   if ch then reaper.SetExtState(band.SECTION, "colour try", v and "" or "off", true) end
   ImGui.SetItemTooltip(ctx, "On: a colour button shows the new colours with Keep it and Put it back, and Put it back gives you exactly what you had.\n" ..
     "Off: the colours change straight away (Ctrl+Z still takes them back).")
+  ImGui.TextDisabled(ctx, "Kept with personas: Save what I'm using... saves this look with it, and the Persona Builder has a Colours block. " ..
+    "Switching to one brings its look back; a workflow with one colours the tracks of each new project it sets up.")
   if from == "project" then
     ImGui.SameLine(ctx)
     if ImGui.SmallButton(ctx, "Forget this project's look") then reaper.SetProjExtState(proj, band.SECTION, "colours", ""); cache.at = -math.huge end
     ImGui.SetItemTooltip(ctx, "Your last pick is shown again. The colours already on the tracks stay until you press a colour button.")
   end
+end
+-- A new project a persona's workflow set up, coloured in that persona's colour set: its tracks, and its regions if it has any; the look
+-- becomes the project's own. -> how many tracks.
+function colours.colour_project(proj, set)
+  colours.override = set
+  local ok, n = pcall(function()
+    local look = band.json_decode(set["colour look"])
+    if type(look) ~= "table" or type(look.scheme) ~= "string" then return 0 end
+    local t, r = colours.part(look, "tracks"), colours.part(look, "regions")
+    local list = colours.read(proj)
+    local plan = colours.plan(list, t.scheme, { stops = colours.stops_of(t), folders = colours.named("folders") })
+    local done = colours.apply(proj, list, plan, false)
+    if reaper.CountProjectMarkers(proj) > 0 then colours.apply_marks(proj, r.scheme, colours.stops_of(r), colours.named("sections")) end
+    reaper.SetProjExtState(proj, band.SECTION, "colours", set["colour look"])
+    return done
+  end)
+  colours.override = nil
+  kind_cache, named_cache = nil, {}
+  if not ok then error(n) end
+  return n
 end
 function colours.run(proj, only_selected)
   local done = colours.apply(proj, cache.list, cache.plan, only_selected)
