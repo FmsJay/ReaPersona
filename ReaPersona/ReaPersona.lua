@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.22.0
+-- @version 5.23.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -958,6 +958,7 @@ local function load_setup_file()
     else say("Not loaded: " .. tostring(why)) end
   end
 end
+local upd = {} -- (Settings > Updates: what GitHub said, when, and what updating did)
 local function settings_page()
   if card("set sync") then
     heading("Your other computers")
@@ -1119,6 +1120,46 @@ local function settings_page()
     if setting_row("##srmenu", "Open the menu instead of this window", reaper.GetExtState(SECTION, "screen reader") == "1",
         "ReaPersona's action then opens the menu. The action 'ReaPersona - screen-reader menu' opens it either way.") then
       reaper.SetExtState(SECTION, "screen reader", reaper.GetExtState(SECTION, "screen reader") == "1" and "0" or "1", true)
+    end
+    card_end()
+  end
+  if card("set update") then -- (5.23: like StudioSync's Update, plus test versions)
+    heading("Updates")
+    local function check(max_s)
+      upd.info, upd.err = core.check_update(max_s)
+      upd.at = os.time()
+    end
+    local seen = tonumber(reaper.GetExtState(SECTION, "update seen"):match("^(%d+)") or "")
+    if not upd.at and (not seen or os.time() - seen > 86400) then check(6) end -- (once a day, when Settings opens)
+    local testing = core.update_channel() == "testing"
+    ImGui.Text(ctx, "ReaPersona " .. core.version() .. (testing and "  (test versions on)" or ""))
+    if upd.job then -- (downloading in the background)
+      local n, why = core.update_poll(upd.job)
+      if n then upd.done = "Updated to " .. upd.job.info.version .. " (" .. n .. " files): close this window and open ReaPersona again to use it."; upd.job = nil; say(upd.done)
+      elseif n == false then upd.err, upd.job = why, nil
+      else muted("Downloading " .. upd.job.info.version .. "...") end
+    end
+    if upd.done then
+      ImGui.TextColored(ctx, C.YELLOW, upd.done)
+    elseif upd.info and upd.info.newer and not upd.job then
+      ImGui.TextColored(ctx, C.YELLOW, (testing and "Test version " or "ReaPersona ") .. upd.info.version .. " is ready.")
+      if primary("Update to " .. upd.info.version) then
+        local r, why = core.update_start(upd.info)
+        if r == "reapack" then upd.done = "ReaPack is updating ReaPersona: when it's done, close this window and open ReaPersona again."; say(upd.done)
+        elseif r then upd.job, upd.err = r, nil
+        else upd.err = why end
+      end
+    elseif upd.info then
+      muted("Up to date (" .. (testing and "newest test version " or "latest release ") .. upd.info.version .. ", looked " .. os.date("%H:%M", upd.at) .. ").")
+    end
+    if upd.err then ImGui.TextColored(ctx, C.YELLOW, upd.err) end
+    if ImGui.Button(ctx, "Check now##upd") then check(15); upd.done = nil end
+    ImGui.SameLine(ctx)
+    if ImGui.Button(ctx, "What's new##upd") then core.open_url("https://github.com/FmsJay/ReaPersona/blob/" .. (testing and "testing" or "main") .. "/CHANGELOG.md") end
+    if setting_row("##updtest", "Get test versions", testing,
+        "New features before they're released, from ReaPersona's testing branch: they may have rough edges. Switch it off and update to go back to the released version. This computer only.") then
+      reaper.SetExtState(SECTION, "update channel", testing and "stable" or "testing", true)
+      check(15); upd.done = nil
     end
     card_end()
   end

@@ -2785,7 +2785,7 @@ function M.extstate_keys(text, section) -- the keys reaper-extstate.ini's text k
 end
 local function extstate_names() -- every key this version sets: some may not be in reaper-extstate.ini yet (REAPER writes it later)
   local t = { "style", "orig", "orig project", "view", "look", "migrated", "page", "welcomed", "text size", "all actions", "follow projects",
-    "follow beat", "project default", "midi dock", "workflow", "search", "theme my_reaper", "theme path my_reaper", "sync folder", "sync id", "sync last", "sync file", M.LOOK_KEY }
+    "follow beat", "project default", "midi dock", "workflow", "search", "theme my_reaper", "theme path my_reaper", "sync folder", "sync id", "sync last", "sync file", M.LOOK_KEY, "update channel", "update seen" }
   for _, list in ipairs({ M.styles, M.presets }) do
     for _, st in ipairs(list) do for _, k in ipairs({ "theme ", "forks ", "declined theme " }) do t[#t + 1] = k .. st.id end end
   end
@@ -3420,7 +3420,8 @@ M.EXT_SETTINGS = { -- (here: keys that belong to this computer, never copied)
 }
 local HERE_ONLY = { style = true, orig = true, ["orig project"] = true, migrated = true, page = true, search = true, ["follow beat"] = true,
   ["midi dock"] = true, ["theme my_reaper"] = true, ["theme path my_reaper"] = true, welcomed = true, ["text size"] = true, look = true, view = true,
-  ["last style"] = true, ["menu once"] = true, onboarded = true, ["screen reader"] = true, workflow = true, ["first setup"] = true } -- (screen reader: each computer's own, or one
+  ["last style"] = true, ["menu once"] = true, onboarded = true, ["screen reader"] = true, workflow = true, ["first setup"] = true,
+  ["update channel"] = true, ["update seen"] = true } -- (test versions are each computer's choice, 5.23) -- (screen reader: each computer's own, or one
   -- computer turning the menu off could lock a screen-reader user on another out of it. Review, 5.14)
 local HERE_PREFIX = { "docker ", "params ", "forks ", "sync ", "declined ", "inputs " }
 function M.synced_setting(k) -- a ReaPersona ExtState key that goes to your other computers (pure)
@@ -4218,6 +4219,107 @@ function M.merge(base, colours, graphics, parts, fonts) -- -> new theme's file n
   return nil, text
 end
 
+-- ---------------------------------------------------------------- updates (5.23; James: "an update button in settings like studiosync to
+-- keep up to date and test new features"). Settings > Updates reads ReaPersona's ReaPack index on GitHub: the released version from main,
+-- or with test versions on, from the testing branch (new features before a release; ReaPack itself only ever sees main). Updating: a
+-- ReaPack install on released versions runs ReaPack's sync, as StudioSync's Update does; anything else (test versions, or a copy not
+-- installed by ReaPack) downloads the version's files into a folder of their own and puts them in place only once every one has come.
+M.REPO_RAW = "https://raw.githubusercontent.com/FmsJay/ReaPersona/"
+M.UPDATE_BRANCH = { stable = "main", testing = "testing" }
+function M.version() return (M.read(M.here .. "/ReaPersona.lua") or ""):match("@version%s+(%S+)") or "0" end
+function M.version_less(a, b) -- (pure) "5.21.1" < "5.22.0"; a test version ("5.23.0-test1") comes before its release
+  local function parts(v)
+    local n, pre = tostring(v):match("^([%d%.]*)(.*)$")
+    local t = {}; for d in n:gmatch("%d+") do t[#t + 1] = tonumber(d) end
+    return t, pre
+  end
+  local x, xp = parts(a)
+  local y, yp = parts(b)
+  for i = 1, math.max(#x, #y) do if (x[i] or 0) ~= (y[i] or 0) then return (x[i] or 0) < (y[i] or 0) end end
+  if xp == yp or xp == "" then return false end
+  return yp == "" or xp < yp
+end
+local function unxml(s) return (s:gsub("&quot;", '"'):gsub("&apos;", "'"):gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&amp;", "&")) end
+function M.parse_index(xml) -- (pure) -> { version, files = { {path, url} } } for ReaPersona's own package, or nil
+  local pkg = type(xml) == "string" and xml:match('<reapack name="ReaPersona%.lua".-</reapack>')
+  local v = pkg and pkg:match('<version name="([^"]+)"')
+  if not v then return nil end
+  local files = {}
+  for attrs, url in pkg:gmatch("<source([^>]*)>([^<]+)</source>") do
+    local f = attrs:match('file="([^"]+)"')
+    f = f and unxml(f) or (attrs:find('main=', 1, true) and "ReaPersona.lua")
+    url = unxml(url)
+    -- (only ReaPersona's own files, from its own repository, inside its folder; a platform build is a loaded extension: ReaPack's job)
+    if f and not attrs:find("platform=", 1, true) and url:match("^https://github%.com/FmsJay/ReaPersona/raw/%x+/ReaPersona/[%w%%%-%._/~]+$")
+       and not f:find("..", 1, true) and not f:match("^[/\\]") and not f:find(":", 1, true) and not f:find("\\", 1, true) then
+      files[#files + 1] = { f, url }
+    end
+  end
+  return #files > 0 and { version = v, files = files } or nil
+end
+function M.update_channel() return reaper.GetExtState(M.SECTION, "update channel") == "testing" and "testing" or "stable" end
+function M.reapack_owned() -- installed by ReaPack?
+  local e = reaper.ReaPack_GetOwner and reaper.ReaPack_GetOwner(M.here .. "/ReaPersona.lua")
+  if e then reaper.ReaPack_FreeEntry(e); return true end
+  return false
+end
+function M.check_update(max_s) -- -> { version, files, channel, newer }, or nil + why. Reads the channel's index.xml (a few KB)
+  local channel = M.update_channel()
+  local dir = M.here .. "/_downloads"
+  reaper.RecursiveCreateDirectory(dir, 0)
+  local path = dir .. "/index-" .. channel .. ".xml"
+  os.remove(path)
+  -- shortcut: waits for GitHub (up to max_s seconds, REAPER held); a background download if that ever gets in the way
+  local code = sh(CURL .. ' -s -L --fail --max-time ' .. (max_s or 15) .. ' -o "' .. path .. '" "' .. M.REPO_RAW .. M.UPDATE_BRANCH[channel] .. '/index.xml"', ((max_s or 15) + 5) * 1000)
+  local info = code == "0" and M.parse_index(M.read(path))
+  os.remove(path)
+  if not info then return nil, "couldn't reach ReaPersona on GitHub (offline?)" .. (channel == "testing" and ", or there's no test version yet" or "") end
+  local now = M.version()
+  info.channel = channel
+  -- (on test versions anything different is offered; on released ones a newer release, or the release when you're on a test version)
+  info.newer = info.version ~= now and (channel == "testing" or M.version_less(now, info.version) or now:find("%a") ~= nil)
+  reaper.SetExtState(M.SECTION, "update seen", os.time() .. "|" .. info.version, true)
+  return info
+end
+function M.update_start(info) -- -> "reapack" (ReaPack's sync started), or a job for M.update_poll; or nil + why
+  if info.channel == "stable" and M.reapack_owned() then
+    local cmd = reaper.NamedCommandLookup("_REAPACK_SYNC")
+    if cmd ~= 0 then reaper.Main_OnCommand(cmd, 0); return "reapack" end
+  end
+  local stage = M.here .. "/_downloads/update"
+  M.remove_tree(stage)
+  reaper.RecursiveCreateDirectory(stage, 0)
+  local cfg = { "silent", "location", "fail", "create-dirs", "max-time = 120" }
+  for _, f in ipairs(info.files) do cfg[#cfg + 1] = 'url = "' .. f[2] .. '"'; cfg[#cfg + 1] = 'output = "' .. stage .. "/" .. f[1] .. '"' end
+  -- (last, the index again: curl fetches in order, so once it's there every file has come or failed)
+  cfg[#cfg + 1] = 'url = "' .. M.REPO_RAW .. M.UPDATE_BRANCH[info.channel] .. '/index.xml"'; cfg[#cfg + 1] = 'output = "' .. stage .. '.done"'
+  if not M.write(stage .. ".cfg", table.concat(cfg, "\n") .. "\n") then return nil, "couldn't write in " .. M.here end
+  os.remove(stage .. ".done")
+  -- (in the background, so REAPER isn't held for the 15 s or so it takes; one curl, one connection; no --parallel: older Windows 10 curl lacks it)
+  reaper.ExecProcess(CURL .. ' -K "' .. stage .. '.cfg"', reaper.GetOS():find("^Win") and -2 or -1)
+  return { info = info, stage = stage, until_t = reaper.time_precise() + 240 }
+end
+function M.update_poll(job) -- -> nil while it's downloading; then how many files were written, or false + why
+  local stage, info = job.stage, job.info
+  if not (M.read(stage .. ".done") or ""):find("</index>", 1, true) then
+    if reaper.time_precise() < job.until_t then return nil end
+    M.remove_tree(stage); os.remove(stage .. ".cfg"); return false, "the download didn't finish (offline?): nothing was changed"
+  end
+  os.remove(stage .. ".done"); os.remove(stage .. ".cfg")
+  local got = {}
+  for _, f in ipairs(info.files) do
+    got[f[1]] = M.read(stage .. "/" .. f[1])
+    if not got[f[1]] or #got[f[1]] == 0 then M.remove_tree(stage); return false, "not every file came (" .. f[1] .. "): nothing was changed" end
+  end
+  if (got["ReaPersona.lua"] or ""):match("@version%s+(%S+)") ~= info.version then M.remove_tree(stage); return false, "the download isn't version " .. info.version .. ": nothing was changed" end
+  for _, f in ipairs(info.files) do
+    local dest = M.here .. "/" .. f[1]
+    reaper.RecursiveCreateDirectory(dest:match("^(.*)/[^/]*$") or M.here, 0)
+    if not M.write(dest, got[f[1]]) then M.remove_tree(stage); return false, "couldn't write " .. f[1] .. " (some files are new already: update again)" end
+  end
+  M.remove_tree(stage)
+  return #info.files
+end
 function M.open_url(u)
   if reaper.CF_ShellExecute then reaper.CF_ShellExecute(u)
   elseif reaper.GetOS():find("^Win") then os.execute('start "" "' .. u:gsub('"', "%%22") .. '"')

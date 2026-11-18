@@ -88,6 +88,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
 - **Theme versions:** each persona's page shows all its theme versions as buttons (Pro Tools has nine), with *Get it* links for the ones you don't have yet. Click one to make it that persona's theme.
 - **Adjust:** a theme's own settings, layouts and colours, live.
 - **Build one (themes):** a theme from several (layout, colours and parts from different themes).
+- **Updates:** Settings > Updates checks GitHub for a newer ReaPersona and updates it (through ReaPack when ReaPack installed it); *Get test versions* follows the testing branch for new features before they're released.
 - **Settings:** what personas may change, a persona per project, the smooth playhead and scroll/zoom extensions, ReaPersona's own look, and **Remove ReaPersona**: My REAPER comes back, and the startup block, ReaPersona's actions, settings, shortcut layers and toolbars come out (your personas, presets and themes stay). Then uninstall it in ReaPack.
 - **Cheat sheets:** every key and setting of a persona on one printable page.
 

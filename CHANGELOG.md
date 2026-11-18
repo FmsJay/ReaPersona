@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.23.0
+- **Updates in Settings.** Settings > Updates shows the version you have and checks GitHub for a newer one (once a day when you open Settings, or *Check now*), with *Update to ...* and *What's new*. Installed with ReaPack, a release updates through ReaPack's sync, as StudioSync's Update does; a copy ReaPack didn't install downloads the release's files in the background (REAPER isn't held up) and puts them in place only once every one has come and says the right version. Then close ReaPersona's window and open it again.
+- **Test versions.** *Get test versions* (Settings > Updates, this computer only) follows ReaPersona's testing branch: new features before they're released. Switch it off and update to go back to the released version. ReaPack only ever sees released versions.
+
 ## 5.22.0
 - **The scripts REAPER starts with go with your look and your personas.** Chordbox, the adaptive grid, Gridbox and anything else your startup file launches (as FTC Tools and others add them: *Start script: ...*) are kept by *Use this look on all my computers*, by *Save what I'm using...* and by a built persona's My REAPER block. Using one on a computer that has the script installed adds its start line there (your startup file is backed up first) and starts it if it's stopped; one that isn't installed yet is added once ReaPack or your scripts bring it. They're never removed, so they keep running under every persona. Only the command name travels, never code. A saved persona lists them in its description.
 

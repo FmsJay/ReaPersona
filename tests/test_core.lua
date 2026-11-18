@@ -786,6 +786,24 @@ do
   reaper.NamedCommandLookup, reaper.GetToggleCommandState, reaper.Main_OnCommand = nl, gt, mo
   ext["ReaPersona/style"], ext["ReaPersona/orig"] = nil, nil
 end
+-- 17. Updates (5.23): versions compared, test versions before their release, and only ReaPersona's own files read from an index.
+do
+  local lt = core.version_less
+  assert(lt("5.21.1", "5.22.0") and lt("5.9.9", "5.10.0") and not lt("5.22.0", "5.22.0") and not lt("5.22.0", "5.21.9"))
+  assert(lt("5.23.0-test1", "5.23.0") and not lt("5.23.0", "5.23.0-test1") and lt("5.23.0-test1", "5.23.0-test2") and lt("5.22.0", "5.23.0-test1"))
+  local xml = [[<index><category name="Workflow"><reapack name="ReaPersona.lua" type="script"><version name="5.23.0" author="James">
+        <source main="main">https://github.com/FmsJay/ReaPersona/raw/abc123/ReaPersona/ReaPersona.lua</source>
+        <source file="previews/pro tools.png">https://github.com/FmsJay/ReaPersona/raw/abc123/ReaPersona/previews/pro%20tools.png</source>
+        <source file="../../evil.lua">https://github.com/FmsJay/ReaPersona/raw/abc123/ReaPersona/evil.lua</source>
+        <source file="x.lua">https://evil.example.com/FmsJay/ReaPersona/raw/abc123/ReaPersona/x.lua</source>
+        <source platform="win64" file="reaper_x-x64.dll">https://github.com/FmsJay/ReaPersona/raw/abc123/ReaPersona/reaper_x-x64.dll</source>
+      </version></reapack><reapack name="ReaPersona menus.ext"><version name="1.0.1"><source file="y.lua">https://github.com/FmsJay/ReaPersona/raw/abc123/ReaPersona/y.lua</source></version></reapack></category></index>]]
+  local info = assert(core.parse_index(xml))
+  assert(info.version == "5.23.0" and #info.files == 2 and info.files[1][1] == "ReaPersona.lua" and info.files[2][1] == "previews/pro tools.png",
+    "its main script and files; nothing outside its folder, from elsewhere, a loaded extension or another package")
+  assert(core.parse_index("<html>rate limited</html>") == nil and core.parse_index(nil) == nil)
+  assert(not core.synced_setting("update channel") and not core.synced_setting("update seen"), "test versions are each computer's choice")
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")
