@@ -802,7 +802,38 @@ do
   assert(info.version == "5.23.0" and #info.files == 2 and info.files[1][1] == "ReaPersona.lua" and info.files[2][1] == "previews/pro tools.png",
     "its main script and files; nothing outside its folder, from elsewhere, a loaded extension or another package")
   assert(core.parse_index("<html>rate limited</html>") == nil and core.parse_index(nil) == nil)
-  assert(not core.synced_setting("update channel") and not core.synced_setting("update seen"), "test versions are each computer's choice")
+  assert(not core.synced_setting("update seen"), "when this computer last looked is its own")
+end
+-- 18. Where a startup script came from (5.24): ReaPack's repository and package, kept with it, checked when it comes from elsewhere, and
+-- a script missing here offered from it (only when the persona says where to get it).
+do
+  local kb = '\nSCR 4 0 RSfe34 "Custom: Chordbox.lua" "FTC Tools/Transport/Chordbox.lua"\nSCR 4 32060 RS7d3c_fe34 "Custom: x" "y.lua"\nSCR 4 0 RSabs "Custom: z" "C:/z.lua"\n'
+  local paths = core.script_paths(kb)
+  assert(paths.RSfe34 == "FTC Tools/Transport/Chordbox.lua" and paths.RSabs == "C:/z.lua")
+  local owner, gi, gr, fe = reaper.ReaPack_GetOwner, reaper.ReaPack_GetEntryInfo, reaper.ReaPack_GetRepositoryInfo, reaper.ReaPack_FreeEntry
+  local asked
+  reaper.ReaPack_GetOwner = function(f) asked = f; return f:find("Chordbox", 1, true) and {} or nil end
+  reaper.ReaPack_GetEntryInfo = function() return true, "FTC Tools", "Transport", "Chordbox" end
+  reaper.ReaPack_GetRepositoryInfo = function(r) return r == "FTC Tools", "https://raw.githubusercontent.com/iliaspoulakis/Reaper-Tools/master/index.xml", true, 0 end
+  reaper.ReaPack_FreeEntry = function() end
+  local src = assert(core.start_source("_RSfe34", paths))
+  assert(asked == tmp .. "/Scripts/FTC Tools/Transport/Chordbox.lua" and src.repo == "FTC Tools" and src.pkg == "Chordbox" and src.url:match("^https://"))
+  assert(core.start_source("_RSabs", paths) == nil, "one ReaPack didn't install: no source")
+  reaper.ReaPack_GetOwner, reaper.ReaPack_GetEntryInfo, reaper.ReaPack_GetRepositoryInfo, reaper.ReaPack_FreeEntry = owner, gi, gr, fe
+  local s = core.safe_starts({ { "Chordbox", "_RSfe34", src }, { "Bad url", "_RSb", { repo = "X", url = "file:///etc/x", pkg = "p" } },
+    { "Bad repo", "_RSc", { repo = "X|Y\n", url = "https://x", pkg = "p" } } })
+  assert(s[1][3] and s[1][3].repo == "FTC Tools" and not s[2][3] and not s[3][3], "only an https address and a plain repository name come along")
+  -- not installed here: offered when the persona knows where it comes from, and nothing written for it
+  write(tmp .. "/Scripts/__startup.lua", "")
+  local nl = reaper.NamedCommandLookup
+  reaper.NamedCommandLookup = function() return 0 end
+  local added, _, missing = core.ensure_starts({ s[1], { "Unknown", "_RSzz" } })
+  assert(#added == 0 and #missing == 1 and missing[1][1] == "Chordbox" and read(tmp .. "/Scripts/__startup.lua") == "")
+  ext["ReaPersona/style"] = "my_reaper"
+  core.use(core.preset_style({ id = "preset_src", name = "Src", base = "pro_tools", feel = {}, starts = { s[1] } }))
+  assert(#core.starts_missing == 1 and core.starts_missing[1][3].pkg == "Chordbox", "using it tells the window what to offer")
+  reaper.NamedCommandLookup = nl
+  ext["ReaPersona/style"], ext["ReaPersona/orig"] = nil, nil
 end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))

@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.23.0
+-- @version 5.24.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -308,7 +308,10 @@ local function use(st)
   trying = nil
   core.use(st)
   local setup = core.last_project_setup or {}
-  say(st.name .. " in use" .. (#setup > 0 and (", and this project has its " .. table.concat(setup, ", ")) or "") .. ". Undo switch (top) puts " .. (was and was.name or "the last one") .. " back.")
+  local miss = {}
+  for _, s in ipairs(core.starts_missing or {}) do miss[#miss + 1] = s[1] end
+  say(st.name .. " in use" .. (#setup > 0 and (", and this project has its " .. table.concat(setup, ", ")) or "") .. ". Undo switch (top) puts " .. (was and was.name or "the last one") .. " back." ..
+    (#miss > 0 and (" It starts " .. table.concat(miss, ", ") .. " with REAPER, not installed here: Get it on its page.") or ""))
   for _, key in ipairs(st.recommends or {}) do -- (offered once: no is remembered)
     local x = core.EXTENSIONS[key]
     if x and core.ext_here(key) and core.extension_state(key) == "missing" and reaper.GetExtState(SECTION, "declined " .. key) == "" then
@@ -517,6 +520,14 @@ local function detail(sel, alt)
       ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.YELLOW)
       ImGui.TextWrapped(ctx, "Its shortcuts aren't installed yet: Home > Shortcut layers > Install and restart.")
       ImGui.PopStyleColor(ctx)
+    end
+    for i, s in ipairs(on and core.starts_missing or {}) do -- (scripts it starts with REAPER that aren't installed here, 5.24)
+      ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.YELLOW)
+      ImGui.TextWrapped(ctx, s[1] .. " starts with REAPER in this persona, and isn't installed here (" .. s[3].pkg .. ", from " .. s[3].repo .. ").")
+      ImGui.PopStyleColor(ctx)
+      ImGui.SameLine(ctx)
+      if ImGui.SmallButton(ctx, "Get it##start" .. i) then local why = core.get_tool({ repos = { { s[3].repo, s[3].url } }, filter = s[3].pkg }); if why then say(why) end end
+      ImGui.SetItemTooltip(ctx, "Adds " .. s[3].repo .. " (" .. s[3].url .. ") to ReaPack and shows " .. s[3].pkg .. "; installing is your click. Once it's installed, ReaPersona starts it with REAPER.")
     end
     for _, key in ipairs(sel.recommends or {}) do
       local x = core.EXTENSIONS[key]
@@ -1123,7 +1134,7 @@ local function settings_page()
     end
     card_end()
   end
-  if card("set update") then -- (5.23: like StudioSync's Update, plus test versions)
+  if card("set update") then -- (5.23: like StudioSync's Update)
     heading("Updates")
     local function check(max_s)
       upd.info, upd.err = core.check_update(max_s)
@@ -1131,8 +1142,7 @@ local function settings_page()
     end
     local seen = tonumber(reaper.GetExtState(SECTION, "update seen"):match("^(%d+)") or "")
     if not upd.at and (not seen or os.time() - seen > 86400) then check(6) end -- (once a day, when Settings opens)
-    local testing = core.update_channel() == "testing"
-    ImGui.Text(ctx, "ReaPersona " .. core.version() .. (testing and "  (test versions on)" or ""))
+    ImGui.Text(ctx, "ReaPersona " .. core.version())
     if upd.job then -- (downloading in the background)
       local n, why = core.update_poll(upd.job)
       if n then upd.done = "Updated to " .. upd.job.info.version .. " (" .. n .. " files): close this window and open ReaPersona again to use it."; upd.job = nil; say(upd.done)
@@ -1142,7 +1152,7 @@ local function settings_page()
     if upd.done then
       ImGui.TextColored(ctx, C.YELLOW, upd.done)
     elseif upd.info and upd.info.newer and not upd.job then
-      ImGui.TextColored(ctx, C.YELLOW, (testing and "Test version " or "ReaPersona ") .. upd.info.version .. " is ready.")
+      ImGui.TextColored(ctx, C.YELLOW, "ReaPersona " .. upd.info.version .. " is ready.")
       if primary("Update to " .. upd.info.version) then
         local r, why = core.update_start(upd.info)
         if r == "reapack" then upd.done = "ReaPack is updating ReaPersona: when it's done, close this window and open ReaPersona again."; say(upd.done)
@@ -1150,17 +1160,12 @@ local function settings_page()
         else upd.err = why end
       end
     elseif upd.info then
-      muted("Up to date (" .. (testing and "newest test version " or "latest release ") .. upd.info.version .. ", looked " .. os.date("%H:%M", upd.at) .. ").")
+      muted("Up to date (" .. "latest release " .. upd.info.version .. ", looked " .. os.date("%H:%M", upd.at) .. ").")
     end
     if upd.err then ImGui.TextColored(ctx, C.YELLOW, upd.err) end
     if ImGui.Button(ctx, "Check now##upd") then check(15); upd.done = nil end
     ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "What's new##upd") then core.open_url("https://github.com/FmsJay/ReaPersona/blob/" .. (testing and "testing" or "main") .. "/CHANGELOG.md") end
-    if setting_row("##updtest", "Get test versions", testing,
-        "New features before they're released, from ReaPersona's testing branch: they may have rough edges. Switch it off and update to go back to the released version. This computer only.") then
-      reaper.SetExtState(SECTION, "update channel", testing and "stable" or "testing", true)
-      check(15); upd.done = nil
-    end
+    if ImGui.Button(ctx, "What's new##upd") then core.open_url("https://github.com/FmsJay/ReaPersona/blob/main/CHANGELOG.md") end
     card_end()
   end
   if card("set remove") then -- (removed with ReaPack alone, its startup block, actions and settings stayed behind. Review, 5.9.4)
@@ -2603,8 +2608,14 @@ end
 -- One frame at a time, protected: an error is logged and the window starts a fresh ImGui context (a frame cut short leaves the old one
 -- unbalanced), instead of the whole window closing with a ReaScript error.
 local errors_in_a_row = 0
+local starts_next = 0
 local function loop()
   trial_over()
+  if core.starts_missing and #core.starts_missing > 0 and reaper.time_precise() > starts_next then -- (installed through ReaPack since? started, and started with REAPER)
+    starts_next = reaper.time_precise() + 3
+    local ok, added, _, still = pcall(core.ensure_starts, core.starts_missing)
+    if ok then core.starts_missing = still; if #added > 0 then say(table.concat(added, ", ") .. " installed: started, and starts with REAPER from now on.") end end
+  end
   if reaper.time_precise() > sync_next and core.sync_folder() ~= "" then sync_step() end
   if quit_check and reaper.time_precise() > quit_check then
     quit_check = nil

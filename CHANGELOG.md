@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.24.0
+- **A persona's startup scripts come with where to get them.** Each script your look or a persona starts with REAPER now remembers the ReaPack repository and package it came from. Using it (or importing or syncing it) on a computer that doesn't have the script says so on the persona's page, with *Get it*: that adds the repository to ReaPack and shows the package, and installing stays your click. Once ReaPack has installed it, ReaPersona starts it and adds it to your startup, within a few seconds. Repository addresses from files and other computers must be https, and names plain.
+- **No test versions for now.** Settings > Updates follows released versions only.
+
 ## 5.23.0
 - **Updates in Settings.** Settings > Updates shows the version you have and checks GitHub for a newer one (once a day when you open Settings, or *Check now*), with *Update to ...* and *What's new*. Installed with ReaPack, a release updates through ReaPack's sync, as StudioSync's Update does; a copy ReaPack didn't install downloads the release's files in the background (REAPER isn't held up) and puts them in place only once every one has come and says the right version. Then close ReaPersona's window and open it again.
 - **Test versions.** *Get test versions* (Settings > Updates, this computer only) follows ReaPersona's testing branch: new features before they're released. Switch it off and update to go back to the released version. ReaPack only ever sees released versions.

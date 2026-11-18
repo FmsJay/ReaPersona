@@ -524,7 +524,11 @@ function M.safe_starts(list) -- (pure) -> { {name, command} } with only named co
   local out = {}
   for _, s in ipairs(type(list) == "table" and list or {}) do
     if type(s) == "table" and type(s[2]) == "string" and s[2]:match("^_[%w_]+$") and #out < 64 then
-      out[#out + 1] = { (tostring(s[1] or s[2]):gsub("%c", " ")), s[2] }
+      -- (where ReaPack got it, 5.24: a repository name and https address, and the package, so another computer can offer it)
+      local src = type(s[3]) == "table" and s[3]
+      if src and not (type(src.repo) == "string" and src.repo:match("^%w[%w %-%._()]*$") and type(src.url) == "string" and src.url:match("^https://[^%s\"'|]+$")
+                      and type(src.pkg) == "string" and src.pkg ~= "" and not src.pkg:find("%c")) then src = nil end
+      out[#out + 1] = { (tostring(s[1] or s[2]):gsub("%c", " ")), s[2], src and { repo = src.repo, url = src.url, pkg = src.pkg } or nil }
     end
   end
   return out
@@ -736,9 +740,31 @@ function M.starts_in(text) -- (pure) the actions a __startup.lua runs, named by 
   end
   return M.safe_starts(out)
 end
-function M.starts_now() return M.starts_in(M.read(M.startup_path()) or "") end
-function M.ensure_starts(list) -- -> names added to __startup.lua, names started now
-  local added, started, add = {}, {}, {}
+function M.script_paths(kb) -- (pure) reaper-kb.ini's script registrations: { [command without "_"] = path (relative to Scripts, or full) }
+  local t = {}
+  for c, p in (kb or ""):gmatch('\nSCR %d+ %d+ (%S+) "[^"\n]*" "([^"\n]+)"') do t[c] = t[c] or p end
+  return t
+end
+function M.start_source(cmd, paths) -- -> { repo, url, pkg } when ReaPack installed the script, else nil
+  if not (reaper.ReaPack_GetOwner and reaper.ReaPack_GetEntryInfo and reaper.ReaPack_GetRepositoryInfo) then return nil end
+  local rel = (paths or {})[cmd:sub(2)]
+  if not rel then return nil end
+  local e = reaper.ReaPack_GetOwner(((rel:match("^%a:[\\/]") or rel:match("^/")) and rel) or (res .. "/Scripts/" .. rel))
+  if not e then return nil end
+  local ok, repo, _, pkg = reaper.ReaPack_GetEntryInfo(e)
+  reaper.ReaPack_FreeEntry(e)
+  local have, url = false, nil
+  if ok then have, url = reaper.ReaPack_GetRepositoryInfo(repo) end
+  return have and { repo = repo, url = url, pkg = pkg } or nil
+end
+function M.starts_now() -- the scripts this computer starts, each with where ReaPack got it
+  local list = M.starts_in(M.read(M.startup_path()) or "")
+  local paths = M.script_paths("\n" .. (M.read(res .. "/reaper-kb.ini") or ""))
+  for _, s in ipairs(list) do s[3] = M.start_source(s[2], paths) end
+  return M.safe_starts(list)
+end
+function M.ensure_starts(list) -- -> names added to __startup.lua, names started now, the ones not installed here that ReaPack can get
+  local added, started, add, missing = {}, {}, {}, {}
   local path = M.startup_path()
   local text = M.read(path) or ""
   local have = {}
@@ -753,13 +779,13 @@ function M.ensure_starts(list) -- -> names added to __startup.lua, names started
       end
       -- (only one that says it's off: these toggle, so running one that's on would stop it, and one with no state may not be a background script)
       if reaper.GetToggleCommandState(id) == 0 then reaper.Main_OnCommand(id, 0); started[#started + 1] = s[1] end
-    end
+    elseif s[3] then missing[#missing + 1] = s end
   end
   if #add > 0 then
     M.write(path .. ".before-reapersona-starts", text) -- (your startup file as it was, once per change)
     M.write(path, text .. table.concat(add))
   end
-  return added, started
+  return added, started, missing
 end
 -- Mix and match: one style's keys (its shortcut layer and MIDI keys), another style's layout, toolbar and feel, any theme. -> the profile
 function M.save_mix(name, keys_id, feel_id, theme)
@@ -849,9 +875,10 @@ function M.use(st)
   end
   M.last_project_setup = M.apply_project(st) -- (a workflow's project first: a template loaded after the feel replaced its per-project options)
   apply_feel(st, left)
+  M.starts_missing = {} -- (ones not installed here: the window offers them from ReaPack, and finishes the job once they are)
   for _, list in ipairs({ look and look.starts or {}, st.starts or {} }) do -- (your scripts that start with REAPER, kept running under any persona)
-    local ok2, why = pcall(M.ensure_starts, list)
-    if not ok2 then M.log("starts: " .. tostring(why)) end
+    local ok2, why, _, missing = pcall(M.ensure_starts, list)
+    if not ok2 then M.log("starts: " .. tostring(why)) else for _, s in ipairs(missing or {}) do M.starts_missing[#M.starts_missing + 1] = s end end
   end
   if st.project and #M.last_project_setup == 0 and (tonumber(st.project.srate) or 0) + #(st.project.tracks or "") + #(st.project.template or "") > 0 and not M.fresh_project(0) then
     M.last_project_setup[#M.last_project_setup + 1] = "not its project setup (this project already has work in it: New project with it opens one)"
@@ -2785,7 +2812,7 @@ function M.extstate_keys(text, section) -- the keys reaper-extstate.ini's text k
 end
 local function extstate_names() -- every key this version sets: some may not be in reaper-extstate.ini yet (REAPER writes it later)
   local t = { "style", "orig", "orig project", "view", "look", "migrated", "page", "welcomed", "text size", "all actions", "follow projects",
-    "follow beat", "project default", "midi dock", "workflow", "search", "theme my_reaper", "theme path my_reaper", "sync folder", "sync id", "sync last", "sync file", M.LOOK_KEY, "update channel", "update seen" }
+    "follow beat", "project default", "midi dock", "workflow", "search", "theme my_reaper", "theme path my_reaper", "sync folder", "sync id", "sync last", "sync file", M.LOOK_KEY, "update seen" }
   for _, list in ipairs({ M.styles, M.presets }) do
     for _, st in ipairs(list) do for _, k in ipairs({ "theme ", "forks ", "declined theme " }) do t[#t + 1] = k .. st.id end end
   end
@@ -3421,7 +3448,7 @@ M.EXT_SETTINGS = { -- (here: keys that belong to this computer, never copied)
 local HERE_ONLY = { style = true, orig = true, ["orig project"] = true, migrated = true, page = true, search = true, ["follow beat"] = true,
   ["midi dock"] = true, ["theme my_reaper"] = true, ["theme path my_reaper"] = true, welcomed = true, ["text size"] = true, look = true, view = true,
   ["last style"] = true, ["menu once"] = true, onboarded = true, ["screen reader"] = true, workflow = true, ["first setup"] = true,
-  ["update channel"] = true, ["update seen"] = true } -- (test versions are each computer's choice, 5.23) -- (screen reader: each computer's own, or one
+  ["update seen"] = true } -- (when this computer last looked, 5.23) -- (screen reader: each computer's own, or one
   -- computer turning the menu off could lock a screen-reader user on another out of it. Review, 5.14)
 local HERE_PREFIX = { "docker ", "params ", "forks ", "sync ", "declined ", "inputs " }
 function M.synced_setting(k) -- a ReaPersona ExtState key that goes to your other computers (pure)
@@ -4221,11 +4248,11 @@ end
 
 -- ---------------------------------------------------------------- updates (5.23; James: "an update button in settings like studiosync to
 -- keep up to date and test new features"). Settings > Updates reads ReaPersona's ReaPack index on GitHub: the released version from main,
--- or with test versions on, from the testing branch (new features before a release; ReaPack itself only ever sees main). Updating: a
+-- on main. Updating: a
 -- ReaPack install on released versions runs ReaPack's sync, as StudioSync's Update does; anything else (test versions, or a copy not
 -- installed by ReaPack) downloads the version's files into a folder of their own and puts them in place only once every one has come.
 M.REPO_RAW = "https://raw.githubusercontent.com/FmsJay/ReaPersona/"
-M.UPDATE_BRANCH = { stable = "main", testing = "testing" }
+M.UPDATE_BRANCH = "main" -- (test versions came and went in 5.23: "not needed for now")
 function M.version() return (M.read(M.here .. "/ReaPersona.lua") or ""):match("@version%s+(%S+)") or "0" end
 function M.version_less(a, b) -- (pure) "5.21.1" < "5.22.0"; a test version ("5.23.0-test1") comes before its release
   local function parts(v)
@@ -4257,32 +4284,29 @@ function M.parse_index(xml) -- (pure) -> { version, files = { {path, url} } } fo
   end
   return #files > 0 and { version = v, files = files } or nil
 end
-function M.update_channel() return reaper.GetExtState(M.SECTION, "update channel") == "testing" and "testing" or "stable" end
 function M.reapack_owned() -- installed by ReaPack?
   local e = reaper.ReaPack_GetOwner and reaper.ReaPack_GetOwner(M.here .. "/ReaPersona.lua")
   if e then reaper.ReaPack_FreeEntry(e); return true end
   return false
 end
-function M.check_update(max_s) -- -> { version, files, channel, newer }, or nil + why. Reads the channel's index.xml (a few KB)
-  local channel = M.update_channel()
+function M.check_update(max_s) -- -> { version, files, newer }, or nil + why. Reads the released index.xml (a few KB)
   local dir = M.here .. "/_downloads"
   reaper.RecursiveCreateDirectory(dir, 0)
-  local path = dir .. "/index-" .. channel .. ".xml"
+  local path = dir .. "/index-latest.xml"
   os.remove(path)
   -- shortcut: waits for GitHub (up to max_s seconds, REAPER held); a background download if that ever gets in the way
-  local code = sh(CURL .. ' -s -L --fail --max-time ' .. (max_s or 15) .. ' -o "' .. path .. '" "' .. M.REPO_RAW .. M.UPDATE_BRANCH[channel] .. '/index.xml"', ((max_s or 15) + 5) * 1000)
+  local code = sh(CURL .. ' -s -L --fail --max-time ' .. (max_s or 15) .. ' -o "' .. path .. '" "' .. M.REPO_RAW .. M.UPDATE_BRANCH .. '/index.xml"', ((max_s or 15) + 5) * 1000)
   local info = code == "0" and M.parse_index(M.read(path))
   os.remove(path)
-  if not info then return nil, "couldn't reach ReaPersona on GitHub (offline?)" .. (channel == "testing" and ", or there's no test version yet" or "") end
+  if not info then return nil, "couldn't reach ReaPersona on GitHub (offline?)" end
   local now = M.version()
-  info.channel = channel
-  -- (on test versions anything different is offered; on released ones a newer release, or the release when you're on a test version)
-  info.newer = info.version ~= now and (channel == "testing" or M.version_less(now, info.version) or now:find("%a") ~= nil)
+  -- (a newer release, or the release when this copy says a version with letters in it)
+  info.newer = info.version ~= now and (M.version_less(now, info.version) or now:find("%a") ~= nil)
   reaper.SetExtState(M.SECTION, "update seen", os.time() .. "|" .. info.version, true)
   return info
 end
 function M.update_start(info) -- -> "reapack" (ReaPack's sync started), or a job for M.update_poll; or nil + why
-  if info.channel == "stable" and M.reapack_owned() then
+  if M.reapack_owned() then
     local cmd = reaper.NamedCommandLookup("_REAPACK_SYNC")
     if cmd ~= 0 then reaper.Main_OnCommand(cmd, 0); return "reapack" end
   end
@@ -4292,7 +4316,7 @@ function M.update_start(info) -- -> "reapack" (ReaPack's sync started), or a job
   local cfg = { "silent", "location", "fail", "create-dirs", "max-time = 120" }
   for _, f in ipairs(info.files) do cfg[#cfg + 1] = 'url = "' .. f[2] .. '"'; cfg[#cfg + 1] = 'output = "' .. stage .. "/" .. f[1] .. '"' end
   -- (last, the index again: curl fetches in order, so once it's there every file has come or failed)
-  cfg[#cfg + 1] = 'url = "' .. M.REPO_RAW .. M.UPDATE_BRANCH[info.channel] .. '/index.xml"'; cfg[#cfg + 1] = 'output = "' .. stage .. '.done"'
+  cfg[#cfg + 1] = 'url = "' .. M.REPO_RAW .. M.UPDATE_BRANCH .. '/index.xml"'; cfg[#cfg + 1] = 'output = "' .. stage .. '.done"'
   if not M.write(stage .. ".cfg", table.concat(cfg, "\n") .. "\n") then return nil, "couldn't write in " .. M.here end
   os.remove(stage .. ".done")
   -- (in the background, so REAPER isn't held for the 15 s or so it takes; one curl, one connection; no --parallel: older Windows 10 curl lacks it)
