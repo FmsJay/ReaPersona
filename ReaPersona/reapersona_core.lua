@@ -171,6 +171,7 @@ local function save_user_style(st) -- add (or replace) a style of yours in user_
   M.stubs_stale = true -- (its "use" action gets written next time the picker opens)
   return st
 end
+M.save_user_style = save_user_style -- (for scripts: a built persona with a key or two added by hand)
 M.presets = {} -- (your saved presets: filled below, after the feel code)
 function M.by_id(id)
   for _, st in ipairs(M.styles) do if st.id == id then return st end end

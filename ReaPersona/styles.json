@@ -45,7 +45,11 @@
         ["Mousewheel", 990, "Zoom horizontally"],
         ["Ctrl+Alt+Mousewheel", 989, "Scroll vertically"],
         ["Ctrl+Mousewheel", 1000, "Zoom vertically"],
-        ["Alt+Mousewheel", 988, "Scroll horizontally"]
+        ["Alt+Mousewheel", 988, "Scroll horizontally"],
+        ["Ctrl+Shift+Mousewheel", 972, "Adjust selected track heights"],
+        ["Alt+Shift+Mousewheel", 976, "Scroll vertically one page"],
+        ["HorizWheel", 988, "Scroll horizontally"],
+        ["Alt+HorizWheel", 990, "Zoom horizontally"]
       ],
       "feel": [
         ["radio", [41603, 41604, 41605, 41606, 41608], 41603, "Transport under the arrange view (REAPER's default; Ctrl+Alt+T hides it)"],

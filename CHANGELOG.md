@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.20.1
+- **Base REAPER has all of REAPER's own wheel shortcuts.** Read from a REAPER 7.86 started on a blank settings folder: besides the four it had, Ctrl+Shift+wheel adjusts the selected tracks' heights, Alt+Shift+wheel scrolls a page up or down, the horizontal wheel scrolls sideways and Alt+horizontal wheel zooms, so your own bindings for those no longer show through it. (Stock REAPER has no Shift+wheel action at all, and Shift+wheel does nothing there: tested.)
+- `core.save_user_style` is open to scripts (a built persona with a key added by hand).
+
 ## 5.20.0
 - **Colours go with personas and workflows.** *Save what I'm using...* keeps the colour look in use (Themes > Colours: how tracks, items and regions are coloured, and your instrument, folder and section colours) with the persona; the Persona Builder has a *Colours* block for the same. Switching to a persona with colours makes them your look while it's in use, and switching away gives you yours back exactly. A persona of yours with colours can be a workflow on top of any persona, and a workflow's new projects get their starter tracks (and regions) coloured in its look. Colour sets from shared files and other computers are checked: only the colour settings, each JSON.
 - **The colour look survives a restart.** It was saved as several lines of JSON, and REAPER keeps only the first line of a saved setting: it's one line now.
