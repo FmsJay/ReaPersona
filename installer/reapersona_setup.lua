@@ -157,6 +157,13 @@ local function apply(path)
   if not ok or type(core) ~= "table" then step("load ReaPersona", false, core); out.note = "ReaPersona didn't load: open it from the Actions list to see why."; return finish() end
   local st = core.by_id(want)
   if not st then step("persona " .. want, false, "ReaPersona doesn't know it"); out.note = "ReaPersona doesn't know '" .. want .. "': open it (Extensions > ReaPersona) and pick your DAW on Home."; return finish() end
+  local rec = st.theme -- (the persona's recommended look-alike theme: downloaded first, so the switch below puts it on)
+  if rec and not reaper.file_exists(core.themes_dir .. rec) and core.can_install_theme(rec) then
+    local tok, got, why = pcall(core.install_theme, rec)
+    local have = reaper.file_exists(core.themes_dir .. rec)
+    step(st.name .. "'s look: " .. rec:gsub("%.ReaperTheme%a*$", ""), have,
+      have and "downloaded" or ("not installed (" .. tostring((not tok and got) or why or "not in the download") .. "): ReaPersona's Themes page has it"))
+  end
   local done, err = pcall(function()
     if core.scripts_missing() > 0 then core.ensure_scripts() end -- (the scripts its keys run, registered before the keys go in)
     core.use(st)

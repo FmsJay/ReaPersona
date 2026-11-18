@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.18.0
+- **Each DAW persona's best look-alike theme is its default.** Picked from all 44 community themes ReaPersona knows by capturing each one: Pro Tools and Pro Tools Intro now recommend PRO TOOLS GOLD 2026 (was ProTools2020), Bitwig INQUASAR DARK MATTER (was Reapertips Purple), Reason Dark_Side_Imperial (was ReaPersona's own); Logic and GarageBand (I Logic V3 WC), Ableton Live (rLive), FL Studio (FL Studio Theme beta 4), Cubase and Nuendo (CubeXR) and Studio One (HYDRA) keep theirs. Switching to a persona still offers its look once, and a theme you picked yourself stays yours.
+- **The installer puts that look on too.** Setting up a new REAPER as a DAW now downloads the persona's recommended theme first (where there's a download for it), so the first start already looks like that DAW. If the download doesn't work, setup says so and carries on; the Themes page has it.
+- **Previews show those looks.** The persona pictures (and the README's) are taken with each DAW's recommended theme, once the persona has finished moving its windows, with ReaPersona's own window out of the way. GarageBand, Nuendo and Pro Tools Intro have pictures of their own.
+
 ## 5.17.3
 - **ReaPersona's window can't dock any more.** Switching to a persona that docks a window (FL Studio's browser on the left, here the Media Explorer) could leave ReaPersona's own window in a docker, often a floating or hidden one, where it was hard to find, and it stayed there after switching back. Its window and the theme adjuster now always float; one an earlier version left in a docker comes out the first time it opens.
 

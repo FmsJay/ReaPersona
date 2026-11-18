@@ -23,10 +23,12 @@ local demo_proj = reaper.EnumProjects(-1)
 local hidden = {}
 local function hide_others(on)
   if on then
-    local _, list = reaper.JS_Window_ListFind("StudioSync", false)
-    for a in (list or ""):gmatch("[^,]+") do
-      local h = reaper.JS_Window_HandleFromAddress(tonumber(a) or tonumber(a, 16))
-      if h and reaper.JS_Window_IsVisible(h) then reaper.JS_Window_Show(h, "HIDE"); hidden[#hidden + 1] = h end
+    for _, name in ipairs({ "StudioSync", "ReaPersona" }) do -- (other scripts' windows, and ReaPersona's own, out of the picture)
+      local _, list = reaper.JS_Window_ListFind(name, false)
+      for a in (list or ""):gmatch("[^,]+") do
+        local h = reaper.JS_Window_HandleFromAddress(tonumber(a) or tonumber(a, 16))
+        if h and h ~= reaper.GetMainHwnd() and reaper.JS_Window_IsVisible(h) then reaper.JS_Window_Show(h, "HIDE"); hidden[#hidden + 1] = h end
+      end
     end
   else
     for _, h in ipairs(hidden) do reaper.JS_Window_Show(h, "SHOW") end
@@ -67,14 +69,17 @@ local function finish()
   if was_proj then reaper.SelectProjectInstance(was_proj) end
 end
 local function step()
-  if i > 0 and reaper.time_precise() - at < 2.0 then return reaper.defer(step) end -- (time for the theme, toolbar and docks to settle)
+  if i > 0 and (core.busy() or reaper.time_precise() - at < 3.0) then return reaper.defer(step) end -- (the persona's window moves done, then time for the theme, toolbar and docks to settle)
   if i > 0 then capture(here .. "/previews/" .. shots[i].id .. ".png") end
   i = i + 1
   if i > #shots then return finish() end
   hide_others(false)
   core.use(shots[i])
-  local ships -- (the picture shows a theme ReaPersona ships or builds: its own DAW theme, else REAPER's Default 7, never yours)
-  for _, th in ipairs(shots[i].themes or {}) do if th:match("^ReaPersona %- ") and reaper.file_exists(core.themes_dir .. th) then ships = th; break end end
+  local ships -- (the picture shows the persona's recommended look-alike theme, which picking it offers to install; else a theme
+  -- ReaPersona builds, else REAPER's Default 7; never yours)
+  local rec = shots[i].theme
+  if shots[i].id ~= "my_reaper" and shots[i].id ~= "base_reaper" and rec and core.can_install_theme(rec) and reaper.file_exists(core.themes_dir .. rec) then ships = rec end
+  for _, th in ipairs(shots[i].themes or {}) do if not ships and th:match("^ReaPersona %- ") and reaper.file_exists(core.themes_dir .. th) then ships = th; break end end
   if shots[i].kind == "theme" then ships = core.theme_for(shots[i]) end
   ships = ships or "Default_7.0.ReaperThemeZip"
   if reaper.file_exists(core.themes_dir .. ships) then reaper.OpenColorThemeFile(core.themes_dir .. ships) end

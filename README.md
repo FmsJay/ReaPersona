@@ -38,7 +38,7 @@ Switching away puts back everything a persona changed, so **My REAPER** is alway
 
 ## Setup, in one place
 
-The first time, ReaPersona asks which DAW you're coming from and uses its persona straight away. The window has six pages: **Home** (setup), **Personas** (DAWs, your personas, the Persona Builder), **Shortcuts**, **Themes** (yours, get more, adjust, build one), **Settings** and **Help**. It also fits a narrow docker.
+The first time, ReaPersona asks which DAW you're coming from and uses its persona straight away. The window has six pages: **Home** (setup), **Personas** (DAWs, your personas, the Persona Builder), **Shortcuts**, **Themes** (yours, get more, adjust, build one), **Settings** and **Help**. It works as a narrow window too; it always floats, so a persona that docks windows can't take it into a docker.
 
 **Home** lists everything ReaPersona can use, whether you have it, and a button for each:
 
@@ -98,7 +98,7 @@ REAPER treats Ctrl as Cmd, so the personas should work unchanged, and keys show 
 
 ### New to REAPER?
 
-One installer does it all: REAPER, ReaPack, ReaImGui, js_ReaScriptAPI and SWS (skipping what you already have, each from its official source), then ReaPersona. It asks which music app you're coming from and leaves REAPER set up as that app, shortcuts included (REAPER restarts once at the end). Enter at the question means plain REAPER.
+One installer does it all: REAPER, ReaPack, ReaImGui, js_ReaScriptAPI and SWS (skipping what you already have, each from its official source), then ReaPersona. It asks which music app you're coming from and leaves REAPER set up as that app, shortcuts included, with that DAW's recommended look-alike theme downloaded and on (REAPER restarts once at the end). Enter at the question means plain REAPER.
 
 - **Windows:** double-click [`installer/Install ReaPersona (Windows).cmd`](installer/), or in PowerShell:
   `$f="$env:TEMP\reapersona_install.ps1"; iwr -UseBasicParsing "https://raw.githubusercontent.com/FmsJay/ReaPersona/main/installer/install_windows.ps1" -OutFile $f; powershell -NoProfile -ExecutionPolicy Bypass -File $f`
