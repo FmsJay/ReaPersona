@@ -84,6 +84,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
 - **Feedback:** report a bug or ask for something from inside ReaPersona: saved in your sync folder and/or opened as a GitHub issue.
 - **Save what I'm using:** the persona in use the way you like it, with its theme, layout and settings, saved under a name. You can share it as a file.
 - **Themes:** every theme on your computer. *Try* wears one for 20 seconds (keep it or it goes back), *Use* applies one on its own, *Add to...* makes it one of any persona's theme versions.
+- **Colours** (Themes > Colours): colour a whole project at once, from StudioSync's colour system. Tracks by gradient, folder, instrument (from the names: drums, bass, guitars, keys, synths, vocals...), stripes, rainbow or confetti; items by section, along the song, lane, takes or kind (MIDI, recordings); regions by section (verse, chorus... keep their colours in every song) or along the song. Seven palettes or two colours of your own, your own colours for each instrument, folder and section, a preview bar of what each will do, and *Try it first*: Keep it, or Put it back to exactly what you had.
 - **Theme versions:** each persona's page shows all its theme versions as buttons (Pro Tools has nine), with *Get it* links for the ones you don't have yet. Click one to make it that persona's theme.
 - **Adjust:** a theme's own settings, layouts and colours, live.
 - **Build one (themes):** a theme from several (layout, colours and parts from different themes).

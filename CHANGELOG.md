@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.19.0
+- **Colours: StudioSync's colour system, in ReaPersona** (Themes > Colours). Colour a whole project at once: tracks by gradient, folder, instrument (from their names), stripes, rainbow or confetti; items by section, along the song, lane, takes or kind; regions by section or along the song. Seven palettes or two colours of your own, your own colours per instrument, folder and section (kept on this computer, for every project), a preview bar for each, and Try it first (Keep it, or Put it back exactly). A project remembers its look; a new one starts from your last pick. One computer only: StudioSync's "by who made it", "newest work" and studio look stay in StudioSync. (`colours.lua`, from StudioSync 0.59.7's `lib/colours.lua`.)
+
 ## 5.18.1
 - **Each persona opens the way its DAW does.** Switching to a persona now also sets whether the mixer is showing, as that DAW opens: its edit window first, mixer closed, for Pro Tools (Ctrl+=), Logic (X), FL Studio (F9), Cubase and Nuendo (F3), Studio One (F3), Bitwig (M), Cakewalk (Alt+2), Ableton, GarageBand, Audacity and Audition; Base REAPER shows it docked at the bottom, as REAPER does. Reason's Main Mixer docks at the top when you open it (F5) instead of filling the window. Switching away puts your mixer back. (Settings > what personas may change > Mixer turns this off.)
 - **A persona's mixer setting no longer gets undone by the last persona's windows.** Leaving a persona that moved the mixer (Reason) put it back after the next persona had set it, so that one showed the mixer anyway and then hid yours when you switched back. The last persona's windows now go back first.

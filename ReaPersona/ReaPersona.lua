@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.18.1
+-- @version 5.19.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -272,6 +272,8 @@ local said -- (the last thing said: the screen-reader menu shows it in a message
 local menu_mode = false -- (the screen-reader menu is open: results go in a message box, which the screen reader reads)
 local function speak(text) if reaper.osara_outputMessage and not menu_mode then reaper.osara_outputMessage(tostring(text)) end end -- (OSARA reads it out)
 local function say(text) toast, toast_until, said = tostring(text), reaper.time_precise() + 6 + 0.06 * #tostring(text), tostring(text); speak(text) end
+local colours = assert(loadfile(here .. "/colours.lua"))(core) -- (Themes > Colours: StudioSync's colour system, 5.19)
+colours.say = say
 
 local function open_extra(x)
   local id = 0
@@ -2215,7 +2217,7 @@ local GROUPS = { -- { name, what it's for, its pages (tabs), the tabs' labels }
   { "Home", "Get everything set up, and import from another DAW. Drop files here.", { "Setup" }, { "Setup" } },
   { "Personas", "Make REAPER feel like another DAW, your own personas, and the Persona Builder.", { "DAWs", "Presets", "Builder" }, { "DAWs", "Your personas", "Persona Builder" } },
   { "Shortcuts", "Every key of a persona, with REAPER's action for it.", { "Shortcuts" }, { "Shortcuts" } },
-  { "Themes", "Your themes, getting more, adjusting the one in use, building one from others.", { "Themes", "Browse", "Adjust", "Merge" }, { "Your themes", "Get more", "Adjust", "Build one" } },
+  { "Themes", "Your themes, getting more, adjusting the one in use, building one from others, and colouring the project.", { "Themes", "Browse", "Adjust", "Merge", "Colours" }, { "Your themes", "Get more", "Adjust", "Build one", "Colours" } },
   { "Settings", "REAPER's and SWS's options in groups, what personas may change, a persona per project, ReaPersona's look.", { "Settings", "Tweaks" }, { "ReaPersona", "REAPER tweaks" } },
   { "Help", "How ReaPersona works and what each page does, what's installed, checking the personas, repairs.", { "Guide", "Check" }, { "How it works", "Check and repair" } },
 }
@@ -2497,6 +2499,7 @@ local function frame()
           if card("adj out") then heading("Adjust is in its own window"); if ImGui.Button(ctx, "Bring it back here") then adjust_out = false end; card_end() end
         else adjust_page(core.current()) end -- (the theme you adjust is the one in use: its style gets the result)
       elseif page == "Merge" then merge_page(sel)
+      elseif page == "Colours" then colours.draw(ctx, ImGui, reaper.EnumProjects(-1))
       elseif page == "Guide" then guide_page()
       elseif page == "Check" then check_page() end
       ImGui.EndChild(ctx)
@@ -2702,6 +2705,7 @@ local cmd = select(4, reaper.get_action_context()) -- (the picker's own action: 
 if cmd and cmd ~= 0 then reaper.SetToggleCommandState(0, cmd, 1); reaper.RefreshToolbar2(0, cmd) end
 reaper.atexit(function()
   if trying then trying.ends = 0; trial_over() end -- (a theme on trial goes back when the window closes)
+  pcall(colours.put_back_all) -- (and colours being tried)
   pcall(core.sync_tick) -- (what you changed while it was open, to your other computers)
   if cmd and cmd ~= 0 then reaper.SetToggleCommandState(0, cmd, 0); reaper.RefreshToolbar2(0, cmd) end
 end)

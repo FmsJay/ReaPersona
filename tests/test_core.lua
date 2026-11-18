@@ -630,6 +630,27 @@ if sh_exe then
   assert(text:find("detach '/opt/REAPER/reaper' </dev/null", 1, true) and not text:find("open -a", 1, true))
   reaper.GetOS = was_os
 end
+-- 13. Colours (5.19): StudioSync's colour system, on one computer.
+do
+  local colours = assert(loadfile("ReaPersona/colours.lua"))(core)
+  assert(colours.mix(0x000000, 0xFFFFFF, 0.5) == 0x808080 and colours.ramp({ 0x000000, 0xFFFFFF }, 1) == 0xFFFFFF)
+  local tracks = { { name = "Kick", family = 1 }, { name = "Bass", family = 2 }, { name = "Lead Vox", family = 3 } }
+  local p = colours.plan(tracks, "instrument", { stops = colours.PALETTES[1][2] })
+  assert(p[1] == 0xE5584F and p[2] == 0xF2A33A and p[3] == 0xF06BAF, "drums, bass, vocals from the names")
+  local g = colours.plan(tracks, "gradient", { stops = { 0x000000, 0xFFFFFF } })
+  assert(g[1] == 0x000000 and g[2] == 0x808080 and g[3] == 0xFFFFFF, "top to bottom along the palette")
+  for _, s in ipairs(colours.SCHEMES) do assert(s[1] ~= "person" and s[1] ~= "newest", "StudioSync's own schemes stay there") end
+  for _, s in ipairs(colours.ITEM_SCHEMES) do assert(s[1] ~= "person" and s[1] ~= "newest") end
+  local m = colours.plan_marks({ { name = "Verse 1", region = true, pos = 0 }, { name = "Chorus", region = true, pos = 10 } }, "sections", { 0, 1 })
+  assert(m[1] == 0x4C9BE8 and m[2] == 0xF2A33A, "the common sections keep their colours")
+  local items = colours.plan_items({ { kind = "midi" }, { kind = "audio" } }, "kind", { stops = { 0x111111, 0x222222 } })
+  assert(items[1] == 0x111111 and items[2] == 0x222222)
+  local look, from = colours.look_of(0)
+  assert(look.scheme == "gradient" and from == "computer", "nothing picked yet: a gradient")
+  ext["ReaPersona/colour look"] = core.json_encode({ scheme = "rainbow", palette = "Ocean" })
+  assert(colours.look_of(0).scheme == "rainbow", "this computer's last pick")
+  ext["ReaPersona/colour look"] = nil
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")
