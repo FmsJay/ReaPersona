@@ -1,6 +1,6 @@
--- @description ReaPersona: make REAPER feel like Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
+-- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.17.2
+-- @version 5.17.3
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -2411,7 +2411,8 @@ local function frame()
   for _, c in ipairs(COLS) do ImGui.PushStyleColor(ctx, c[1], c[2]) end
   for _, v in ipairs(VARS) do ImGui.PushStyleVar(ctx, v[1], v[2], v[3]) end
   ImGui.PushFont(ctx, font, 15 * UI)
-  local visible, open = ImGui.Begin(ctx, "ReaPersona", true)
+  ImGui.SetNextWindowDockID(ctx, 0, ImGui.Cond_Once) -- (a window an older version left in a docker comes out once)
+  local visible, open = ImGui.Begin(ctx, "ReaPersona", true, ImGui.WindowFlags_NoDocking)
   if visible then
     if ensure_new or core.stubs_stale then core.ensure_scripts(); ensure_new = false end
     core.apply_midi_dock() -- (a style's MIDI editor docking waits for an editor to be open)
@@ -2440,7 +2441,7 @@ local function frame()
       ImGui.SameLine(ctx)
       if ImGui.SmallButton(ctx, "OK##err") then last_error = nil end
     end
-    local narrow = ImGui.GetWindowWidth(ctx) < 600 -- (docked at the side or a small window: the sidebar becomes a drop-down)
+    local narrow = ImGui.GetWindowWidth(ctx) < 600 -- (a small window: the sidebar becomes a drop-down)
     if narrow then
       ImGui.SetCursorPosX(ctx, 16)
       ImGui.SetNextItemWidth(ctx, -16)
@@ -2526,7 +2527,8 @@ local function frame()
   if adjust_out then
     ImGui.SetNextWindowSize(ctx, 520, 680, ImGui.Cond_FirstUseEver)
     ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowPadding, 12, 10)
-    local v2, o2 = ImGui.Begin(ctx, "ReaPersona: theme adjuster", true)
+    ImGui.SetNextWindowDockID(ctx, 0, ImGui.Cond_Once)
+    local v2, o2 = ImGui.Begin(ctx, "ReaPersona: theme adjuster", true, ImGui.WindowFlags_NoDocking)
     if v2 then adjust_page(core.current()); ImGui.End(ctx) end
     ImGui.PopStyleVar(ctx)
     if not o2 then adjust_out = false end

@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.17.3
+- **ReaPersona's window can't dock any more.** Switching to a persona that docks a window (FL Studio's browser on the left, here the Media Explorer) could leave ReaPersona's own window in a docker, often a floating or hidden one, where it was hard to find, and it stayed there after switching back. Its window and the theme adjuster now always float; one an earlier version left in a docker comes out the first time it opens.
+
 ## 5.17.2
 - **The installer's restart waits for REAPER's first-start windows.** On a clean Linux, the evaluation reminder, the audio device error and ReaPack's notice were still open when setup asked REAPER to quit, so it didn't, and the shortcuts never went in. Setup now waits until they're answered (up to 20 minutes), then restarts.
 - **"My REAPER as it was" really skips a brand-new REAPER now.** Besides its [hasimported] list, a new REAPER 7.86 writes two MIDI note-click mouse defaults itself; those were still taken for your own changes. The check now knows REAPER's factory mouse file. (Both found running the installer in a clean Linux VM.)
