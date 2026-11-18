@@ -120,7 +120,21 @@ local function plan_keys(core)
   end
   return function() reaper.ExecProcess('/bin/sh "' .. stepfile .. '"', -1) end, "a shell script" -- (a full path: a Mac runs a bare name as nothing)
 end
-local function launch(core, start)
+-- A new REAPER's first-start windows (the evaluation reminder, the audio device question or error, ReaPack's windows) block File: Quit:
+-- on a clean Linux the quit was refused, the install gave up and REAPER never restarted. So the restart waits for them to be answered
+-- (up to 20 minutes, then it tries anyway). Needs js_ReaScriptAPI's window search; without it, as before. (Linux VM, 5.17.2)
+local BLOCKERS = { { "About REAPER", false }, { "Error opening devices", true }, { "REAPER", true }, { "ReaPack Notice", true },
+                   { "Notice", true }, { "Transaction report", true }, { "Manage repositories", true } }
+local function blocker()
+  if not reaper.JS_Window_Find then return nil end
+  for _, b in ipairs(BLOCKERS) do
+    local w = reaper.JS_Window_Find(b[1], b[2])
+    if w and (not reaper.JS_Window_IsVisible or reaper.JS_Window_IsVisible(w)) then return b[1] end
+  end
+end
+local function launch(core, start, since)
+  since = since or reaper.time_precise()
+  if blocker() and reaper.time_precise() - since < 1200 then return reaper.defer(function() launch(core, start, since) end) end
   start()
   reaper.Main_OnCommand(40004, 0) -- File: Quit (REAPER's own save prompts); the install starts it again
   local check = reaper.time_precise() + 4 -- (REAPER still running 4 s after: the quit was cancelled, and the waiting install is told)
@@ -158,7 +172,8 @@ local function apply(path)
   if start then
     out.restart = true
     step("shortcuts staged", true, "installed with " .. how .. " while REAPER restarts")
-    out.note = "REAPER now looks and clicks like " .. st.name .. ". It restarts once, by itself, to load " .. st.name .. "'s shortcuts (about 10 seconds)."
+    out.note = "REAPER now looks and clicks like " .. st.name .. ". It restarts once, by itself, to load " .. st.name .. "'s shortcuts (about 10 seconds), " ..
+      "as soon as REAPER's first-start windows are answered (the evaluation reminder, the audio device, ReaPack's windows)."
     finish()
     return reaper.defer(function() launch(core, start) end)
   end

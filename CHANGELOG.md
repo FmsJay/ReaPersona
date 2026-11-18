@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.17.2
+- **The installer's restart waits for REAPER's first-start windows.** On a clean Linux, the evaluation reminder, the audio device error and ReaPack's notice were still open when setup asked REAPER to quit, so it didn't, and the shortcuts never went in. Setup now waits until they're answered (up to 20 minutes), then restarts.
+- **"My REAPER as it was" really skips a brand-new REAPER now.** Besides its [hasimported] list, a new REAPER 7.86 writes two MIDI note-click mouse defaults itself; those were still taken for your own changes. The check now knows REAPER's factory mouse file. (Both found running the installer in a clean Linux VM.)
+
 ## 5.17.1
 - **An installer for people new to REAPER** (`installer/`: double-click *Install ReaPersona (Windows).cmd* or *Install ReaPersona (Mac).command*, or the one-line command for Linux in the README). It installs what's missing (REAPER, ReaPack, ReaImGui, js_ReaScriptAPI, SWS), asks which DAW you're coming from, and leaves REAPER set up as it, shortcuts included, after one restart, with or without Python. `-Persona <id>` / `RP_PERSONA=<id>` answers the question up front. Tested end to end in Windows Sandbox (a clean Windows 11).
 - A brand-new REAPER no longer gets a "My REAPER as it was" persona: the list of mouse contexts REAPER writes itself on its first start was taken for changed mouse behaviours (found in that Sandbox run).

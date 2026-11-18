@@ -563,10 +563,21 @@ function M.save_preset(name, with_project) -- -> the new preset (as a style). wi
 end
 -- A new user's own setup, kept as a persona before ReaPersona first changes anything (5.17), unless it's REAPER as it ships: then Base
 -- REAPER already is it. Pure: the keymap, mouse and menu files' text, the theme in use, the settings now (feel_now) and Base REAPER's feel.
+M.FACTORY_MOUSE = { MM_CTX_MIDI_NOTE_CLK = { mm_0 = "1 m", mm_4 = "2 m" } } -- (what a new REAPER 7.86 writes in reaper-mouse.ini besides [hasimported])
 function M.stock_setup(kb, mouse, menu, theme, feel, base_feel)
   if ("\n" .. (kb or "")):find("\nKEY ") then return false end -- (a key of your own: REAPER's factory keys aren't written there)
-  -- (any entry: changed mouse or menus/toolbars. Not [hasimported]: a new REAPER writes that list of contexts itself. Windows Sandbox, 5.17.1)
-  for _, t in ipairs({ mouse or "", menu or "" }) do if (("\n" .. t):gsub("\n%[hasimported%][^%[]*", "\n")):find("=", 1, true) then return false end end
+  if (menu or ""):find("=", 1, true) then return false end -- (any entry: your own menus or toolbars; a new REAPER has no reaper-menu.ini)
+  -- (a mouse behaviour that isn't what a new REAPER writes itself: its [hasimported] list and two MIDI note-click defaults. REAPER 7.86
+  -- on Windows Sandbox and a clean Linux, 5.17.2)
+  local section = ""
+  for line in ((mouse or "") .. "\n"):gmatch("([^\r\n]*)\r?\n") do
+    local s = line:match("^%[(.-)%]%s*$")
+    if s then section = s
+    else
+      local k, v = line:match("^%s*([^=]-)%s*=%s*(.-)%s*$")
+      if k and section ~= "hasimported" and (M.FACTORY_MOUSE[section] or {})[k] ~= v then return false end
+    end
+  end
   if theme and theme ~= "" and not theme:match("^Default_7") then return false end
   local now = {}
   for _, f in ipairs(feel or {}) do
