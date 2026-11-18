@@ -744,6 +744,48 @@ do
   reaper.GetToggleCommandState, reaper.Main_OnCommand, reaper.GetLastColorThemeFile = gt, mo, lt
   ext["ReaPersona/style"], ext["ReaPersona/theme my_reaper"], ext["ReaPersona/orig"] = nil, nil, nil
 end
+-- 16. Scripts that start with REAPER (5.22): read from __startup.lua as FTC Tools writes them, kept by your look and the personas you save,
+-- and added (and started, when stopped) wherever they're registered. Only command names travel.
+do
+  local ftc = "-- BandSync render guard\nif os.getenv('X') then return end\n-- Start script: Chordbox\nlocal chord_box_cmd_name = '_RSfe34'\n" ..
+    "reaper.Main_OnCommand(reaper.NamedCommandLookup(chord_box_cmd_name), 0)\n\n-- Start script: Gridbox\nlocal grid = '_RS02de'\n" ..
+    "reaper.Main_OnCommand(reaper.NamedCommandLookup(grid), 0)\n-- >>> ReaPersona\ndo dofile(core).restore_last() end\n-- <<< ReaPersona <<<\n" ..
+    "reaper.Main_OnCommand(reaper.NamedCommandLookup('_SWS_ABOUT'), 0)\nlocal path = '_RSnotacommandcall'\n"
+  local s = core.starts_in(ftc)
+  assert(#s == 3 and s[1][1] == "Chordbox" and s[1][2] == "_RSfe34" and s[2][1] == "Gridbox" and s[3][1] == "_SWS_ABOUT", "FTC's start lines and a direct one, nothing else")
+  assert(#core.safe_starts({ { "evil", "_RS1'); os.execute('x" }, { "ok", "_RSab" } }) == 1, "only command names")
+  os.execute(win and ('mkdir "' .. (tmp .. "/Scripts"):gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. tmp .. "/Scripts'"))
+  local sp = tmp .. "/Scripts/__startup.lua"
+  write(sp, ftc)
+  local reg = { _RSfe34 = 101, _RS02de = 102, _RSnew1 = 103, _RSoff = 104 }
+  local states = { [101] = 1, [102] = 1, [103] = -1, [104] = 0 }
+  local ran = {}
+  local nl, gt, mo = reaper.NamedCommandLookup, reaper.GetToggleCommandState, reaper.Main_OnCommand
+  reaper.NamedCommandLookup = function(c) return reg[c] or 0 end
+  reaper.GetToggleCommandState = function(id) return states[id] or -1 end
+  reaper.Main_OnCommand = function(id) ran[#ran + 1] = id; if states[id] == 0 then states[id] = 1 end end
+  local added, started = core.ensure_starts({ { "Chordbox", "_RSfe34" }, { "New one", "_RSnew1" }, { "Stopped", "_RSoff" }, { "Not here", "_RSmissing" } })
+  assert(#added == 2 and added[1] == "New one" and added[2] == "Stopped", "start lines added for registered scripts not in the file yet")
+  assert(#started == 1 and started[1] == "Stopped" and #ran == 1 and ran[1] == 104, "only a stopped one is started: running one again would stop it")
+  local text = read(sp)
+  assert(text:sub(1, #ftc) == ftc and #core.starts_in(text) == 5 and read(sp .. ".before-reapersona-starts") == ftc, "your lines kept, a backup made")
+  local again = core.ensure_starts({ { "New one", "_RSnew1" } })
+  assert(#again == 0 and read(sp) == text, "nothing added twice")
+  -- your look and the personas you save keep them; using one makes sure they run
+  ext["ReaPersona/style"] = "my_reaper"
+  local look = assert(core.save_my_look())
+  assert(#look.starts == 5 and #core.my_look().starts == 5 and core.look_label(core.my_look()):find("Chordbox at start", 1, true))
+  local ps = core.preset_style({ id = "preset_st", name = "S", base = "pro_tools", feel = {}, starts = { { "Stopped", "_RSoff" }, { "bad", "rm -rf" } } })
+  assert(#ps.starts == 1 and ps.description:find("Starts with REAPER: Stopped", 1, true), "a saved persona says what it starts")
+  write(sp, ftc); states[104] = 0; ran = {}
+  core.use(ps)
+  assert(read(sp):find("_RSoff", 1, true) and states[104] == 1, "using a persona brings its scripts back")
+  local built = assert(core.build_style({ core.new_block("daw", "my_reaper") }, "Built", "built_st"))
+  assert(#(built.starts or {}) == 5, "a built persona on My REAPER keeps your scripts")
+  core.forget_my_look(); ext["ReaPersona/my look"] = nil
+  reaper.NamedCommandLookup, reaper.GetToggleCommandState, reaper.Main_OnCommand = nl, gt, mo
+  ext["ReaPersona/style"], ext["ReaPersona/orig"] = nil, nil
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")

@@ -520,6 +520,15 @@ function M.colours() -- the colour module (colours.lua), loaded once
   if not colours_mod then colours_mod = assert(loadfile(M.here .. "/colours.lua"))(M) end
   return colours_mod
 end
+function M.safe_starts(list) -- (pure) -> { {name, command} } with only named commands
+  local out = {}
+  for _, s in ipairs(type(list) == "table" and list or {}) do
+    if type(s) == "table" and type(s[2]) == "string" and s[2]:match("^_[%w_]+$") and #out < 64 then
+      out[#out + 1] = { (tostring(s[1] or s[2]):gsub("%c", " ")), s[2] }
+    end
+  end
+  return out
+end
 function M.preset_style(p)
   local base = M.by_id(p.base) or M.styles[1]
   local st = {}
@@ -537,6 +546,11 @@ function M.preset_style(p)
   st.extras, st.tips, st.description_base = base.extras, base.tips, base.description
   st.colours = M.safe_colours(p.colours)
   if st.colours then st.description = st.description .. " " .. M.colours_label(st.colours) .. "." end
+  st.starts = M.safe_starts(p.starts)
+  if #st.starts > 0 then
+    local n = {}; for _, s in ipairs(st.starts) do n[#n + 1] = s[1] end
+    st.description = st.description .. " Starts with REAPER: " .. table.concat(n, ", ") .. "."
+  end
   if type(p.project) == "table" then -- (a workflow: a new project's sample rate and starter tracks, or a whole project template)
     st.project = { srate = tonumber(p.project.srate) or 0, tracks = type(p.project.tracks) == "string" and p.project.tracks or "",
       tracks_name = tostring(p.project.tracks_name or ""), wset = tonumber(p.project.wset) or 0,
@@ -618,7 +632,8 @@ function M.save_preset(name, with_project) -- -> the new preset (as a style). wi
   local feel = feel_now(base)
   local list = load_presets()
   local p = { id = M.new_id("preset_"), name = name, base = base.id, saved = os.date("%Y-%m-%d"), feel = feel,
-              theme = M.loaded_theme() or M.theme_for(base), project = with_project and M.project_now(true) or nil, colours = M.colours_now() }
+              theme = M.loaded_theme() or M.theme_for(base), project = with_project and M.project_now(true) or nil, colours = M.colours_now(),
+              starts = M.starts_now() }
   list[#list + 1] = p
   local ok, why = M.save_json(PRESETS, { presets = list })
   if not ok then return nil, why end
@@ -678,7 +693,7 @@ M.LOOK_KEY = "my look"
 function M.my_look() -- -> { theme, feel, from, saved } or nil (from a file or another computer: only what a persona could set)
   local ok, d = pcall(M.json_decode, reaper.GetExtState(M.SECTION, M.LOOK_KEY))
   if not ok or type(d) ~= "table" or type(d.feel) ~= "table" then return nil end
-  return { theme = type(d.theme) == "string" and d.theme:match("[^/\\]+$") or nil, feel = M.safe_feel(d.feel),
+  return { theme = type(d.theme) == "string" and d.theme:match("[^/\\]+$") or nil, feel = M.safe_feel(d.feel), starts = M.safe_starts(d.starts),
            from = type(d.from) == "string" and d.from:gsub("%c", " ") or nil, saved = type(d.saved) == "string" and d.saved:gsub("%c", " ") or nil }
 end
 function M.save_my_look() -- -> the look, or nil + why. Only from My REAPER: a persona's settings aren't your look
@@ -687,7 +702,7 @@ function M.save_my_look() -- -> the look, or nil + why. Only from My REAPER: a p
   for _, f in ipairs(feel_now(M.by_id("my_reaper") or M.styles[1])) do
     if f[1] ~= "switch" and not (f[1] == "mouse" and (f[4] or "") == "") then feel[#feel + 1] = f end -- (a mouse context left at REAPER's default: each computer's own)
   end
-  local look = { theme = M.loaded_theme(), feel = feel, from = M.computer(), saved = os.date("%Y-%m-%d %H:%M") }
+  local look = { theme = M.loaded_theme(), feel = feel, starts = M.starts_now(), from = M.computer(), saved = os.date("%Y-%m-%d %H:%M") }
   reaper.SetExtState(M.SECTION, M.LOOK_KEY, (M.json_encode(look):gsub("\r?\n%s*", "")), true) -- (one line: REAPER keeps only the first across restarts)
   return look
 end
@@ -698,7 +713,53 @@ function M.look_label(look) -- "Reapertips Theme, transport at the top of the ma
   for _, f in ipairs(look.feel or {}) do
     if f[1] == "radio" or f[1] == "dock" then bits[#bits + 1] = tostring(f[#f]) end
   end
+  for _, s in ipairs(look.starts or {}) do bits[#bits + 1] = s[1] .. " at start" end
   return table.concat(bits, ", ") .. " (" .. #(look.feel or {}) .. " settings" .. (look.from and (", from " .. look.from) or "") .. (look.saved and (", " .. look.saved) or "") .. ")"
+end
+-- Scripts REAPER starts with you (5.22; James: Chordbox and the adaptive grid were missing on the Mac, "make sure all of those save to
+-- my personas as well, and work for other personas"). Your look and the personas you save keep the actions your __startup.lua runs (as
+-- FTC Tools and others write them: "-- Start script: <name>" and Main_OnCommand(NamedCommandLookup(<command>))). Using one on a computer
+-- that has the script registered adds its start line there and starts it if it's stopped. Only a command name travels, never code,
+-- and nothing is removed: they're your scripts, so they keep running under every persona.
+function M.starts_in(text) -- (pure) the actions a __startup.lua runs, named by the "-- Start script:" line above each
+  local out, seen, vars, name = {}, {}, {}, nil
+  for line in (text or ""):gmatch("[^\r\n]+") do
+    name = line:match("^%s*%-%-%s*Start script:%s*(.-)%s*$") or name
+    local var, v = line:match("^%s*local%s+([%w_]+)%s*=%s*['\"](_[%w_]+)['\"]")
+    if var then vars[var] = v end
+    local arg = line:find("Main_OnCommand", 1, true) and line:match("NamedCommandLookup%(%s*([^%)]-)%s*%)")
+    if arg then
+      local cmd = arg:match("^['\"](_[%w_]+)['\"]$") or vars[arg]
+      if cmd and not seen[cmd] then seen[cmd] = true; out[#out + 1] = { name or cmd, cmd } end
+      name = nil
+    end
+  end
+  return M.safe_starts(out)
+end
+function M.starts_now() return M.starts_in(M.read(M.startup_path()) or "") end
+function M.ensure_starts(list) -- -> names added to __startup.lua, names started now
+  local added, started, add = {}, {}, {}
+  local path = M.startup_path()
+  local text = M.read(path) or ""
+  local have = {}
+  for _, s in ipairs(M.starts_in(text)) do have[s[2]] = true end
+  for _, s in ipairs(M.safe_starts(list)) do
+    local id = reaper.NamedCommandLookup(s[2])
+    if id ~= 0 then -- (registered here; one that isn't comes with ReaPack's packages or your scripts, and is added next time)
+      if not have[s[2]] then
+        have[s[2]] = true
+        add[#add + 1] = "\n-- Start script: " .. s[1] .. "\ndo\n  local cmd = '" .. s[2] .. "'\n  reaper.Main_OnCommand(reaper.NamedCommandLookup(cmd), 0)\nend\n"
+        added[#added + 1] = s[1]
+      end
+      -- (only one that says it's off: these toggle, so running one that's on would stop it, and one with no state may not be a background script)
+      if reaper.GetToggleCommandState(id) == 0 then reaper.Main_OnCommand(id, 0); started[#started + 1] = s[1] end
+    end
+  end
+  if #add > 0 then
+    M.write(path .. ".before-reapersona-starts", text) -- (your startup file as it was, once per change)
+    M.write(path, text .. table.concat(add))
+  end
+  return added, started
 end
 -- Mix and match: one style's keys (its shortcut layer and MIDI keys), another style's layout, toolbar and feel, any theme. -> the profile
 function M.save_mix(name, keys_id, feel_id, theme)
@@ -788,6 +849,10 @@ function M.use(st)
   end
   M.last_project_setup = M.apply_project(st) -- (a workflow's project first: a template loaded after the feel replaced its per-project options)
   apply_feel(st, left)
+  for _, list in ipairs({ look and look.starts or {}, st.starts or {} }) do -- (your scripts that start with REAPER, kept running under any persona)
+    local ok2, why = pcall(M.ensure_starts, list)
+    if not ok2 then M.log("starts: " .. tostring(why)) end
+  end
   if st.project and #M.last_project_setup == 0 and (tonumber(st.project.srate) or 0) + #(st.project.tracks or "") + #(st.project.template or "") > 0 and not M.fresh_project(0) then
     M.last_project_setup[#M.last_project_setup + 1] = "not its project setup (this project already has work in it: New project with it opens one)"
   end
@@ -1460,6 +1525,10 @@ function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true
       for _, x in ipairs(src.extras or {}) do st.extras[#st.extras + 1] = x end
       for _, d in ipairs(src.docs or {}) do st.docs[#st.docs + 1] = d end
       for _, r in ipairs(src.recommends or {}) do if not seen[r] then seen[r] = true; st.recommends[#st.recommends + 1] = r end end
+      local look = src.id == "my_reaper" and M.my_look()
+      local starts = src.id == "my_reaper" and (look and look.starts or M.starts_now()) or src.starts or {}
+      st.starts = st.starts or {}
+      for _, s in ipairs(starts) do if not seen["start " .. s[2]] then seen["start " .. s[2]] = true; st.starts[#st.starts + 1] = s end end -- (your scripts at start, 5.22)
     end
   end
   st.accent = st.accent or accent

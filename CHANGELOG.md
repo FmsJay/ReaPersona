@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.22.0
+- **The scripts REAPER starts with go with your look and your personas.** Chordbox, the adaptive grid, Gridbox and anything else your startup file launches (as FTC Tools and others add them: *Start script: ...*) are kept by *Use this look on all my computers*, by *Save what I'm using...* and by a built persona's My REAPER block. Using one on a computer that has the script installed adds its start line there (your startup file is backed up first) and starts it if it's stopped; one that isn't installed yet is added once ReaPack or your scripts bring it. They're never removed, so they keep running under every persona. Only the command name travels, never code. A saved persona lists them in its description.
+
 ## 5.21.1
 - **A look saved on one computer reaches the others.** A computer that had never saved a look sent an empty one, stamped newer than the look you'd just saved elsewhere, so it won. An unsaved look isn't sent now, and *Forget* is sent as a change, so your other computers forget it too.
 
