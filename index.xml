@@ -5,62 +5,62 @@
       <metadata>
         <link rel="website">https://github.com/FmsJay/ReaPersona</link>
       </metadata>
-      <version name="5.16.1" author="James" time="2026-11-17T23:51:18Z">
-        <changelog><![CDATA[Per-project settings (sample rate, metronome, crossfades...) sync as defaults instead of from the project in front; ReaPack installs no longer blocked by a leftover file record.]]></changelog>
-        <source main="main">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/ReaPersona.lua</source>
-        <source file="build_themes.py">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/build_themes.py</source>
-        <source file="colour_keys.txt">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/colour_keys.txt</source>
-        <source file="demo/ReaPersona demo.rpp">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/demo/ReaPersona%20demo.rpp</source>
-        <source file="extensions/SmoothWheelScroll-LICENSE.txt">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/extensions/SmoothWheelScroll-LICENSE.txt</source>
-        <source platform="win64" file="extensions/reaper_smoothwheelscroll-x64.dll">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/extensions/reaper_smoothwheelscroll-x64.dll</source>
-        <source file="install_libs.py">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/install_libs.py</source>
-        <source file="install_shortcuts.py">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/install_shortcuts.py</source>
-        <source file="make_demo.lua">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/make_demo.lua</source>
-        <source file="make_previews.lua">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/make_previews.lua</source>
-        <source file="make_templates.lua">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/make_templates.lua</source>
-        <source file="merge_themes.py">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/merge_themes.py</source>
-        <source file="previews/ableton.png">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/previews/ableton.png</source>
-        <source file="previews/audacity.png">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/previews/audacity.png</source>
-        <source file="previews/audition.png">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/previews/audition.png</source>
-        <source file="previews/base_reaper.png">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/previews/base_reaper.png</source>
-        <source file="previews/bitwig.png">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/previews/bitwig.png</source>
-        <source file="previews/cakewalk.png">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/previews/cakewalk.png</source>
-        <source file="previews/cubase.png">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/previews/cubase.png</source>
-        <source file="previews/fl_studio.png">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/previews/fl_studio.png</source>
-        <source file="previews/logic.png">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/previews/logic.png</source>
-        <source file="previews/my_reaper.png">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/previews/my_reaper.png</source>
-        <source file="previews/pro_tools.png">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/previews/pro_tools.png</source>
-        <source file="previews/reapertips.png">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/previews/reapertips.png</source>
-        <source file="previews/reason.png">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/previews/reason.png</source>
-        <source file="previews/studio_one.png">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/previews/studio_one.png</source>
-        <source file="reapersona_core.lua">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/reapersona_core.lua</source>
-        <source file="reapersona_feedback.lua">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/reapersona_feedback.lua</source>
-        <source file="setup_helper.py">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/setup_helper.py</source>
-        <source file="styles.json">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/styles.json</source>
-        <source file="templates/ableton.RPP">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/templates/ableton.RPP</source>
-        <source file="templates/audacity.RPP">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/templates/audacity.RPP</source>
-        <source file="templates/audition.RPP">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/templates/audition.RPP</source>
-        <source file="templates/bitwig.RPP">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/templates/bitwig.RPP</source>
-        <source file="templates/cakewalk.RPP">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/templates/cakewalk.RPP</source>
-        <source file="templates/cubase.RPP">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/templates/cubase.RPP</source>
-        <source file="templates/fl_studio.RPP">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/templates/fl_studio.RPP</source>
-        <source file="templates/logic.RPP">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/templates/logic.RPP</source>
-        <source file="templates/pro_tools.RPP">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/templates/pro_tools.RPP</source>
-        <source file="templates/reason.RPP">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/templates/reason.RPP</source>
-        <source file="templates/studio_one.RPP">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/templates/studio_one.RPP</source>
-        <source file="validate.py">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/ReaPersona/validate.py</source>
+      <version name="5.17.0" author="James" time="2026-11-18T00:37:28Z">
+        <changelog><![CDATA[A new user's own REAPER setup is kept as a persona of its own (My REAPER as it was) before ReaPersona first changes anything, unless it's REAPER as it ships.]]></changelog>
+        <source main="main">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/ReaPersona.lua</source>
+        <source file="build_themes.py">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/build_themes.py</source>
+        <source file="colour_keys.txt">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/colour_keys.txt</source>
+        <source file="demo/ReaPersona demo.rpp">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/demo/ReaPersona%20demo.rpp</source>
+        <source file="extensions/SmoothWheelScroll-LICENSE.txt">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/extensions/SmoothWheelScroll-LICENSE.txt</source>
+        <source platform="win64" file="extensions/reaper_smoothwheelscroll-x64.dll">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/extensions/reaper_smoothwheelscroll-x64.dll</source>
+        <source file="install_libs.py">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/install_libs.py</source>
+        <source file="install_shortcuts.py">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/install_shortcuts.py</source>
+        <source file="make_demo.lua">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/make_demo.lua</source>
+        <source file="make_previews.lua">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/make_previews.lua</source>
+        <source file="make_templates.lua">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/make_templates.lua</source>
+        <source file="merge_themes.py">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/merge_themes.py</source>
+        <source file="previews/ableton.png">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/previews/ableton.png</source>
+        <source file="previews/audacity.png">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/previews/audacity.png</source>
+        <source file="previews/audition.png">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/previews/audition.png</source>
+        <source file="previews/base_reaper.png">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/previews/base_reaper.png</source>
+        <source file="previews/bitwig.png">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/previews/bitwig.png</source>
+        <source file="previews/cakewalk.png">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/previews/cakewalk.png</source>
+        <source file="previews/cubase.png">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/previews/cubase.png</source>
+        <source file="previews/fl_studio.png">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/previews/fl_studio.png</source>
+        <source file="previews/logic.png">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/previews/logic.png</source>
+        <source file="previews/my_reaper.png">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/previews/my_reaper.png</source>
+        <source file="previews/pro_tools.png">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/previews/pro_tools.png</source>
+        <source file="previews/reapertips.png">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/previews/reapertips.png</source>
+        <source file="previews/reason.png">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/previews/reason.png</source>
+        <source file="previews/studio_one.png">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/previews/studio_one.png</source>
+        <source file="reapersona_core.lua">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/reapersona_core.lua</source>
+        <source file="reapersona_feedback.lua">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/reapersona_feedback.lua</source>
+        <source file="setup_helper.py">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/setup_helper.py</source>
+        <source file="styles.json">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/styles.json</source>
+        <source file="templates/ableton.RPP">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/templates/ableton.RPP</source>
+        <source file="templates/audacity.RPP">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/templates/audacity.RPP</source>
+        <source file="templates/audition.RPP">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/templates/audition.RPP</source>
+        <source file="templates/bitwig.RPP">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/templates/bitwig.RPP</source>
+        <source file="templates/cakewalk.RPP">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/templates/cakewalk.RPP</source>
+        <source file="templates/cubase.RPP">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/templates/cubase.RPP</source>
+        <source file="templates/fl_studio.RPP">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/templates/fl_studio.RPP</source>
+        <source file="templates/logic.RPP">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/templates/logic.RPP</source>
+        <source file="templates/pro_tools.RPP">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/templates/pro_tools.RPP</source>
+        <source file="templates/reason.RPP">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/templates/reason.RPP</source>
+        <source file="templates/studio_one.RPP">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/templates/studio_one.RPP</source>
+        <source file="validate.py">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/ReaPersona/validate.py</source>
       </version>
     </reapack>
     <reapack name="ReaPersona menus.ext" type="extension" desc="ReaPersona in REAPER's Extensions and View menus">
       <metadata>
         <link rel="website">https://github.com/FmsJay/ReaPersona</link>
       </metadata>
-      <version name="1.0.1" author="James" time="2026-11-17T23:51:18Z">
+      <version name="1.0.1" author="James" time="2026-11-18T00:37:28Z">
         <changelog><![CDATA[ReaPersona in the Extensions and View menus, and the action 'ReaPersona: open'.]]></changelog>
-        <source platform="win64" file="reaper_reapersona-x64.dll">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/extension/reaper_reapersona-x64.dll</source>
-        <source platform="darwin" file="reaper_reapersona.dylib">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/extension/reaper_reapersona.dylib</source>
-        <source platform="linux64" file="reaper_reapersona-x86_64.so">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/extension/reaper_reapersona-x86_64.so</source>
-        <source platform="linux-aarch64" file="reaper_reapersona-aarch64.so">https://github.com/FmsJay/ReaPersona/raw/16e285c8e868abdd1e0551271b541b3c0b87e212/extension/reaper_reapersona-aarch64.so</source>
+        <source platform="win64" file="reaper_reapersona-x64.dll">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/extension/reaper_reapersona-x64.dll</source>
+        <source platform="darwin" file="reaper_reapersona.dylib">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/extension/reaper_reapersona.dylib</source>
+        <source platform="linux64" file="reaper_reapersona-x86_64.so">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/extension/reaper_reapersona-x86_64.so</source>
+        <source platform="linux-aarch64" file="reaper_reapersona-aarch64.so">https://github.com/FmsJay/ReaPersona/raw/a68933ad8726571fea7a6d3da3e09d5e2a539022/extension/reaper_reapersona-aarch64.so</source>
       </version>
     </reapack>
   </category>
