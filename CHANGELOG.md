@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.17.1
+- **An installer for people new to REAPER** (`installer/`: double-click *Install ReaPersona (Windows).cmd* or *Install ReaPersona (Mac).command*, or the one-line command for Linux in the README). It installs what's missing (REAPER, ReaPack, ReaImGui, js_ReaScriptAPI, SWS), asks which DAW you're coming from, and leaves REAPER set up as it, shortcuts included, after one restart, with or without Python. `-Persona <id>` / `RP_PERSONA=<id>` answers the question up front. Tested end to end in Windows Sandbox (a clean Windows 11).
+- A brand-new REAPER no longer gets a "My REAPER as it was" persona: the list of mouse contexts REAPER writes itself on its first start was taken for changed mouse behaviours (found in that Sandbox run).
+
 ## 5.17.0
 - **Your own setup is kept for you.** The first time ReaPersona switches a new user to a persona, the REAPER setup they already had (theme, the settings and mouse behaviours personas touch, where the mixer and other windows sit, on their own keys) is first saved as a persona of its own, "My REAPER as it was (<computer>)", so it's one click away whatever changes later. Nothing is saved when that setup is REAPER as it ships (no keys, mouse behaviours, menus or toolbars of your own, the Default 7 theme, REAPER's factory options): Base REAPER already is that. Once per computer, never for people already using ReaPersona.
 

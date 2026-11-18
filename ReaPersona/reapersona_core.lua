@@ -565,7 +565,8 @@ end
 -- REAPER already is it. Pure: the keymap, mouse and menu files' text, the theme in use, the settings now (feel_now) and Base REAPER's feel.
 function M.stock_setup(kb, mouse, menu, theme, feel, base_feel)
   if ("\n" .. (kb or "")):find("\nKEY ") then return false end -- (a key of your own: REAPER's factory keys aren't written there)
-  for _, t in ipairs({ mouse or "", menu or "" }) do if t:find("=", 1, true) then return false end end -- (any entry: changed mouse or menus/toolbars)
+  -- (any entry: changed mouse or menus/toolbars. Not [hasimported]: a new REAPER writes that list of contexts itself. Windows Sandbox, 5.17.1)
+  for _, t in ipairs({ mouse or "", menu or "" }) do if (("\n" .. t):gsub("\n%[hasimported%][^%[]*", "\n")):find("=", 1, true) then return false end end
   if theme and theme ~= "" and not theme:match("^Default_7") then return false end
   local now = {}
   for _, f in ipairs(feel or {}) do

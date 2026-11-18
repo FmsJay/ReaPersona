@@ -94,6 +94,21 @@ REAPER treats Ctrl as Cmd, so the personas should work unchanged, and keys show 
 
 ## Install
 
+### New to REAPER?
+
+One installer does it all: REAPER, ReaPack, ReaImGui, js_ReaScriptAPI and SWS (skipping what you already have, each from its official source), then ReaPersona. It asks which music app you're coming from and leaves REAPER set up as that app, shortcuts included (REAPER restarts once at the end). Enter at the question means plain REAPER.
+
+- **Windows:** double-click [`installer/Install ReaPersona (Windows).cmd`](installer/), or in PowerShell:
+  `$f="$env:TEMP\reapersona_install.ps1"; iwr -UseBasicParsing "https://raw.githubusercontent.com/FmsJay/ReaPersona/main/installer/install_windows.ps1" -OutFile $f; powershell -NoProfile -ExecutionPolicy Bypass -File $f`
+- **Mac:** double-click [`installer/Install ReaPersona (Mac).command`](installer/) (if macOS blocks it: System Settings > Privacy & Security > Open Anyway), or in Terminal:
+  `curl -fsSL "https://raw.githubusercontent.com/FmsJay/ReaPersona/main/installer/install_mac.sh?$(date +%s)" | bash`
+- **Linux** (a terminal on the computer's own desktop; everything goes in your home folder, no sudo):
+  `curl -fsSL "https://raw.githubusercontent.com/FmsJay/ReaPersona/main/installer/install_linux.sh?$(date +%s)" | bash`
+
+To answer the question up front: add `-Persona logic` to the Windows line, or put `RP_PERSONA=logic` before `bash` on a Mac or Linux (any persona id: `pro_tools`, `ableton`, `fl_studio`... `base_reaper` is plain REAPER).
+
+### Already using REAPER
+
 1. In REAPER, open **Extensions > ReaPack > Import repositories…** and paste:
    `https://github.com/FmsJay/ReaPersona/raw/main/index.xml`
 2. In **Extensions > ReaPack > Browse packages**, install **ReaPersona**.
