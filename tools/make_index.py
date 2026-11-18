@@ -52,7 +52,7 @@ def main():
     xml = """<?xml version="1.0" encoding="utf-8"?>
 <index version="1" name="ReaPersona">
   <category name="Workflow">
-    <reapack name="ReaPersona.lua" type="script" desc="ReaPersona: make REAPER feel like other DAWs, switch themes and presets">
+    <reapack name="ReaPersona.lua" type="script" desc="ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW, with import, export and sync across computers">
       <metadata>
         <link rel="website">%s</link>
       </metadata>
