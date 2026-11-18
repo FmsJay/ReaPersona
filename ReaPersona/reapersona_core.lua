@@ -509,9 +509,7 @@ function M.project_now(whole) -- this project as a workflow's project part: its 
   end
   return pj, n
 end
-function M.save_preset(name, with_project) -- -> the new preset (as a style). with_project: this project's rate and tracks for new projects
-  local base = M.current()
-  if base.preset then base = M.by_id(base.base) or M.styles[1] end
+local function feel_now(base) -- every setting, mouse behaviour and window place any style touches, as it is now (a preset's feel)
   local feel, seen = {}, {}
   for _, f in ipairs(base.feel or {}) do if f[1] == "switch" then feel[#feel + 1] = f end end -- (its toolbars: no state to read)
   local function toggle(c, label)
@@ -546,6 +544,13 @@ function M.save_preset(name, with_project) -- -> the new preset (as a style). wi
       feel[#feel + 1] = { "dock", w, side, tonumber(shown), WINDOWS[w].name .. ": " .. (side == "float" and "its own window" or ("docked " .. side)) .. (shown == "1" and ", open" or ", closed") }
     end
   end
+  return feel
+end
+M.feel_now = feel_now
+function M.save_preset(name, with_project) -- -> the new preset (as a style). with_project: this project's rate and tracks for new projects
+  local base = M.current()
+  if base.preset then base = M.by_id(base.base) or M.styles[1] end
+  local feel = feel_now(base)
   local list = load_presets()
   local p = { id = M.new_id("preset_"), name = name, base = base.id, saved = os.date("%Y-%m-%d"), feel = feel,
               theme = M.loaded_theme() or M.theme_for(base), project = with_project and M.project_now(true) or nil }
@@ -555,6 +560,37 @@ function M.save_preset(name, with_project) -- -> the new preset (as a style). wi
   load_presets()
   reaper.SetExtState(M.SECTION, "style", p.id, true) -- (it is what's in use now: switching away puts back what the style changed)
   return M.by_id(p.id)
+end
+-- A new user's own setup, kept as a persona before ReaPersona first changes anything (5.17), unless it's REAPER as it ships: then Base
+-- REAPER already is it. Pure: the keymap, mouse and menu files' text, the theme in use, the settings now (feel_now) and Base REAPER's feel.
+function M.stock_setup(kb, mouse, menu, theme, feel, base_feel)
+  if ("\n" .. (kb or "")):find("\nKEY ") then return false end -- (a key of your own: REAPER's factory keys aren't written there)
+  for _, t in ipairs({ mouse or "", menu or "" }) do if t:find("=", 1, true) then return false end end -- (any entry: changed mouse or menus/toolbars)
+  if theme and theme ~= "" and not theme:match("^Default_7") then return false end
+  local now = {}
+  for _, f in ipairs(feel or {}) do
+    if f[1] == "toggle" then now["t" .. tostring(f[2])] = f[3]
+    elseif f[1] == "radio" then now["r" .. table.concat(f[2], ",")] = f[3] end
+  end
+  for _, f in ipairs(base_feel or {}) do
+    local k = f[1] == "toggle" and "t" .. tostring(f[2]) or f[1] == "radio" and "r" .. table.concat(f[2], ",") or nil
+    if k and now[k] ~= nil and tostring(now[k]) ~= tostring(f[3]) then return false end
+  end
+  return true
+end
+function M.save_first_setup() -- -> the preset made, or nil when the setup is REAPER's own. Once per computer (ExtState "first setup")
+  if reaper.GetExtState(M.SECTION, "first setup") ~= "" then return nil end
+  reaper.SetExtState(M.SECTION, "first setup", "stock", true) -- (once, whatever happens below)
+  local mine = M.by_id("my_reaper") or M.styles[1]
+  local feel = feel_now(mine)
+  local base = M.by_id("base_reaper")
+  if M.stock_setup(M.read(res .. "/reaper-kb.ini"), M.read(res .. "/reaper-mouse.ini"), M.read(res .. "/reaper-menu.ini"), M.loaded_theme(), feel, base and base.feel) then return nil end
+  local was = reaper.GetExtState(M.SECTION, "style")
+  local ok, st = pcall(M.save_preset, "My REAPER as it was (" .. tostring(M.computer and M.computer() or "this computer") .. ")")
+  reaper.SetExtState(M.SECTION, "style", was, true) -- (save_preset marks it in use: nothing has switched yet)
+  if not ok or not st then M.log("first setup not saved: " .. tostring(st)); return nil end
+  reaper.SetExtState(M.SECTION, "first setup", st.id, true)
+  return st
 end
 -- Mix and match: one style's keys (its shortcut layer and MIDI keys), another style's layout, toolbar and feel, any theme. -> the profile
 function M.save_mix(name, keys_id, feel_id, theme)
@@ -607,6 +643,7 @@ function M.loaded_theme() -- the theme file in use, by the name you picked it by
 end
 function M.use(st)
   if not st then return end
+  if reaper.GetExtState(M.SECTION, "style") == "" and st.id ~= "my_reaper" then M.save_first_setup() end -- (a new user's first switch: their setup kept first)
   st = M.layered(st) -- (the workflow in use, over it)
   if reaper.GetExtState(M.SECTION, "style") == "my_reaper" or reaper.GetExtState(M.SECTION, "style") == "" then
     local th = M.loaded_theme() -- (My REAPER's theme is whatever you had in it)
@@ -3185,7 +3222,7 @@ M.EXT_SETTINGS = { -- (here: keys that belong to this computer, never copied)
 }
 local HERE_ONLY = { style = true, orig = true, ["orig project"] = true, migrated = true, page = true, search = true, ["follow beat"] = true,
   ["midi dock"] = true, ["theme my_reaper"] = true, ["theme path my_reaper"] = true, welcomed = true, ["text size"] = true, look = true, view = true,
-  ["last style"] = true, ["menu once"] = true, onboarded = true, ["screen reader"] = true, workflow = true } -- (screen reader: each computer's own, or one
+  ["last style"] = true, ["menu once"] = true, onboarded = true, ["screen reader"] = true, workflow = true, ["first setup"] = true } -- (screen reader: each computer's own, or one
   -- computer turning the menu off could lock a screen-reader user on another out of it. Review, 5.14)
 local HERE_PREFIX = { "docker ", "params ", "forks ", "sync ", "declined ", "inputs " }
 function M.synced_setting(k) -- a ReaPersona ExtState key that goes to your other computers (pure)

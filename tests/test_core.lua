@@ -322,6 +322,20 @@ for _, k in ipairs({ "adjrecmanlatin", "adjrecmanlatout", "wnd_x", "mixwnd_vis",
   assert(not core.pref_synced(k, "1"), k .. " stays this computer's")
 end
 assert(not core.pref_synced("render_pattern_0", "J:\\Music\\x") and not core.pref_synced("foo", "/Users/chilio/x"), "a path in the value stays too")
+-- (5.17: a new user's own setup is kept as a persona unless it's REAPER as it ships)
+do
+  local base = { { "toggle", 1157, 1, "snap" }, { "radio", { 41603, 41604 }, 41603, "transport" }, { "mouse", "MM_CTX_ITEM", 0, "x" } }
+  local same = { { "toggle", 1157, 1 }, { "radio", { 41603, 41604 }, 41603 }, { "toggle", 40036, 0 } }
+  local kb = "SCR 4 0 RS1 \"Custom: x\" x.lua\n"
+  assert(core.stock_setup(kb, nil, "", "Default_7.0.ReaperThemeZip", same, base), "factory: scripts registered, Default 7, factory toggles")
+  assert(core.stock_setup(nil, nil, nil, nil, {}, base), "no files at all is factory")
+  assert(not core.stock_setup(kb .. "KEY 1 83 40012 0\n", nil, "", nil, same, base), "a key of your own")
+  assert(not core.stock_setup(kb, "[MM_CTX_ITEM]\nmm_0=1 m\n", "", nil, same, base), "a changed mouse behaviour")
+  assert(not core.stock_setup(kb, "", "[Main toolbar]\nitem_0=40001\n", nil, same, base), "your own toolbar")
+  assert(not core.stock_setup(kb, "", "", "Reapertips Theme.ReaperThemeZip", same, base), "another theme")
+  assert(not core.stock_setup(kb, "", "", nil, { { "toggle", 1157, 0 } }, base), "snap off")
+  assert(not core.stock_setup(kb, "", "", nil, { { "radio", { 41603, 41604 }, 41604 } }, base), "transport moved")
+end
 -- (5.16.1: per-project settings are read from reaper.ini's defaults, not from the project in front)
 assert(core.project_var("projsrate") and core.project_var("autoxfade") and core.project_var("projmetroen") and core.project_var("PROJBPM"))
 assert(not core.project_var("autosaveint") and not core.project_var("splitautoxfade") and not core.project_var("projsrateX"))

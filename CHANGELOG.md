@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.17.0
+- **Your own setup is kept for you.** The first time ReaPersona switches a new user to a persona, the REAPER setup they already had (theme, the settings and mouse behaviours personas touch, where the mixer and other windows sit, on their own keys) is first saved as a persona of its own, "My REAPER as it was (<computer>)", so it's one click away whatever changes later. Nothing is saved when that setup is REAPER as it ships (no keys, mouse behaviours, menus or toolbars of your own, the Default 7 theme, REAPER's factory options): Base REAPER already is that. Once per computer, never for people already using ReaPersona.
+
 ## 5.16.1
 - **Per-project settings sync as defaults.** Settings REAPER keeps per project (sample rate, metronome, auto-crossfade and recording options, grid, render settings and the rest) were read from the project in front, so opening a 48 kHz voiceover project could send 48 kHz to your other computers as their default. They're now read from REAPER's saved defaults for new projects.
 - **ReaPack installs no longer blocked by a leftover file record.** A file still listed for a package that's gone made ReaPack refuse the package that has it now (the Mac's eralumin MIDI Channel Toggle stayed at version 0). Package syncing clears those records first.

@@ -1,6 +1,6 @@
 -- @description ReaPersona: make REAPER feel like Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity or Audition (or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live
 -- @author James (with Claude)
--- @version 5.16.1
+-- @version 5.17.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -1585,7 +1585,8 @@ end
 local function setup_page()
   if reaper.GetExtState(SECTION, "welcomed") == "" and card("welcome") then -- (the first run: pick your DAW, it's in use straight away)
     heading("Which DAW are you coming from?", 20)
-    muted("Pick it and REAPER takes on its look and layout now, and its shortcuts once they're installed (Getting started, below). You can switch any time, and Back to My REAPER puts everything back.")
+    muted("Pick it and REAPER takes on its look and layout now, and its shortcuts once they're installed (Getting started, below). You can switch any time, and Back to My REAPER puts everything back. " ..
+      "If you'd already set REAPER up your own way, that setup is first kept as a persona of its own, \"My REAPER as it was\".")
     local n = 0
     for _, st in ipairs(styles) do
       if st.kind ~= "theme" and (st.alt or 0) > 0 and not st.user and not st.preset and st.id ~= "base_reaper" then
@@ -1593,7 +1594,8 @@ local function setup_page()
         n = n + 1
         if primary(st.name .. "##welcome", accent_of(st)) then
           selected = st.id; use(st); reaper.SetExtState(SECTION, "welcomed", "1", true)
-          if setup_todo() then say(st.name .. " in use. Next: install its shortcuts below.") end
+          local kept = core.by_id(reaper.GetExtState(SECTION, "first setup"))
+          if setup_todo() then say(st.name .. " in use." .. (kept and (" Your own setup is kept as " .. kept.name .. ".") or "") .. " Next: install its shortcuts below.") end
         end
       end
     end
