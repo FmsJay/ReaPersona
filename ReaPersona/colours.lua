@@ -689,8 +689,10 @@ function colours.draw(ctx, ImGui, proj)
   if ch then reaper.SetExtState(band.SECTION, "colour try", v and "" or "off", true) end
   ImGui.SetItemTooltip(ctx, "On: a colour button shows the new colours with Keep it and Put it back, and Put it back gives you exactly what you had.\n" ..
     "Off: the colours change straight away (Ctrl+Z still takes them back).")
-  ImGui.TextDisabled(ctx, "Kept with personas: Save what I'm using... saves this look with it, and the Persona Builder has a Colours block. " ..
+  ImGui.PushStyleColor(ctx, ImGui.Col_Text, ImGui.GetStyleColor(ctx, ImGui.Col_TextDisabled)) -- (wrapped: one line ran off the page)
+  ImGui.TextWrapped(ctx, "Kept with personas: Save what I'm using... saves this look with it, and the Persona Builder has a Colours block. " ..
     "Switching to one brings its look back; a workflow with one colours the tracks of each new project it sets up.")
+  ImGui.PopStyleColor(ctx)
   if from == "project" then
     ImGui.SameLine(ctx)
     if ImGui.SmallButton(ctx, "Forget this project's look") then reaper.SetProjExtState(proj, band.SECTION, "colours", ""); cache.at = -math.huge end

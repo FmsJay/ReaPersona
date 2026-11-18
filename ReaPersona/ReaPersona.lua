@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.24.0
+-- @version 5.25.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -272,7 +272,7 @@ local said -- (the last thing said: the screen-reader menu shows it in a message
 local menu_mode = false -- (the screen-reader menu is open: results go in a message box, which the screen reader reads)
 local function speak(text) if reaper.osara_outputMessage and not menu_mode then reaper.osara_outputMessage(tostring(text)) end end -- (OSARA reads it out)
 local function say(text) toast, toast_until, said = tostring(text), reaper.time_precise() + 6 + 0.06 * #tostring(text), tostring(text); speak(text) end
-local colours = assert(loadfile(here .. "/colours.lua"))(core) -- (Themes > Colours: StudioSync's colour system, 5.19)
+local colours = assert(loadfile(here .. "/colours.lua"))(core) -- (Colours tab: StudioSync's colour system, 5.19)
 colours.say = say
 
 local function open_extra(x)
@@ -1629,22 +1629,47 @@ remove_finish = function() -- (Remove ReaPersona, once My REAPER is back) -> fal
   install_shortcuts(true)
   return false
 end
+local setup_job -- (Set up everything: one step per frame behind a progress window, so REAPER never looks frozen. 5.25)
 local function setup_all()
   if reaper.MB("Set up everything ReaPersona can do from here?\n\n" ..
-    "- build ReaPersona's own DAW themes (needs Python)\n- add the startup line that brings your persona back when REAPER starts\n" ..
-    "- offer the smooth playhead / smooth scrolling extensions\n- then the shortcut install: REAPER closes and opens again (about 10 seconds), which also loads new extensions", "ReaPersona: set up", 4) ~= 6 then return end
-  local done = {}
-  if core.python() then local m = core.build_own_themes(); done[#done + 1] = m and (#m .. " themes built") or "themes not built" end
-  if not core.startup_on() then done[#done + 1] = core.add_startup() and "startup line added" or "startup line not added" end
+    "- add the startup line that brings your persona back when REAPER starts\n" ..
+    "- offer the smooth playhead / smooth scrolling extensions\n- then the shortcut install: REAPER closes and opens again (about 10 seconds), which also loads new extensions\n\n" ..
+    "(ReaPersona's own DAW themes are under Advanced, below.)", "ReaPersona: set up", 4) ~= 6 then return end
+  local steps = { { "Adding the startup line", function(done)
+    if not core.startup_on() then done[#done + 1] = core.add_startup() and "Startup line added" or "Startup line not added" end
+  end } }
   for key, x in pairs(core.EXTENSIONS) do
-    if core.extension_state(key) == "missing" and core.can_install(key)
-      and reaper.MB("Install " .. x.name .. "? (" .. x.why .. ")", "ReaPersona", 4) == 6 and core.install_extension(key) then
-      done[#done + 1] = x.name .. " installed (restart REAPER)"
+    if core.ext_here(key) and core.extension_state(key) == "missing" and core.can_install(key) then
+      steps[#steps + 1] = { "Offering " .. x.name, function(done)
+        if reaper.MB("Install " .. x.name .. "? (" .. x.why .. ")", "ReaPersona", 4) == 6 and core.install_extension(key) then done[#done + 1] = x.name .. " installed (restart REAPER)" end
+      end }
     end
   end
-  theme_list = nil
-  reaper.MB(table.concat(done, "\n") .. "\n\nLast step: the shortcuts.", "ReaPersona: set up", 0)
-  install_shortcuts()
+  steps[#steps + 1] = { "Installing the shortcuts (REAPER restarts)", function(done)
+    reaper.MB((#done > 0 and (table.concat(done, "\n") .. "\n\n") or "") .. "Last step: the shortcuts.", "ReaPersona: set up", 0)
+    install_shortcuts()
+  end }
+  setup_job = { steps = steps, i = 0, done = {} }
+end
+local function setup_progress() -- (drawn every frame while Set up everything runs; a step runs only after the window has been shown)
+  if not setup_job then return end
+  local j = setup_job
+  ImGui.OpenPopup(ctx, "ReaPersona: setting up")
+  local cx, cy = ImGui.Viewport_GetCenter(ImGui.GetWindowViewport(ctx))
+  ImGui.SetNextWindowPos(ctx, cx, cy, ImGui.Cond_Always, 0.5, 0.5) -- (over the middle of ReaPersona's window)
+  if ImGui.BeginPopupModal(ctx, "ReaPersona: setting up", nil, ImGui.WindowFlags_AlwaysAutoResize) then
+    local s = j.steps[j.i + 1]
+    ImGui.Text(ctx, (s and s[1] or "Done") .. "...")
+    ImGui.ProgressBar(ctx, j.i / #j.steps, 360, 0, j.i .. " of " .. #j.steps)
+    muted("Each step takes a moment: leave REAPER open until this closes.")
+    ImGui.EndPopup(ctx)
+  end
+  if not j.shown then j.shown = true; return end
+  j.i = j.i + 1
+  local s = j.steps[j.i]
+  if s then local ok, err = pcall(s[2], j.done); if not ok then j.done[#j.done + 1] = s[1] .. ": " .. tostring(err) end end
+  if j.i >= #j.steps then setup_job = nil end
+  j.shown = false -- (the next step after the window shows the new one)
 end
 local function setup_page()
   if reaper.GetExtState(SECTION, "welcomed") == "" and card("welcome") then -- (the first run: pick your DAW, it's in use straight away)
@@ -1717,6 +1742,27 @@ local function setup_page()
         function() if reaper.ReaPack_BrowsePackages then reaper.ReaPack_BrowsePackages("js_ReaScriptAPI") else core.open_url("https://forum.cockos.com/showthread.php?t=212174") end end)
       local rp = reaper.ReaPack_BrowsePackages ~= nil
       setup_row("rp", rp, "ReaPack", "Installs the smooth playhead and keeps ReaPersona up to date.", not rp and "Get it" or nil, function() core.open_url("https://reapack.com/") end)
+      local have, want = shortcuts_state()
+      setup_row("keys", have == want, "Shortcut layers: " .. have .. " of " .. want .. " personas installed", "Each persona's keys. REAPER restarts to load them (about 10 seconds).", have < want and "Install and restart" or "Reinstall", install_shortcuts)
+      setup_row("start", core.startup_on(), "Brings your persona back when REAPER starts", "One block in Scripts/__startup.lua.", not core.startup_on() and "Add it" or nil,
+        function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end)
+      local ext_keys = {}
+      for key in pairs(core.EXTENSIONS) do if core.ext_here(key) then ext_keys[#ext_keys + 1] = key end end -- (Windows-only ones only on Windows)
+      table.sort(ext_keys)
+      for _, key in ipairs(ext_keys) do
+        local x, s = core.EXTENSIONS[key], core.extension_state(key)
+        setup_row("ext" .. key, s == "on" or s == "off", x.name .. (s == "restart" and " (restart REAPER to load it)" or ""), x.why .. " Recommended by the DAW personas.",
+          s == "missing" and core.can_install(key) and "Install" or nil, function() install_ext(key) end)
+      end
+      ImGui.EndTable(ctx)
+    end
+    -- (5.25, James: setting everything up shouldn't build ReaPersona's own themes: the themes by other people look closer, and building
+    -- them held REAPER. Here for whoever wants them)
+    if ImGui.CollapsingHeader(ctx, "Advanced: ReaPersona's own DAW themes##advthemes") then
+      if ImGui.BeginTable(ctx, "setup adv", 3, ImGui.TableFlags_SizingStretchProp | ImGui.TableFlags_RowBg) then
+        ImGui.TableSetupColumn(ctx, "state", ImGui.TableColumnFlags_WidthFixed, 56)
+        ImGui.TableSetupColumn(ctx, "what", ImGui.TableColumnFlags_WidthStretch)
+        ImGui.TableSetupColumn(ctx, "do", ImGui.TableColumnFlags_WidthFixed)
       local py = core.python()
       setup_row("py", py ~= nil, "Python 3" .. (py and (" (" .. py .. ")") or ""), "Builds ReaPersona's own themes. The shortcut install doesn't need it.",
         not py and "Get it" or nil, function() core.open_url("https://www.python.org/downloads/") end)
@@ -1738,19 +1784,8 @@ local function setup_page()
       local n, total = core.own_themes_built()
       setup_row("own", n == total, "ReaPersona's own themes: " .. n .. " of " .. total .. " built", "A theme per DAW in its colours, made from your REAPER's own Default 7. They're approximations: the themes by other people below can look closer to the real DAWs.",
         py and core.python_libs() and (n == total and "Rebuild" or "Build") or nil, build_themes)
-      local have, want = shortcuts_state()
-      setup_row("keys", have == want, "Shortcut layers: " .. have .. " of " .. want .. " personas installed", "Each persona's keys. REAPER restarts to load them (about 10 seconds).", have < want and "Install and restart" or "Reinstall", install_shortcuts)
-      setup_row("start", core.startup_on(), "Brings your persona back when REAPER starts", "One block in Scripts/__startup.lua.", not core.startup_on() and "Add it" or nil,
-        function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end)
-      local ext_keys = {}
-      for key in pairs(core.EXTENSIONS) do if core.ext_here(key) then ext_keys[#ext_keys + 1] = key end end -- (Windows-only ones only on Windows)
-      table.sort(ext_keys)
-      for _, key in ipairs(ext_keys) do
-        local x, s = core.EXTENSIONS[key], core.extension_state(key)
-        setup_row("ext" .. key, s == "on" or s == "off", x.name .. (s == "restart" and " (restart REAPER to load it)" or ""), x.why .. " Recommended by the DAW personas.",
-          s == "missing" and core.can_install(key) and "Install" or nil, function() install_ext(key) end)
+        ImGui.EndTable(ctx)
       end
-      ImGui.EndTable(ctx)
     end
     card_end()
   end
@@ -2014,7 +2049,7 @@ local function bld_palette()
   ImGui.SetItemTooltip(ctx, "The persona's colour in ReaPersona: its card, buttons and badge.")
   flow_first = false
   chip("This colour", function() return core.new_block("colour", string.format("#%06X", bld.colour)) end)
-  chip("Colours", function() return core.new_block("colours") end, "The colour look in use now (Themes > Colours): how tracks, items and regions are coloured, and your instrument, folder and section colours. Switching to the persona brings it back; as a workflow, its new projects are coloured in it.")
+  chip("Colours", function() return core.new_block("colours") end, "The colour look in use now (the Colours tab): how tracks, items and regions are coloured, and your instrument, folder and section colours. Switching to the persona brings it back; as a workflow, its new projects are coloured in it.")
 end
 local function entry_line(e, blocks, b)
   local ch, v = ImGui.Checkbox(ctx, "##on" .. e.slot, not e.off)
@@ -2280,7 +2315,8 @@ local GROUPS = { -- { name, what it's for, its pages (tabs), the tabs' labels }
   { "Home", "Get everything set up, and import from another DAW. Drop files here.", { "Setup" }, { "Setup" } },
   { "Personas", "Make REAPER feel like another DAW, your own personas, and the Persona Builder.", { "DAWs", "Presets", "Builder" }, { "DAWs", "Your personas", "Persona Builder" } },
   { "Shortcuts", "Every key of a persona, with REAPER's action for it.", { "Shortcuts" }, { "Shortcuts" } },
-  { "Themes", "Your themes, getting more, adjusting the one in use, building one from others, and colouring the project.", { "Themes", "Browse", "Adjust", "Merge", "Colours" }, { "Your themes", "Get more", "Adjust", "Build one", "Colours" } },
+  { "Themes", "Your themes, getting more, adjusting the one in use, and building one from others.", { "Themes", "Browse", "Adjust", "Merge" }, { "Your themes", "Get more", "Adjust", "Build one" } },
+  { "Colours", "Colour the project: tracks, items and regions, by gradient, folder, instrument, section and more.", { "Colours" }, { "Colours" } }, -- (its own tab since 5.25: James)
   { "Settings", "REAPER's and SWS's options in groups, what personas may change, a persona per project, ReaPersona's look.", { "Settings", "Tweaks" }, { "ReaPersona", "REAPER tweaks" } },
   { "Help", "How ReaPersona works and what each page does, what's installed, checking the personas, repairs.", { "Guide", "Check" }, { "How it works", "Check and repair" } },
 }
@@ -2296,6 +2332,7 @@ local GUIDE = {
     "Personas > DAWs: each DAW's persona, with its keys, look and feel: Use it, its cheat sheet, and a new project like it. Workflow on top (above the cards) adds a kind of session, voiceover or mixing say, to whichever persona is in use: its REAPER settings and what a new project gets, while the persona keeps its keys and look. Your personas: the ones you saved or built, and your workflows. Persona Builder: stack blocks (a DAW's keys, its mouse, groups of REAPER settings, a theme) into a persona of your own.",
     "Shortcuts: every key of a persona, with the REAPER action it runs.",
     "Themes > Your themes: the theme for each persona. Get more: the REAPER Stash and ReaPack. Adjust: change the theme in use, live. Build one: a theme from parts of others.",
+    "Colours: colour the whole project at once: tracks by gradient, folder or instrument, items by section or take, regions too, with your own colours per instrument, folder and section. Try it first, then keep it or put it back.",
     "Settings > ReaPersona: your other computers, what a persona may change, a persona per project, the screen-reader menu, this window's look, and removing ReaPersona. REAPER tweaks: REAPER's and SWS's options in groups.",
     "Help > How it works: this page. Check and repair: what's installed, a check of every persona against this REAPER, and registering ReaPersona's actions again." } },
   { "Keyboard", {
@@ -2567,6 +2604,7 @@ local function frame()
       elseif page == "Check" then check_page() end
       ImGui.EndChild(ctx)
     end
+    setup_progress() -- (Set up everything's progress window, over the page)
     if ImGui.BeginDragDropTarget(ctx) then -- (files dropped anywhere on the page: themes, packs, toolbars, keymaps, styles, presets)
       local rv, count = ImGui.AcceptDragDropPayloadFiles(ctx)
       if rv then

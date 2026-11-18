@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.25.0
+- **Set up everything no longer builds ReaPersona's own DAW themes.** That was the slow part, and the themes by other people look closer to the real DAWs. Building them (with Python and its image tools) is under Home > *Advanced: ReaPersona's own DAW themes*.
+- **Set up everything shows its progress.** Each step runs behind a small window with a progress bar, one at a time, so REAPER never looks frozen and you can see what's left.
+- **Colours is a main tab of its own** (it was under Themes). Its last line no longer runs off the page.
+
 ## 5.24.0
 - **A persona's startup scripts come with where to get them.** Each script your look or a persona starts with REAPER now remembers the ReaPack repository and package it came from. Using it (or importing or syncing it) on a computer that doesn't have the script says so on the persona's page, with *Get it*: that adds the repository to ReaPack and shows the package, and installing stays your click. Once ReaPack has installed it, ReaPersona starts it and adds it to your startup, within a few seconds. Repository addresses from files and other computers must be https, and names plain.
 - **No test versions for now.** Settings > Updates follows released versions only.
