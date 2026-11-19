@@ -1690,7 +1690,14 @@ end
 local function block_entries(b) -- what one block sets: { slot, kind = "key"|"midi"|"feel"|"theme"|"accent", label, key, entry, value }
   local out, st = {}, b.id and M.source(b.id)
   local function feel(f) local s = feel_slot(f); if s then out[#out + 1] = { slot = s, kind = "feel", label = f[#f], entry = f, mouse = f[1] == "mouse" or nil } end end
-  local function key(k, wheel) out[#out + 1] = { slot = "key " .. M.canon(k[1]), kind = "key", label = k[3], key = k[1], entry = k, mouse = wheel or nil } end
+  local at = {}
+  local function key(k, wheel, extra) -- (5.30: b.rebind[original key] = the key it's moved to; b.extra = keys added to it, any action)
+    local spec = (not extra and type(b.rebind) == "table" and b.rebind[M.canon(k[1])]) or k[1]
+    local kk = spec ~= k[1] and { spec, k[2], k[3] } or k
+    local e = { slot = "key " .. M.canon(spec), kind = "key", label = kk[3], key = kk[1], entry = kk, mouse = wheel or nil,
+                moved_from = spec ~= k[1] and k[1] or nil, extra = extra or nil }
+    if at[e.slot] then out[at[e.slot]] = e else out[#out + 1] = e; at[e.slot] = #out end
+  end
   if (b.kind == "daw" or b.kind == "mouse") and st then
     -- (a DAW block saved before 5.10 has no mouse part: its wheel keys go with its keys and its drags with its feel, as they did)
     local mouse, daw = b.kind == "mouse" or b.mouse, b.kind == "daw"
@@ -1700,6 +1707,11 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
     end
     if daw and b.keys then
       for _, k in ipairs(st.midi_keys or {}) do out[#out + 1] = { slot = "midi " .. M.canon(k[1]), kind = "midi", label = k[3], key = k[1], entry = k } end
+      for i, k in ipairs(type(b.extra) == "table" and b.extra or {}) do -- (keys added from other personas, your keymap, or any action)
+        if type(k) == "table" and type(k[1]) == "string" and M.encode(k[1]) and (type(k[2]) == "number" or type(k[2]) == "string") then
+          key({ k[1], k[2], tostring(k[3] or k[2]) }, M.is_wheel(k[1]), i)
+        end
+      end
     end
     for _, f in ipairs(st.feel or {}) do
       if f[1] == "mouse" then if mouse or (mouse == nil and b.feel) then feel(f) end
@@ -2495,10 +2507,12 @@ function M.kb_plan(kb, styles, scripts, manifest, old_fb, defaults, remove, no_m
       if q[4]:sub(1, 6) == "_OSARA" then osara[q[2] .. " " .. q[3] .. " " .. q[5]] = true end
     end
   end
+  local seen = {} -- (personas sharing a layer, 5.29: each key once)
   for _, p in ipairs(plan) do
     local f, k, cmd, alt, comment = table.unpack(p)
-    local mine = yours[f .. " " .. k .. " " .. alt]
+    local mine = yours[f .. " " .. k .. " " .. alt] or seen[f .. " " .. k .. " " .. alt]
     if not mine and osara[f .. " " .. k .. " 0"] then skipped = skipped + 1; mine = true end
+    seen[f .. " " .. k .. " " .. alt] = true
     if not mine then -- (you rebound this key in the style's layer: yours stays)
       if cmd:match("^MAIN:") then -- (what the Main section runs on that key now, so a style's Undo/Redo is still StudioSync's)
         local mf, mk = M.encode(cmd:sub(6))
@@ -3291,6 +3305,67 @@ local function decode(f, k) -- reaper-kb.ini flags, key -> "Ctrl+Shift+L" (the r
   return table.concat(mods, "+")
 end
 M.decode = decode
+-- Every shortcut (5.30; James: "show all the ones of every persona including base reaper keybinds ... All keybinds should show here, the most
+-- commonly used first. Including any you have built into actions separately or for other scripts/actions. Can filter by specific action types
+-- or scripts"). Your keymap's own keys (Main and the MIDI editor: anything you, a script or an extension set) and every persona's.
+function M.action_kind(cmd) -- (pure)
+  local c = tostring(cmd)
+  if type(cmd) == "number" or c:match("^%d+$") or c:match("^MAIN:") then return "REAPER action" end
+  if c:match("^_RS") or c:match("^script:") then return "Script" end
+  if c:match("^_%x+$") and #c == 33 then return "Custom action" end
+  return "SWS / extension"
+end
+function M.keymap_keys(kb) -- (pure) -> { {spec, cmd, name, section} } for reaper-kb.ini's Main and MIDI editor sections
+  local out = {}
+  for line in (kb or ""):gmatch("[^\r\n]+") do
+    local f, k, cmd, sec, rest = line:match("^KEY (%d+) (%d+) (%S+) (%d+)(.*)$")
+    if f and (sec == "0" or sec == "32060") and cmd ~= "0" then
+      local spec = decode(f, k)
+      local name = rest:match("#%s*[^:]+:%s*[^:]+:%s*(.+)$") -- ("# Main : Ctrl+X : OVERRIDE DEFAULT : Edit: Cut items")
+      if name then name = name:gsub("^OVERRIDE DEFAULT%s*:%s*", ""):gsub("%s+$", "") end
+      if spec then out[#out + 1] = { spec, tonumber(cmd) or cmd, name, sec == "0" and "Main" or "MIDI editor" } end
+    end
+  end
+  return out
+end
+function M.catalog(styles, kb) -- (pure) -> rows { spec, cmd, name, kind, section, sources = {names}, common }, the most used first
+  local rows, by, uses = {}, {}, {}
+  local function add(spec, cmd, name, section, source)
+    if type(spec) ~= "string" or cmd == nil then return end
+    local id = section .. "\0" .. M.canon(spec) .. "\0" .. tostring(cmd)
+    local r = by[id]
+    if not r then r = { spec = spec, cmd = cmd, name = name or tostring(cmd), kind = M.action_kind(cmd), section = section, sources = {} }; by[id] = r; rows[#rows + 1] = r end
+    if (r.name == tostring(cmd)) and name then r.name = name end
+    for _, s in ipairs(r.sources) do if s == source then return end end
+    r.sources[#r.sources + 1] = source
+  end
+  for _, st in ipairs(styles) do
+    if not st.preset and not st.keys_from and #(st.keys or {}) > 0 then
+      local seen = {}
+      for _, k in ipairs(M.keys_here(st.keys)) do add(k[1], k[2], k[3], "Main", st.name); if not seen[tostring(k[2])] then seen[tostring(k[2])] = true; uses[tostring(k[2])] = (uses[tostring(k[2])] or 0) + 1 end end
+      for _, k in ipairs(st.midi_keys or {}) do add(k[1], k[2], k[3], "MIDI editor", st.name) end
+    end
+  end
+  for _, k in ipairs(M.keymap_keys(kb)) do add(k[1], k[2], k[3], k[4], "Your keymap") end
+  for _, r in ipairs(rows) do r.common = uses[tostring(r.cmd)] or 0 end
+  table.sort(rows, function(a, b) if a.common ~= b.common then return a.common > b.common end if a.name ~= b.name then return a.name < b.name end return a.spec < b.spec end)
+  return rows
+end
+local action_list_cache
+function M.action_list() -- -> { {cmd, name} } every action in the Main section (for a shortcut of your own), cached
+  if action_list_cache then return action_list_cache end
+  local out, sec = {}, reaper.SectionFromUniqueID and reaper.SectionFromUniqueID(0)
+  if sec and reaper.kbd_enumerateActions then
+    for i = 0, 100000 do
+      local cmd, name = reaper.kbd_enumerateActions(sec, i)
+      if not cmd or cmd == 0 then break end
+      local named = reaper.ReverseNamedCommandLookup(cmd)
+      out[#out + 1] = { named and ("_" .. named) or cmd, name or tostring(cmd) }
+    end
+  end
+  action_list_cache = out
+  return out
+end
 -- A .ReaperKeyMap's Main-section keys as a new style on its own shortcut layer. -> the style, or nil + why
 function M.style_from_keymap(path)
   local name = (path:gsub("\\", "/"):match("([^/]+)%.[Rr]eaper[Kk]ey[Mm]ap$") or "Keymap")

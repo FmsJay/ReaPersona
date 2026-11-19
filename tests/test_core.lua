@@ -955,6 +955,39 @@ do
   reaper.HasExtState = has
   ext["ReaPersona/favourites"], ext["ReaPersona/style"] = nil, nil
 end
+-- 24. The shortcut editor (5.30): a key moved, a key added (over one the persona had), the catalog of every key, most used first.
+do
+  local b = core.keys_block("pro_tools")
+  local first = core.keys_here(core.by_id("pro_tools").keys)[1]
+  b.rebind = { [core.canon(first[1])] = "Ctrl+Alt+Shift+F12" }
+  b.extra = { { "Ctrl+Alt+Shift+F11", 40001, "Track: Insert new track" }, { first[1], 40029, "Edit: Undo" }, { "Nonsense+Key", 1, "x" } }
+  local lines = core.build_preview({ b })[1]
+  local moved, added, on_first, bad = nil, nil, nil, false
+  for _, e in ipairs(lines) do
+    if e.key == "Ctrl+Alt+Shift+F12" then moved = e end
+    if e.key == "Ctrl+Alt+Shift+F11" then added = e end
+    if core.canon(e.key or "") == core.canon(first[1]) then on_first = e end
+    if e.key == "Nonsense+Key" then bad = true end
+  end
+  assert(moved and moved.moved_from == first[1] and moved.entry[2] == first[2], "a key moved keeps its action")
+  assert(added and added.extra == 1 and added.entry[2] == 40001, "a key added from anywhere")
+  assert(on_first and on_first.entry[2] == 40029 and on_first.extra == 2, "an added key on a key the persona had freed: it's the added one")
+  assert(not bad, "a key REAPER can't take is left out")
+  local st = assert(core.build_style({ b }, "Edited", "built_try"))
+  local found = 0
+  for _, k in ipairs(st.keys) do if k[1] == "Ctrl+Alt+Shift+F12" or k[1] == "Ctrl+Alt+Shift+F11" then found = found + 1 end end
+  assert(found == 2, "the persona has them")
+  -- the catalog: your keymap's keys and every persona's, the actions most personas use first
+  local kb = "KEY 1 65 40001 0\t\t # Main : A : OVERRIDE DEFAULT : Track: Insert new track\nKEY 9 90 _RS30122590024a7fcbbe25f51663b84ca6c69baea0 0\t\t # Main : Ctrl+Z : Script: StudioSync - Undo.lua\nKEY 1 66 0 0\t\t # Main : B : DISABLED DEFAULT\nKEY 1 67 40002 5\t\t # Main (alt-5) : C : x\n"
+  local mine = core.keymap_keys(kb)
+  assert(#mine == 2 and mine[1][1] == "A" and mine[1][3] == "Track: Insert new track" and mine[2][3] == "Script: StudioSync - Undo.lua", "Main only, disabled ones out, names from the comments")
+  local cat = core.catalog(core.styles, kb)
+  assert(#cat > 100 and cat[1].common >= cat[#cat].common, "most used first")
+  local seen_mine = false
+  for _, r in ipairs(cat) do if r.spec == "A" and r.cmd == 40001 then seen_mine = r.sources[#r.sources] == "Your keymap" end end
+  assert(seen_mine, "your keymap's keys are in it")
+  assert(core.action_kind(40001) == "REAPER action" and core.action_kind("_RS1234") == "Script" and core.action_kind("_" .. string.rep("a", 32)) == "Custom action" and core.action_kind("_SWS_ABOUT") == "SWS / extension")
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")

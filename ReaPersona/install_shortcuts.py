@@ -467,9 +467,11 @@ def run(remove=False, no_midi=False):
     # OSARA's keys stay OSARA's: a persona key over one took a screen-reader user's navigation and reports away (review 5.14)
     osara = {" ".join(l.split()[1:3] + l.split()[4:5]) for l in kept if key_of(l) and l.split()[3].startswith("_OSARA")}
     skipped = 0
+    seen = set()  # (personas sharing a layer, 5.29: each key once)
     for f, k, cmd, alt, comment in plan:
-        if "%d %d %d" % (f, k, alt) in yours:  # (you rebound this key in the style's layer: yours stays)
+        if "%d %d %d" % (f, k, alt) in yours or "%d %d %d" % (f, k, alt) in seen:  # (you rebound this key in the style's layer: yours stays)
             continue
+        seen.add("%d %d %d" % (f, k, alt))
         if "%d %d 0" % (f, k) in osara:
             skipped += 1
             continue

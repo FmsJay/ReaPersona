@@ -64,6 +64,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
 - **Search everything** (Ctrl+K, Cmd+K on a Mac, in the top bar when the window is wide enough): personas, shortcuts in every persona ("split" shows each DAW's key), where a DAW's feature is in REAPER, themes, settings and pages.
 - **New project like <DAW>:** each persona's page starts a project with that DAW's usual tracks, buses and sends (REAPER's own plugins).
 
+- **Shortcut editor:** your persona's keys to leave out, change (press the new keys) or add, a key of your own for any of REAPER's actions, scripts or custom actions, and *Every shortcut*: every persona's keys and your keymap's, the most used first, filtered by type, source and section.
 - **Favourites:** the star on any DAW's or persona's card puts it on Personas > Favourites. Setting up ReaPersona stars My REAPER and the DAW you pick.
 - **Make your own persona from the tabs:** *New persona* (or *Edit* on any persona), then choose each part where it lives: its shortcuts (Shortcuts), its mouse (Mouse), each part of its layout (Layout: the mixer from one DAW, the transport from another...), its theme (Themes), its colour look (Colours), what a new project gets (Project) and groups of REAPER settings (Settings > REAPER tweaks, *In my persona*). A bar over every tab shows it, with *Try it* and *Save*.
   - Each part comes from whichever persona you pick for it, or stays as yours; untick any single line (a key, a mouse drag, a layout setting) to leave just that out.

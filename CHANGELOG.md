@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.30.0
+- **A shortcut editor.** Shortcuts now has *Your persona's shortcuts*: load any persona's keys, then leave any out, change any (press the new keys; *Undo* puts it back), or remove keys you added, with a warning when two actions share a key. *Add a shortcut for any action* searches all of REAPER's actions, scripts and custom actions (over 10,000) and takes the keys you press.
+- **Every shortcut, the most used first.** Every persona's keys and your own keymap's (what you, a script or an extension set, Main and the MIDI editor), sorted by how many personas use the action, filtered by text, type (REAPER action, script, custom action, SWS / extension), where it comes from and section. *Add* puts any of them in your persona.
+- Personas sharing a shortcut layer write each key once (5.29 wrote Pro Tools' keys twice into the layer it shares with Pro Tools Intro).
+- My REAPER's shortcuts are your own keymap: changes to them on this tab don't go into it yet (REAPER's Actions window does that).
+
 ## 5.29.0
 - **Shortcut layers only for the personas you use.** REAPER has exactly 16 alternate shortcut layers (Main alt-1 to alt-16) and nothing can add more. Every DAW persona used to keep its own, 15 of the 16, which left almost none for personas of your own. Now each computer gives layers only to the personas it uses: your favourites, the one in use and the last one, and whatever your own personas and saved setups build on. Personas with the same keys share one (Pro Tools and Pro Tools Intro). A persona without a layer gets one the first time you use it: it asks, and REAPER restarts once. Home shows how many of the 16 are in use. Each computer keeps its own layers.json; until the next shortcut install, every DAW keeps the layer it had, so nothing changes by itself.
 - **Layers with a few other tools' keys in them count as free.** StudioSync puts its Undo and Redo in every layer, so one such line used to mark a whole DAW layer as yours and unusable. A layer is yours only when most of it is your own keys; layers with a few others are used after clean ones. On the laptop this takes the next install from all 16 layers to 2.
