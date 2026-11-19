@@ -1,5 +1,31 @@
 # Changelog
 
+## 5.40.0
+Fixes from review round 1 (seven reviewers on 5.39.0: changes, persona engine, UX, performance, cross-platform, install and update, code
+health; reports and the fix list in the side-session notes, reapersona-round1/).
+- **Previews:** while you preview or try a persona, the window knows it (the top bar says "<name> (preview)") instead of showing My REAPER,
+  so nothing is saved over My REAPER by mistake. Closing the window, quitting REAPER, Go back, Stop or switching to another persona ends the
+  preview and puts back what you had; one left over is put back when REAPER starts. A preview no longer changes the open project or queues
+  REAPER preferences, and the preferences message doesn't repeat on every step. New persona and Edit ask before dropping an unsaved one.
+  Undo records a change before stepping back, a slider drag is one step, and Undo says what it undid. A large project template in a persona
+  no longer slows the window while you edit it.
+- **Switching:** the mixer goes back where it was; a persona's colours aren't sent to your other computers as yours; the project follower
+  doesn't trigger REAPER's "already running" question and picks up edited personas; the MIDI editor's docking goes in from the follower too,
+  not only while the window is open; the put-back list is saved early and at the end of a switch (crash-safe, still quick), and settings are
+  saved once each. A persona deleted on another computer while in use switches you back to My REAPER.
+- **Personas you build** keep their keys for both Windows and macOS (one built on Windows no longer puts Cmd+Tab on the Mac); older ones
+  are rebuilt from what they were made of. The install without Python now puts in Mac/Windows-only MIDI editor keys too.
+- **Faster:** syncs skip shared copies they already know (also across restarts), ReaPack's package list is kept until ReaPack changes, the
+  Layout tab no longer searches every window twice a second, DAW pictures load a couple at a time, and only changed action scripts are
+  rewritten and registered.
+- **Install and update:** the ReaPack index is built from the release commit only (a stray local file can't break updates); a self-update
+  writes every file before swapping any in; the shortcut installer always brings REAPER back and says what happened; a cancelled install
+  leaves the shortcut layers as they were; AppImage and Flatpak REAPER on Linux handled (Flatpak gets the keymap import steps).
+- **Smaller:** Mac key names on Mouse & trackpad; plain words instead of "layer alt-N" and "blocks"; Remove takes out every DAW's FX folder;
+  fonts install for accented user names; TLS 1.2 in the Windows installer; ReaPersona test copies no longer sync.
+- **For developers:** tests/test_ui.lua draws all 30 pages without REAPER; tests/test_installers.py compares the Python and Lua installers
+  (12 cases, identical keymaps); tools/lint.py runs LuaLS and fails on undefined globals; the engine has 41 top-level locals free.
+
 ## 5.39.0
 Faster, and the window's code split by area (from a Lua efficiency review and LuaLS, the Lua language server; timings measured in
 REAPER on the laptop).

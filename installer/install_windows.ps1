@@ -11,6 +11,9 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue" # Invoke-WebRequest is 10x slower with the progress bar
+# (Windows PowerShell 5.1 on older Windows 10 offers only TLS 1.0/1.1 unless .NET's strong crypto is set, and GitHub refuses those:
+# "Could not create SSL/TLS secure channel" on every download. 3072 = TLS 1.2, added to whatever is allowed already. Round 1)
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
 $Raw = "https://github.com/FmsJay/ReaPersona/raw/main"
 $ReaPackVer = "v1.2.6"
 $ReaImGuiVer = "0.10.0.5" # shortcut: pinned, as StudioSync's installer; ReaPack keeps them updated only if later reinstalled through ReaPack

@@ -35,3 +35,10 @@ ReaPersona/venv/
 ReaPersona/venv_status.txt
 ReaPersona/install_staged/
 ReaPersona/last_install.txt
+# more of each computer's own (review round 1): layer numbers, earlier versions, staged installs and scratch files
+ReaPersona/layers.json
+ReaPersona/versions/
+ReaPersona/_staged/
+ReaPersona/install_cancelled
+ReaPersona/_template.RPP
+ReaPersona/_capture.RPP

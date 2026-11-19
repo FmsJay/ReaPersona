@@ -150,6 +150,9 @@ end
 
 function save_preset_prompt()
   local cur = core.current()
+  if cur.id == "built_try" then -- (a preview isn't a persona of its own: saved, it named one that's gone. Review 2026-11-19)
+    return say("REAPER is showing the persona you're making: Save it from the bar at the top, or Go back there first to save what you had.")
+  end
   local ok, name = reaper.GetUserInputs("Save as a persona", 1, "Name,extrawidth=160,separator=\n", (cur.preset and cur.name or (cur.name .. " (mine)")))
   name = ok and name:gsub("^%s+", ""):gsub("%s+$", "") or ""
   if name == "" then return end
@@ -446,7 +449,7 @@ function detail(sel, alt)
       end
     end
     if (core.theme_for(sel) or ""):match("^ReaPersona %- ") then
-      muted("ReaPersona's own theme is an approximation of " .. sel.name .. "'s colours on REAPER's Default 7 layout. Themes by other authors can look closer to the real thing: Setup lists them with Get it links, and Browse searches the Stash.")
+      muted("ReaPersona's own theme is an approximation of " .. sel.name .. "'s colours on REAPER's Default 7 layout. Themes by other authors can look closer to the real thing: Home lists them with Get it links, and Themes > Get more searches the Stash.")
     end
     card_end()
   end
@@ -505,7 +508,7 @@ function daws_page(sel, alt)
     local ok, p = reaper.GetUserFileNameForRead("", "Import a ReaPersona persona", "*.json")
     if ok then
       local st, why = core.import(p)
-      reaper.MB(st and (st.name .. " imported as shortcut layer alt-" .. st.alt .. ".\n\nReopen ReaPersona to see it; its shortcuts need installing (Home > Shortcut layers).") or ("Not imported: " .. why), "ReaPersona", 0)
+      reaper.MB(st and (st.name .. " is imported.\n\nReopen ReaPersona to see it; its shortcuts need installing (Home > Install and restart).") or ("Not imported: " .. why), "ReaPersona", 0)
     end
   end
 end

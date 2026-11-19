@@ -52,7 +52,7 @@ function adjust_page(sel)
       end
     end
     if any and pfilter == "" and shown >= 40 then ImGui.TextDisabled(ctx, "The first 40 shown: search to find the rest.") end
-    if not any then muted("This theme has no adjustable settings of its own; its layouts and colours are below. (Merge can put its colours on a theme that has them.)") end
+    if not any then muted("This theme has no adjustable settings of its own; its layouts and colours are below. (Build one can put its colours on a theme that has them.)") end
     card_end()
   end
   if card("adj layouts") then

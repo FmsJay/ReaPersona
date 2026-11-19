@@ -24,7 +24,7 @@ do -- (the layout designer: its own scope)
       if fb then for _, e in ipairs(core.build_preview({ fb })[1]) do if not e.off then entries[#entries + 1] = e.entry end end end
     end
     local from_reaper = #entries == 0
-    if from_reaper then entries = core.feel_now(core.by_id("my_reaper") or styles[1]) end -- (nothing chosen: REAPER as it is now)
+    if from_reaper then entries = core.feel_now(core.by_id("my_reaper") or styles[1], true) end -- (true: closed windows by their toggle, not a search) -- (nothing chosen: REAPER as it is now)
     local items = core.layout_from_entries(entries)
     if from_reaper then items.midi = { zone = core.midi_docked() and "d_bottom" or "float", order = 1 } end
     cache.at, cache.items, cache.sig = reaper.time_precise(), items, sig
@@ -254,9 +254,9 @@ do
     heading("Set each window", 16)
     muted("Open or closed, in its own window (where it is now) or docked on a side. Take them as they are now, or choose one by one.")
     ImGui.Indent(ctx, IND * UI)
-    if reaper.time_precise() - (wins_seen.at or -10) > 0.5 then wins_seen.at, wins_seen.now = reaper.time_precise(), core.windows_now() end -- (review 2026-11-18)
+    if reaper.time_precise() - (wins_seen.at or -10) > 0.5 then wins_seen.at, wins_seen.now = reaper.time_precise(), core.windows_now(true) end -- (review 2026-11-18)
     if not wins_seen.now then
-      ImGui.TextColored(ctx, C.YELLOW, "Needs js_ReaScriptAPI (Home > Setup) to see REAPER's windows.")
+      ImGui.TextColored(ctx, C.YELLOW, "Needs js_ReaScriptAPI (Home) to see REAPER's windows.")
       ImGui.Unindent(ctx, IND * UI); card_end(); return
     end
     if ImGui.Button(ctx, "Take them as they are now##wnow") then

@@ -50,7 +50,7 @@ GUIDE = {
   { "What each page does", {
     "Home: the first steps, what ReaPersona can use and whether it's there (one click for each), importing from another DAW on this computer, and themes by other people. Drop theme, toolbar, keymap or persona files anywhere on the window to add them.",
     "Personas > DAWs: each DAW's persona, with its keys, look and feel: Use it, its cheat sheet, a new project like it, and that DAW's plug-ins with REAPER's own for each (it can add a \"<DAW> -> REAPER\" folder to REAPER's FX browser). Workflow on top (above the cards) adds a kind of session, voiceover or mixing say, to whichever persona is in use. Your personas: the ones you saved or built, and your workflows. Favourites: the ones you starred.",
-    "Making your own: New persona (Your personas) or Edit on any persona's page, then choose each part on its tab; the bar at the top shows what's in it, and Save is there. A DAW persona you edit is saved as a new one of yours. Preview as I change (in that bar) puts each change into REAPER a moment after you make it, and Undo and Redo (Ctrl+Z, Ctrl+Shift+Z) step through your changes; Go back or Stop puts what you had back.",
+    "Making your own: New persona (Your personas) or Edit on any persona's page, then choose each part on its tab; the bar at the top shows what's in it, and Save is there. A DAW persona you edit is saved as a new one of yours. Preview as I change (in that bar) puts each change into REAPER a moment after you make it, and Undo and Redo (Ctrl+Z, and Ctrl+Shift+Z or Ctrl+Y; Cmd on a Mac) step through your changes. A preview isn't saved: Go back, Stop or closing this window puts what you had back, and using another persona turns Preview off.",
     "Themes > Your themes: the theme for each persona. Get more: the REAPER Stash and ReaPack. Adjust: change the theme in use, live, and put its settings in your persona. Build one: a theme from parts of others.",
     "Colours: colour the whole project at once: tracks by gradient, folder or instrument, items by section or take, regions too. Try it first, then keep it or put it back.",
     "Shortcuts: your persona's keys (change any, add any action), and every key of every persona with the REAPER action it runs.",
@@ -60,7 +60,7 @@ GUIDE = {
     "REAPER: REAPER's and SWS's options, an area per tab, each one In my persona or not; and Preferences: fades and crossfades, zoom, new tracks, recording and solo, which go in when REAPER restarts.",
     "Settings: Sync (your other computers), Personas (what a persona may change, a persona per project, ReaPersona's actions), Scrolling & zoom, Look (this window, the screen-reader menu), Updates, and Remove.",
     "Show everything (bottom left, or Settings > Look): off, only the main tabs show; on, also Mouse & trackpad, Layout, Project, REAPER's options, and adjusting and building themes. While you make or edit a persona, every tab shows.",
-    "Restarting REAPER: some parts go in only when REAPER starts: your persona shortcuts, REAPER preferences, ReaPersona's window set and FX folders. Home lists what's waiting, with Restart REAPER now; REAPER asks about anything unsaved first.",
+    "Restarting REAPER: some parts go in only when REAPER starts. Home lists what's waiting (REAPER preferences, the window set, things from your other computers) with Restart REAPER now; new shortcuts are Home's Install and restart; an FX folder shows after any restart. REAPER asks about anything unsaved first.",
     "Help > How it works: this page. Check and repair: what's installed, a check of every persona against this REAPER, and registering ReaPersona's actions again." } },
   { "Keyboard", {
     "Tab and Shift+Tab move between controls, the arrow keys move within a page, Enter or Space presses, and Escape closes a menu or clears the search.",
@@ -107,7 +107,7 @@ function search_page()
     local hits = {}
     for _, st in ipairs(styles) do if has(st.name, st.id) then hits[#hits + 1] = st end end
     if #hits > 0 then
-      section("Styles")
+      section("Personas")
       for i, st in ipairs(hits) do
         if ImGui.SmallButton(ctx, "Use##ss" .. i) then use(st); selected = st.id end
         ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Show##ss" .. i) then selected = st.id; search_q = ""; go((st.user or st.preset or st.kind == "built") and "Presets" or "DAWs") end
@@ -118,7 +118,7 @@ function search_page()
     local rows = {}
     for _, st in ipairs(styles) do
       for _, k in ipairs(core.keys_here(st.keys)) do if has(k[1], k[3]) then rows[#rows + 1] = { st, k, "" } end end
-      for _, k in ipairs(st.midi_keys or {}) do if has(k[1], k[3]) then rows[#rows + 1] = { st, k, " (piano roll)" } end end
+      for _, k in ipairs(st.midi_keys or {}) do if has(k[1], k[3]) then rows[#rows + 1] = { st, k, " (MIDI editor)" } end end
     end
     if #rows > 0 then
       section("Shortcuts (" .. #rows .. ")")
@@ -199,8 +199,10 @@ function top_bar(alt)
   ImGui.SetCursorPosY(ctx, y0 + 13)
   local col = accent_of(cur)
   local wf = core.current_workflow()
-  pill(cur.name .. (wf and wf.id ~= cur.id and ("  +  " .. wf.name) or "") .. (in_use(cur, alt) and "" or "  (keys off)"), solid(col))
-  if not in_use(cur, alt) then ImGui.SetItemTooltip(ctx, "Its shortcut layer isn't on (REAPER restarted?): Use it again, or add the startup line on Home so it comes back each time REAPER starts.") end
+  local trial = cur.id == "built_try" -- (the persona being made, on show: Preview or Try it)
+  pill(cur.name .. (trial and " (preview)" or "") .. (wf and wf.id ~= cur.id and ("  +  " .. wf.name) or "") .. ((trial or in_use(cur, alt)) and "" or "  (keys off)"), solid(col))
+  if trial then ImGui.SetItemTooltip(ctx, "The persona you're making, in REAPER for now. Save it, or Go back (in the bar below) to put back what you had.")
+  elseif not in_use(cur, alt) then ImGui.SetItemTooltip(ctx, "Its shortcuts aren't on (REAPER restarted?): Use it again, or add the startup line on Home so it comes back each time REAPER starts.") end
   local w = ImGui.GetWindowWidth(ctx)
   if w > 760 then -- (search, Ctrl+K; on a narrow window it's left out of the bar)
     ImGui.SameLine(ctx, 0, 16)
@@ -211,7 +213,7 @@ function top_bar(alt)
     search_q = q
   end
   if search_q ~= "" and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then search_q = "" end
-  local undo = last_style and last_style ~= cur.id and core.by_id(last_style)
+  local undo = last_style and last_style ~= cur.id and last_style ~= "built_try" and core.by_id(last_style)
   local right = (undo and 520 or 410) * UI
   local after = ImGui.GetItemRectMax(ctx) - ImGui.GetWindowPos(ctx) + 12
   if w - right >= after then ImGui.SameLine(ctx, w - right); ImGui.SetCursorPosY(ctx, y0 + 8) else ImGui.SetCursorPosX(ctx, 16) end
@@ -242,6 +244,7 @@ function frame()
   ImGui.PushFont(ctx, font, 15 * UI)
   ImGui.SetNextWindowDockID(ctx, 0, ImGui.Cond_Once) -- (a window an older version left in a docker comes out once)
   local visible, open = ImGui.Begin(ctx, "ReaPersona", true, ImGui.WindowFlags_NoDocking)
+  images_left = 2
   if visible then
     if ensure_new or core.stubs_stale then core.ensure_scripts(); ensure_new = false end
     core.apply_midi_dock() -- (a style's MIDI editor docking waits for an editor to be open)
@@ -448,6 +451,7 @@ function loop()
   if quit_check and reaper.time_precise() > quit_check then
     quit_check = nil
     core.write(here .. "/install_cancelled", "quit was cancelled\n")
+    if core.cancel_layers then core.cancel_layers() end -- (layer numbers back as installed: review round 1)
     say("REAPER didn't close, so the shortcuts weren't installed.")
   end
   if removing and not core.busy() then removing = nil; if not remove_finish() then return end end -- (My REAPER's windows are back)
@@ -587,6 +591,7 @@ if from_menu and not screen_reader_menu(once) then
     if reaper.time_precise() < quit_check then return reaper.defer(wait_quit) end
     quit_check = nil
     core.write(here .. "/install_cancelled", "quit was cancelled\n")
+    if core.cancel_layers then core.cancel_layers() end
     reaper.MB("REAPER didn't close, so the shortcuts weren't installed.", "ReaPersona", 0)
   end
   wait_quit()
@@ -600,7 +605,14 @@ if from_menu then -- (the window from the menu: ReaImGui let go of the context m
 end
 cmd = select(4, reaper.get_action_context()) -- (the picker's own action: lit on a toolbar while the window is open)
 if cmd and cmd ~= 0 then reaper.SetToggleCommandState(0, cmd, 1); reaper.RefreshToolbar2(0, cmd) end
+-- (a preview left by an earlier window, or a persona in use that no longer exists: what you had goes back, never a silent "My REAPER")
+if core.is_trial and core.is_trial() and not bld.back and core.end_trial then pcall(core.end_trial) end
+do local sid = reaper.GetExtState(SECTION, "style"); if sid ~= "" and not core.by_id(sid) and core.by_id("my_reaper") then pcall(core.use, core.by_id("my_reaper")) end end
 reaper.atexit(function()
+  if bld.back or (core.is_trial and core.is_trial()) then -- (a preview or Try it ends when the window closes: what you had goes back. Review 2026-11-19)
+    local ok, e = pcall(bld_end_trial, true) -- (true: queued window moves can't wait for a frame that won't come)
+    if not ok then pcall(core.log, "closing a preview: " .. tostring(e)) end
+  end
   if trying then trying.ends = 0; trial_over() end -- (a theme on trial goes back when the window closes)
   pcall(colours.put_back_all) -- (and colours being tried)
   pcall(core.sync_tick) -- (what you changed while it was open, to your other computers)

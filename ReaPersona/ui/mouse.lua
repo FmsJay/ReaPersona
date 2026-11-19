@@ -50,15 +50,15 @@ local function add_mouse_line(ctx, flag, value, name)
   b.mextra = type(b.mextra) == "table" and b.mextra or {}
   for i = #b.mextra, 1, -1 do if b.mextra[i][2] == ctx and tonumber(b.mextra[i][3]) == flag then table.remove(b.mextra, i) end end
   b.mextra[#b.mextra + 1] = { "mouse", ctx, flag, value, name }
-  say((core.CTX_NAME[ctx] or ctx) .. (flag > 0 and (" with " .. core.mouse_mods(flag)) or "") .. ": " .. tostring(name) .. ", in your persona.")
+  say((core.CTX_NAME[ctx] or ctx) .. (flag > 0 and (" with " .. keyname(core.mouse_mods(flag))) or "") .. ": " .. tostring(name) .. ", in your persona.")
 end
 local function add_wheel(spec, cmd, name)
-  if not core.encode(spec) then return say(spec .. " isn't a wheel REAPER can take.") end
+  if not core.encode(spec) then return say(keyname(spec) .. " isn't a wheel REAPER can take.") end
   local b = mouse_block_here()
   b.extra = type(b.extra) == "table" and b.extra or {}
   for i = #b.extra, 1, -1 do if core.canon(b.extra[i][1]) == core.canon(spec) then table.remove(b.extra, i) end end
   b.extra[#b.extra + 1] = { spec, cmd, name }
-  say(spec .. ": " .. tostring(name) .. ", in your persona.")
+  say(keyname(spec) .. ": " .. tostring(name) .. ", in your persona.")
 end
 local function action_search(id, filter_words) -- -> cmd, name once one is picked
   ImGui.SetNextItemWidth(ctx, 260 * UI)
@@ -137,7 +137,7 @@ local function persona_mouse_card()
             if e.key then keycap(e.key)
             else
               local c = core.for_os(e.entry[2]) or e.entry[2]
-              ImGui.Text(ctx, (core.CTX_NAME[c] or c) .. (tonumber(e.entry[3]) > 0 and ("  +  " .. core.mouse_mods(e.entry[3])) or ""))
+              ImGui.Text(ctx, (core.CTX_NAME[c] or c) .. (tonumber(e.entry[3]) > 0 and ("  +  " .. keyname(core.mouse_mods(e.entry[3]))) or ""))
             end
             ImGui.TableNextColumn(ctx)
             local label = e.changed and value_name(core.for_os(e.entry[2]) or e.entry[2], e.entry[4]) or tostring(e.label)
@@ -146,7 +146,7 @@ local function persona_mouse_card()
             if e.key then
               if ImGui.SmallButton(ctx, "Change") then ImGui.OpenPopup(ctx, "wch" .. e.slot) end
               if ImGui.BeginPopup(ctx, "wch" .. e.slot) then
-                ImGui.Text(ctx, "What " .. e.key .. " does:")
+                ImGui.Text(ctx, "What " .. keyname(e.key) .. " does:")
                 local cmd, name = action_search("w" .. e.slot)
                 if cmd then add_wheel(e.key, cmd, name); ImGui.CloseCurrentPopup(ctx) end
                 ImGui.EndPopup(ctx)
@@ -158,7 +158,7 @@ local function persona_mouse_card()
             if e.extra then
               ImGui.SameLine(ctx)
               if ImGui.SmallButton(ctx, "Remove") then if e.key then table.remove(b.extra, e.extra) else table.remove(b.mextra, e.extra) end end
-            elseif e.changed then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Undo") then b.mset[e.slot] = nil end end
+            elseif e.changed then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Put back") then b.mset[e.slot] = nil end; ImGui.SetItemTooltip(ctx, "Back to what this line did in the persona you loaded.") end
             ImGui.PopID(ctx)
           end
           ImGui.EndTable(ctx)
@@ -181,7 +181,7 @@ local function persona_mouse_card()
     mods_boxes("w")
     local cmd, name = action_search("wadd", nil)
     if cmd then add_wheel(wheel_spec(mq.mods, mq.wheel), cmd, name) end
-    muted("Pick the action to add " .. wheel_spec(mq.mods, mq.wheel) .. " (the View: Scroll and Zoom actions marked mousewheel are the usual ones).")
+    muted("Pick the action to add " .. keyname(wheel_spec(mq.mods, mq.wheel)) .. " (the View: Scroll and Zoom actions marked mousewheel are the usual ones).")
   else
     ImGui.SetNextItemWidth(ctx, 280 * UI)
     if ImGui.BeginCombo(ctx, "##mctx", core.CTX_NAME[mq.ctx] or mq.ctx) then
@@ -241,7 +241,7 @@ local function mouse_catalog_card()
           n = n + 1
           ImGui.TableNextRow(ctx)
           ImGui.TableNextColumn(ctx); ImGui.Text(ctx, r.ctxname)
-          ImGui.TableNextColumn(ctx); ImGui.TextColored(ctx, C.MUTED, r.flag == 0 and "(none)" or core.mouse_mods(r.flag))
+          ImGui.TableNextColumn(ctx); ImGui.TextColored(ctx, C.MUTED, r.flag == 0 and "(none)" or keyname(core.mouse_mods(r.flag)))
           ImGui.TableNextColumn(ctx); ImGui.Text(ctx, tostring(r.name))
           ImGui.TableNextColumn(ctx); ImGui.TextColored(ctx, C.MUTED, #r.sources > 2 and (r.sources[1] .. " and " .. (#r.sources - 1) .. " more") or table.concat(r.sources, ", "))
           if #r.sources > 2 then ImGui.SetItemTooltip(ctx, table.concat(r.sources, ", ")) end

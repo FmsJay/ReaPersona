@@ -5,27 +5,56 @@
 ReaPack installs the package into <REAPER resource path>/Scripts/ReaPersona/Workflow/ and registers ReaPersona.lua as an action;
 the other files come with it. Run it after committing the files, then commit index.xml (its URLs point at that earlier commit).
 """
-import os, sys, time, urllib.parse
+import os, subprocess, sys, time, urllib.parse
 from xml.sax.saxutils import escape
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = "https://github.com/FmsJay/ReaPersona"
 
+# Files ReaPersona writes on each computer (its .gitignore lists most). Published, ReaPack and the self-updater would write the
+# author's copy over every user's own (their personas, presets, sync state...), so a commit holding one of these isn't indexed.
+PER_COMPUTER = ("scripts.json", "user_styles.json", "presets.json", "sync_state.json", "layers.json", "user_themes.json", "midi_map.lua",
+                "midi_fallback.json", "midi_defaults.json", "installed.json", "errors.log", "last_install.txt", "install_cancelled",
+                "packages_missing.json", "_packages.json", "venv_status.txt", "_starter.RTrackTemplate", "_template.RPP", "_capture.RPP")
+PER_COMPUTER_DIRS = ("actions/", "midi_keys/", "cheat sheets/", "pending/", "_downloads/", "_incoming/", "_staged/", "install_staged/",
+                     "feedback/", "versions/", "toolbars/", "venv/", "__pycache__/")
 
-def files():
-    out = []
-    for root, _, names in os.walk(os.path.join(HERE, "ReaPersona")):
-        for n in sorted(names):
-            rel = os.path.relpath(os.path.join(root, n), os.path.join(HERE, "ReaPersona")).replace("\\", "/")
-            if not rel.startswith(("__pycache__", "venv/", "install_staged/")):  # (each computer's own: the theme builder's venv, a staged install)
-                out.append(rel)
+
+def tracked(sha, folder):
+    """The files under folder/ in commit sha, relative to folder: exactly what the raw URLs at that sha serve (review round 1: the
+    working tree was listed before, so an untracked or ignored file got a URL that 404s and broke the whole update)."""
+    out = subprocess.run(["git", "-C", HERE, "ls-tree", "-r", "--name-only", "-z", sha, folder + "/"], capture_output=True)
+    if out.returncode != 0:
+        sys.exit("git ls-tree %s failed: %s" % (sha, out.stderr.decode("utf-8", "replace").strip()))
+    return [p[len(folder) + 1:] for p in out.stdout.decode("utf-8").split("\0") if p.startswith(folder + "/")]  # (-z: names unquoted)
+
+
+def per_computer(rel):
+    """Is this ReaPersona/ path one of each computer's own files? Pure."""
+    name = rel.rsplit("/", 1)[-1]
+    return (name in PER_COMPUTER or rel.startswith(PER_COMPUTER_DIRS) or (name.startswith("actions_") and name.endswith(".tsv"))
+            or name.endswith((".ReaperTheme", ".ReaperThemeZip", ".tmp")) or ".bad-" in name)
+
+
+def files(sha):
+    out = tracked(sha, "ReaPersona")
+    bad = [f for f in out if per_computer(f)]
+    if bad:
+        sys.exit("not indexed: commit %s holds each computer's own files (remove them with git rm --cached): %s" % (sha[:8], ", ".join(bad)))
+    if "ReaPersona.lua" not in out:
+        sys.exit("not indexed: commit %s has no ReaPersona/ReaPersona.lua" % sha[:8])
     return sorted(out, key=lambda f: (f != "ReaPersona.lua", f))
 
 
 def main():
     sha, version, changelog = sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else ""
+    # (the full commit id: a short one or a name like HEAD would put a moving or ambiguous ref in every URL)
+    full = subprocess.run(["git", "-C", HERE, "rev-parse", "--verify", sha + "^{commit}"], capture_output=True, text=True)
+    if full.returncode != 0:
+        sys.exit("not a commit here: " + sha)
+    sha = full.stdout.strip()
     src = []
-    for f in files():
+    for f in files(sha):
         url = "%s/raw/%s/ReaPersona/%s" % (REPO, sha, urllib.parse.quote(f))
         if f == "ReaPersona.lua":
             src.append('        <source main="main">%s</source>' % escape(url))
@@ -35,9 +64,10 @@ def main():
     # Extensions > ReaPersona and View > ReaPersona (extension/, source shared with StudioSync): a package of its own with a version of its
     # own, raised only when the extension changes, so ReaPersona's updates don't try to replace a file REAPER has loaded.
     ext_version, ext = "1.0.1", []  # (1.0.1: macOS and Linux builds, from StudioSync's .github/workflows/extension.yml)
+    ext_files = set(tracked(sha, "extension"))  # (from the commit too: a build only on disk would be a 404)
     for name, plat in (("reaper_reapersona-x64.dll", "win64"), ("reaper_reapersona.dylib", "darwin"),
                        ("reaper_reapersona-x86_64.so", "linux64"), ("reaper_reapersona-aarch64.so", "linux-aarch64")):
-        if os.path.exists(os.path.join(HERE, "extension", name)):
+        if name in ext_files:
             ext.append('        <source platform="%s" file="%s">%s/raw/%s/extension/%s</source>' % (plat, name, REPO, sha, name))
     ext_pkg = ("""
     <reapack name="ReaPersona menus.ext" type="extension" desc="ReaPersona in REAPER's Extensions and View menus">

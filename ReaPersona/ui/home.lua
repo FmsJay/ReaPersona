@@ -58,19 +58,39 @@ end
 -- REAPER reads its keymap only when it starts: install_shortcuts.py waits for REAPER to close, installs, and starts it again. Without
 -- Python the same install is planned here and a swap step puts it in: a batch file on Windows (5.14), a /bin/sh script on a Mac or
 -- Linux (5.16; until then a Mac without Python got a keymap to import by hand, and no toolbars). core.stage_install.
+-- A Flatpak REAPER (Linux): when REAPER quits, Flatpak ends everything it started, the install waiting for it too, so nothing would go
+-- in and REAPER wouldn't come back. The shortcuts go in by import instead; the rest needs the installer run from a terminal outside
+-- REAPER. (Cross-platform review 2026-11-19)
+local FLATPAK = not IS_MAC and not reaper.GetOS():find("^Win") and reaper.file_exists("/.flatpak-info")
+local function flatpak_install(remove)
+  local py = 'python3 "' .. here .. '/install_shortcuts.py"'
+  if remove then
+    return reaper.MB("This REAPER runs as a Flatpak, which closes anything waiting for REAPER to quit, so ReaPersona can't take its shortcuts out with a restart.\n\n" ..
+      "To finish: close REAPER, run this in a terminal, then start REAPER again:\n\n" .. py .. " --remove", "ReaPersona: remove", 0)
+  end
+  local path, n, skipped = core.make_keymap()
+  if not path then return reaper.MB("No keymap made: " .. tostring(skipped[1]), "ReaPersona", 0) end
+  reaper.MB("This REAPER runs as a Flatpak, which closes anything waiting for REAPER to quit, so the shortcuts go in without a restart:\n\n" ..
+    "1. In the Actions window (opening now), choose Key Map > Import... and pick\n" .. path .. "\n2. Choose to merge, not replace.\n\n" ..
+    "That's " .. n .. " shortcuts." .. (#skipped > 0 and (" Skipped (no action here yet): " .. table.concat(skipped, ", ") .. ".") or "") ..
+    "\n\nToolbars, and anything waiting for a restart, need the installer: close REAPER, run this in a terminal, then start REAPER again:\n\n" .. py, "ReaPersona: install the shortcuts", 0)
+  reaper.Main_OnCommand(40605, 0) -- (Show action list)
+end
 function install_shortcuts(remove, extra, asked) -- (remove: Remove ReaPersona, which has asked already: the lines come out instead. extra: a persona that
   -- needs its layer now; asked: the question was already put)
   if not remove then
     local what = core.pending_words(core.restart_pending())
-    if not asked and reaper.MB("REAPER closes (it asks about anything unsaved first) and opens again in about 10 seconds, with your projects.\n\n" ..
+    if not asked and not FLATPAK and reaper.MB("REAPER closes (it asks about anything unsaved first) and opens again in about 10 seconds, with your projects.\n\n" ..
       "Going in: your persona shortcuts" .. (what ~= "" and (", " .. what) or "") .. ".\n\nYour keymap is backed up first.", "ReaPersona: restart REAPER", 1) ~= 1 then return end
     core.prepare_layers(extra) -- (5.29: layers for the personas this computer uses; shared where the keys are the same)
     if core.scripts_missing() > 0 then core.ensure_scripts() end -- (the scripts the keys run have to be registered first)
     if not reaper.file_exists(here .. "/midi_defaults.json") then core.midi_defaults() end
   end
+  if FLATPAK then return flatpak_install(remove) end
   -- (on a Mac GetExePath is the folder holding REAPER.app, e.g. /Applications, not the app: matching ".app" in it found nothing and REAPER never came back)
   local d = reaper.GetExePath():gsub("\\", "/"):gsub("/+$", "")
   local exe = d .. (reaper.GetOS():find("^Win") and "/reaper.exe" or "/reaper") -- (Linux: the reaper binary beside it)
+  if not IS_MAC and not reaper.GetOS():find("^Win") and (os.getenv("APPIMAGE") or "") ~= "" then exe = os.getenv("APPIMAGE") end -- (an AppImage: its own file, not the mount that goes away)
   if IS_MAC then
     exe = d:match("^(.-%.app)") or d .. "/REAPER.app"
     for _, a in ipairs({ d .. "/REAPER.app", d .. "/REAPER64.app" }) do if not d:match("%.app") and reaper.file_exists(a .. "/Contents/Info.plist") then exe = a; break end end
@@ -160,9 +180,13 @@ function setup_page()
     muted("Pick it and REAPER takes on its look and layout now, and its shortcuts once they're installed (Getting started, below). You can switch any time, and Back to My REAPER puts everything back. " ..
       "If you'd already set REAPER up your own way, that setup is first kept as a persona of its own, \"My REAPER as it was\".")
     local n = 0
+    local row_end = ImGui.GetCursorScreenPos(ctx) + ImGui.GetContentRegionAvail(ctx) -- (buttons that don't fit go on the next line: at Large text they were cut off)
     for _, st in ipairs(styles) do
       if st.kind ~= "theme" and (st.alt or 0) > 0 and not st.user and not st.preset and st.id ~= "base_reaper" then
-        if n % 5 ~= 0 then ImGui.SameLine(ctx) end
+        if n > 0 then
+          ImGui.SameLine(ctx)
+          if ImGui.GetCursorScreenPos(ctx) + ImGui.CalcTextSize(ctx, st.name) + 24 * UI > row_end then ImGui.NewLine(ctx) end
+        end
         n = n + 1
         if primary(st.name .. "##welcome", accent_of(st)) then
           selected = st.id; use(st); reaper.SetExtState(SECTION, "welcomed", "1", true)
@@ -230,11 +254,11 @@ function setup_page()
       for _, st in ipairs(styles) do if (st.alt or 0) > 0 then layers_used[st.alt] = true end end
       local nl = 0; for _ in pairs(layers_used) do nl = nl + 1 end
       setup_row("keys", have == want, "Shortcut layers: " .. have .. " of " .. want .. " personas installed (" .. nl .. " of REAPER's 16 layers in use)",
-        "Each persona's keys. REAPER restarts to load them (about 10 seconds). REAPER has 16 layers, so ReaPersona gives them to the personas you use (favourites, the one in use, your own); a persona without one gets it the first time it's used, and personas with the same keys share one.", have < want and "Install and restart" or "Reinstall", install_shortcuts)
-      setup_row("start", core.startup_on(), "Brings your persona back when REAPER starts", "One block in Scripts/__startup.lua.", not core.startup_on() and "Add it" or nil,
+        "Each persona's keys. REAPER restarts to load them (about 10 seconds). REAPER has 16 layers, so ReaPersona gives them to the personas you use (favourites, the one in use, your own); a persona without one gets it the first time it's used, and personas with the same keys share one.", have < want and (FLATPAK and "Install" or "Install and restart") or "Reinstall", install_shortcuts)
+      setup_row("start", core.startup_on(), "Brings your persona back when REAPER starts", "A few lines in REAPER's startup script (Scripts/__startup.lua).", not core.startup_on() and "Add it" or nil,
         function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end)
       local pend = core.restart_pending()
-      if #pend > 0 then setup_row("pend", false, "Waiting for REAPER to restart: " .. core.pending_words(pend), "They go in when REAPER starts.", "Restart REAPER now", install_shortcuts) end
+      if #pend > 0 then setup_row("pend", false, "Waiting for REAPER to restart: " .. core.pending_words(pend), "They go in when REAPER starts.", FLATPAK and "How to put them in" or "Restart REAPER now", install_shortcuts) end
       local ext_keys = {}
       for key in pairs(core.EXTENSIONS) do if core.ext_here(key) then ext_keys[#ext_keys + 1] = key end end -- (Windows-only ones only on Windows)
       table.sort(ext_keys)
@@ -295,7 +319,7 @@ function setup_page()
           if ImGui.SmallButton(ctx, "Import your key commands##impk" .. i) then
             local s, missed = core.import_cubase_keys(d.can.keys)
             if s then ensure_new = true; selected = s.id end
-            reaper.MB(s and (s.name .. " is in Personas (shortcut layer alt-" .. s.alt .. "; install the shortcuts on Home). " .. #missed .. " of your assignments are for commands ReaPersona doesn't map yet.") or ("Not imported: " .. tostring(missed)), "ReaPersona", 0)
+            reaper.MB(s and (s.name .. " is in Personas (install its shortcuts on Home). " .. #missed .. " of your assignments are for commands ReaPersona doesn't map yet.") or ("Not imported: " .. tostring(missed)), "ReaPersona", 0)
           end
         end
       end
@@ -430,6 +454,8 @@ end
 -- Project and REAPER. The bar over every tab shows it, names it and saves it. Edit on any persona's page starts from that one.
 bld = { blocks = {}, name = "", id = nil, msg = "", colour = nil, back = nil, active = false }
 function bld_load(st) -- edit a persona: one you built is saved over itself; any other (a DAW, My REAPER, a saved setup) is saved as a new one of yours
+  if not bld_may_drop() then return end -- (a half-made persona isn't thrown away without asking)
+  if bld.back then bld_end_trial() end -- (nor a preview of it left in REAPER)
   local mine = (st.blocks and st.user and st.kind == "built") or st.id == "my_reaper" -- (My REAPER is yours too: saved over, as its look. 5.28)
   bld.blocks = core.blocks_of(st)
   bld.name, bld.id, bld.msg, bld.active = mine and st.name or "", mine and st.id or nil, "", true
@@ -438,7 +464,8 @@ function bld_load(st) -- edit a persona: one you built is saved over itself; any
   bld.from = not mine and st.name or nil -- (unnamed, it's saved as "<this> - custom")
   local c = core.draft_get(bld.blocks, "colour")
   bld.colour = c and tonumber((c.hex or ""):gsub("#", ""), 16) or nil
-  bld.snap = core.json_encode(bld.blocks) -- (Stop asks only once something changed)
+  bld.snap = bld.json(bld.blocks) -- (Stop asks only once something changed)
   say("Editing " .. st.name .. ": change its shortcuts, mouse, layout, theme, colours, project or REAPER settings on their tabs. " ..
-    (mine and "Save changes from the bar at the top." or ("Save from the bar at the top makes a new persona (" .. st.name .. " stays as it is).")))
+    (mine and "Save changes from the bar at the top." or ("Save from the bar at the top makes a new persona (" .. st.name .. " stays as it is).")) ..
+    (bld.preview and " Preview is on: REAPER shows it as you change it." or ""))
 end

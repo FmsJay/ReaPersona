@@ -6,7 +6,7 @@
       "name": "My REAPER",
       "alt": 0,
       "theme": "Reapertips Theme.ReaperTheme",
-      "description": "Your own setup: your shortcuts, your theme (whatever you last had here), your settings, toolbars and mouse behaviours. Everything a style changed is put back.",
+      "description": "Your own setup: your shortcuts, your theme (whatever you last had here), your settings, toolbars and mouse behaviours. Everything a persona changed is put back.",
       "keys": [],
       "tips": [
         ["Everything is an action. ? opens the Actions list: search any command, give it a key, or chain several into a custom action.", 40605, "?"],
@@ -35,7 +35,7 @@
       "alt": 8,
       "theme": "Default_7.0.ReaperThemeZip",
       "themes": ["Default_7.0.ReaperThemeZip", "Default_6.0.ReaperThemeZip", "Reapertips Theme (base).ReaperThemeZip"],
-      "description": "REAPER as it ships (7.85's factory settings): the Default 7 theme, REAPER's own keys where people most often change them (? opens the Actions list, Ctrl+C copies, Left/Right move the cursor, the mousewheel zooms), snap on, the transport under the arrange view, the mixer docked at the bottom with inserts and sends and the master on the left, auto-scroll on. Other keys you've changed in your own keymap still apply. The way REAPER tutorials show it.",
+      "description": "REAPER as it ships (its factory settings): the Default 7 theme, REAPER's own keys where people most often change them (? opens the Actions list, Ctrl+C copies, Left/Right move the cursor, the mousewheel zooms), snap on, the transport under the arrange view, the mixer docked at the bottom with inserts and sends and the master on the left, auto-scroll on. Other keys you've changed in your own keymap still apply. The way REAPER tutorials show it.",
       "docs": ["https://www.reaper.fm/userguide.php"],
       "keys": [
         ["?", 40605, "Show action list"],

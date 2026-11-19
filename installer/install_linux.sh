@@ -232,7 +232,9 @@ else
   LEFT+=("If REAPER never restarts by itself: Extensions > ReaPack > Synchronize packages, then open ReaPersona (Extensions > ReaPersona, or the Actions list) and pick your DAW on Home.")
 fi
 [ -n "$JS_NONE" ] && LEFT+=("js_ReaScriptAPI has no $ARCH build: ReaPersona works without it, minus its file pickers (sharing a persona, choosing a sync folder).")
-[ "$REAPER_BIN" = flatpak ] && LEFT+=("This REAPER is the Flatpak one: if REAPER doesn't come back by itself after the shortcut install, start it from your applications menu. REAPER from reaper.fm avoids that (move the Flatpak one aside and run this again: it installs that one in ~/opt/REAPER).")
+# (a Flatpak REAPER can't do the restart install: everything it starts, the waiting install step included, dies with it when it quits.
+# reapersona_setup.lua makes a keymap file instead; this says how to put it in. Round 1, cross-platform M3)
+[ "$REAPER_BIN" = flatpak ] && LEFT+=("This REAPER is the Flatpak one, which can't restart itself to put shortcuts in. Put them in by hand, once: in REAPER, Actions > Show action list > Key Map... > Import..., pick 'ReaPersona shortcuts.ReaperKeyMap' in the KeyMaps folder ($RES/KeyMaps) and choose to merge, not replace. Toolbars aren't included. REAPER from reaper.fm avoids this (move the Flatpak one aside and run this again: it installs that one in ~/opt/REAPER).")
 LEFT+=("REAPER is a 60-day evaluation: after that it still works, and reminds you to buy a licence (reaper.fm/purchase.php).")
 say "Done. What's left:"
 for l in "${LEFT[@]}"; do echo "  - $l"; done

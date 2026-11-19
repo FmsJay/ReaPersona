@@ -181,6 +181,10 @@ changed, changed_on = {}, nil -- key -> native colour, what's been tweaked since
 -- (in R: trying, try_theme) -- (a theme on trial: { name, back = the theme to go back to, ends = time }; set up with the setup helpers)
 function refresh() reaper.ThemeLayout_RefreshAll(); reaper.UpdateArrange(); reaper.TrackList_AdjustWindows(false) end
 function add_fork(st, name)
+  if st.id == "built_try" then -- (a theme saved or added while a preview shows belongs to the persona being made: it went on My REAPER's list. Review 2026-11-19)
+    core.draft_add(bld.blocks, core.new_block("theme", name)); bld.active = true
+    return
+  end
   local list = reaper.GetExtState(SECTION, "forks " .. st.id)
   if not ("|" .. list .. "|"):find("|" .. name .. "|", 1, true) then -- (once each)
     reaper.SetExtState(SECTION, "forks " .. st.id, (list ~= "" and (list .. "|") or "") .. name, true)
@@ -230,9 +234,12 @@ end
 
 -- ---------------------------------------------------------------- pages
 images = {}
+images_left = 2 -- (pictures loaded this frame: 2 at most, frame() resets it. 17 at once held the first frame 100 ms. Performance review 2026-11-19)
 function preview(st)
   local id = st.preset and st.base or st.id -- (a preset shows its style's picture)
   if images[id] == nil then
+    if images_left <= 0 then return nil end -- (its card shows its colour until the picture comes, a frame or two later)
+    images_left = images_left - 1
     local p = here .. "/previews/" .. id .. ".png"
     images[id] = reaper.file_exists(p) and ImGui.CreateImage(p) or false
     if images[id] then ImGui.Attach(ctx, images[id]) end
@@ -246,6 +253,7 @@ MOD = (reaper.GetOS():find("^OSX") or reaper.GetOS():find("^mac")) and "Cmd" or 
 -- (in R: page_name, page_shown, set_advanced) -- (a page's name as the window shows it, whether Show everything hides it, the switch: set up after GROUPS)
 function go(pg) -- (a screen reader with OSARA hears the page's name)
   page = pg; search_q = ""; reaper.SetExtState(SECTION, "page", pg, false)
+  if bld and bld.kq then bld.kq.cap = nil end -- (a key capture left open on Shortcuts stopped Ctrl+Z on every tab)
   if reaper.osara_outputMessage then reaper.osara_outputMessage(pg == "Guide" and "How it works" or (page_name and page_name(pg)) or pg) end
 end
 merge = { base = "Default_7.0.ReaperThemeZip", colours = "", graphics = "", parts = {}, fonts = false, msg = "" }
@@ -289,10 +297,20 @@ function install_ext(key)
 end
 last_style = reaper.GetExtState(SECTION, "last style") -- (the persona before the last switch: Undo switch goes back to it; kept, so
 -- closing the window or the menu doesn't lose it. Review, 5.14)
-if last_style == "" then last_style = nil end
+if last_style == "" or last_style == "built_try" then last_style = nil end
 function use(st)
-  local was = core.current()
-  if was and was.id ~= st.id then last_style = was.id; reaper.SetExtState(SECTION, "last style", was.id, true) end
+  -- (out of a preview or Try it: Undo switch goes back to the persona from before it, never to the trial or to My REAPER, and the
+  -- preview ends, the persona being made staying in the bar. James, review 2026-11-19)
+  local was, ended
+  if bld.back or reaper.GetExtState(SECTION, "style") == "built_try" then
+    was = core.by_id(bld.back or reaper.GetExtState(SECTION, "trial back"))
+    if bld.back then
+      ended = bld.preview
+      bld.back, bld.later = nil, nil
+      if ended then bld.preview_off() end
+    end
+  else was = core.current() end
+  if was and was.id ~= st.id and was.id ~= "built_try" then last_style = was.id; reaper.SetExtState(SECTION, "last style", was.id, true) end
   -- (a theme on trial gives way to the persona's, but the one it was trying over is what this persona had: leaving My REAPER
   -- mid-trial kept the trial theme as My REAPER's own. Review, 5.9.3)
   if trying and trying.back then reaper.OpenColorThemeFile(themes_dir .. trying.back) end
@@ -308,7 +326,8 @@ function use(st)
   local setup = core.last_project_setup or {}
   local miss = {}
   for _, s in ipairs(core.starts_missing or {}) do miss[#miss + 1] = s[1] end
-  say(st.name .. " in use" .. (#setup > 0 and (", and this project has its " .. table.concat(setup, ", ")) or "") .. ". Undo switch (top) puts " .. (was and was.name or "the last one") .. " back." ..
+  say((ended and "Preview off: " or "") .. st.name .. " in use" .. (#setup > 0 and (", and this project has its " .. table.concat(setup, ", ")) or "") ..
+    ((was and was.id ~= st.id and was.id ~= "built_try") and (". Undo switch (top) puts " .. was.name .. " back.") or ".") ..
     (#miss > 0 and (" It starts " .. table.concat(miss, ", ") .. " with REAPER, not installed here: Get it on its page.") or ""))
   for _, key in ipairs(st.recommends or {}) do -- (offered once: no is remembered)
     local x = core.EXTENSIONS[key]

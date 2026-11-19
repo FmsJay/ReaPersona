@@ -206,7 +206,7 @@ function settings_page(sec) -- (5.33: in sub-tabs; sec = which)
     heading("Smooth playhead, scrolling and zoom")
     muted("Most DAWs glide their playhead and zoom smoothly; REAPER steps. These two extensions add that. The DAW personas that feel that way recommend them.")
     for key, x in pairs(core.EXTENSIONS) do
-      local state = core.extension_state(key)
+      local state = core.ext_here(key) and core.extension_state(key) -- (one that can't run on this system isn't offered: review round 1)
       if state == "on" or state == "off" then
         if x.toggle then
           if setting_row("##ext" .. key, x.name, state == "on", x.why) then reaper.Main_OnCommand(reaper.NamedCommandLookup(x.toggle), 0); core.forget() end
@@ -290,10 +290,10 @@ function settings_page(sec) -- (5.33: in sub-tabs; sec = which)
   end
   if sec == "remove" and card("set remove") then -- (removed with ReaPack alone, its startup block, actions and settings stayed behind. Review, 5.9.4)
     heading("Remove ReaPersona")
-    muted("Puts My REAPER back, then takes out the startup block, ReaPersona's actions and its settings, and (REAPER restarting) its shortcut layers and toolbars. Your personas, presets and themes stay in their files. Then uninstall it in ReaPack.")
+    muted("Puts My REAPER back, then takes out the startup line, ReaPersona's actions and its settings, and (REAPER restarting) its shortcut layers and toolbars. Your personas, presets and themes stay in their files. Then uninstall it in ReaPack.")
     ImGui.BeginDisabled(ctx, removing ~= nil)
     if ImGui.Button(ctx, "Remove ReaPersona...") and reaper.MB("Take ReaPersona out of REAPER?\n\n" ..
-        "- My REAPER comes back: your own shortcuts, theme, layout and settings\n- the startup block, ReaPersona's actions and its settings go\n" ..
+        "- My REAPER comes back: your own shortcuts, theme, layout and settings\n- the startup line, ReaPersona's actions and its settings go\n" ..
         "- REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap (backed up first), and REAPER opens again\n" ..
         "\nYour personas, presets and themes stay in their files. Last, uninstall ReaPersona in Extensions > ReaPack > Browse packages.", "ReaPersona: remove", 4) == 6 then
       reaper.SetExtState(SECTION, "follow projects", "0", true) -- (the project-following script stops)

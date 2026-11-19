@@ -10,6 +10,7 @@ Only ReaPersona's own lines are added or replaced (installed.json lists the ones
     python install_shortcuts.py            install or update every style (styles.json and user_styles.json)
     python install_shortcuts.py --remove   take the ReaPersona lines out again
     python install_shortcuts.py --no-midi  arrange layers only
+    python install_shortcuts.py --self-test   check the pure helpers (tests/test_installers.py runs it; installs never do)
 """
 import json, os, re, shutil, subprocess, sys, time
 
@@ -119,11 +120,22 @@ def main_command(lines, spec, fallback):
     return str(fallback)
 
 
+def midi_keys_here(keys):
+    """A style's MIDI keys for this system: "mac:..." / "win:..." resolved, the other system's dropped (as the Lua side's
+    midi_keys_here). Entries that aren't a list with a key name first are kept, so run() warns about them as before. Pure."""
+    out = []
+    for k in keys:
+        if isinstance(k, (list, tuple)) and k and isinstance(k[0], str):
+            spec = for_os(k[0])
+            if spec:
+                out.append([spec] + list(k[1:]))
+        else:
+            out.append(k)
+    return out
+
+
 def load_styles():
     styles = json.load(open(os.path.join(HERE, "styles.json"), encoding="utf-8"))["styles"]
-    for st in styles:  # (MIDI keys for one system, "mac:..." / "win:...", resolved here as the Lua side does at load. 5.37.1)
-        if st.get("midi_keys"):
-            st["midi_keys"] = [[for_os(k[0])] + list(k[1:]) for k in st["midi_keys"] if isinstance(k[0], str) and for_os(k[0])]
     lm = os.path.join(HERE, "layers.json")  # (5.29: this computer's layers, which ReaPersona writes before an install; none yet: the numbers they ship with)
     if os.path.exists(lm):
         layer = json.load(open(lm, encoding="utf-8")).get("map", {})
@@ -133,6 +145,9 @@ def load_styles():
     user = os.path.join(HERE, "user_styles.json")
     if os.path.exists(user):
         styles += json.load(open(user, encoding="utf-8")).get("styles", [])
+    for st in styles:  # (MIDI keys for one system, "mac:..." / "win:...": yours too, since built personas keep both systems' keys. 5.37.1, round 1)
+        if isinstance(st, dict) and st.get("midi_keys"):
+            st["midi_keys"] = midi_keys_here(st["midi_keys"])
     return styles
 
 
@@ -475,6 +490,8 @@ def run(remove=False, no_midi=False):
                 warnings.append("%s: skipped key %r (%s)" % (st.get("name"), entry, e))
         for mk in st.get("midi_keys", []):
             try:
+                if not isinstance(mk, (list, tuple)) or not isinstance(mk[0], str):  # (as kb_plan: a bare string isn't a MIDI key entry)
+                    raise TypeError("not a [key, action] entry")
                 encode(mk[0])
                 midi_specs.setdefault(mk[0], []).append(st["name"])
             except (ValueError, KeyError, TypeError, IndexError) as e:
@@ -576,7 +593,9 @@ def run(remove=False, no_midi=False):
     print("%s %d shortcut(s); backup: %s" % ("removed ReaPersona," if remove else "installed", added, backup))
 
 
-if __name__ == "__main__":
+def self_test():
+    """The pure helpers' checks (python install_shortcuts.py --self-test, run by tests/test_installers.py). Never on the install path:
+    an assert failing there used to stop the post-quit install before it wrote last_install.txt or started REAPER again (round 1)."""
     assert encode("Ctrl+Shift+L") == (13, 76) and encode("Space") == (1, 32) and encode("Ctrl+,") == (9, 188)
     assert encode("-") == (0, 45) and encode("Alt+'") == (17, 222) and encode("Left") == (1, EXT + 37) and encode("Shift+4") == (5, 52)
     assert encode("Num3") == (1, 99) and encode("F12") == (1, 123) and encode("+") == (0, 43) and encode("Ctrl+-") == (9, 189)
@@ -592,104 +611,135 @@ if __name__ == "__main__":
     assert set_prefs("[REAPER]\na=1\n", {"b": "2", "c": "3\n[Python]\npath=x", "d\n": "1"}) == "[REAPER]\na=1\nb=2\n"
     assert set_prefs("[reaper]\nfoo=1\nbar=2\n[x]\nq=1", {"bar": "5", "new": "7"}) == "[reaper]\nfoo=1\nbar=5\nnew=7\n[x]\nq=1\n"
     # (review 2: U+2028 and friends are line breaks to splitlines(): never a value's, and never split on)
-    assert set_prefs("[REAPER]\na=1\n", {"z": "1\u2028pythonlibdll64=x", "y": "2\x85[Python]"}) == "[REAPER]\na=1\n"
-    assert lines_of("a\u2028b\r\nc\n") == ["a\u2028b", "c"] and lines_of("") == [] and lines_of("x") == ["x"]
-    assert toolbar_lines({"name": "N", "toolbar": [[40001, "a\nb"], -1, [40002, "c", "i\u2028x.png"]]}) == \
+    assert set_prefs("[REAPER]\na=1\n", {"z": "1 pythonlibdll64=x", "y": "2\x85[Python]"}) == "[REAPER]\na=1\n"
+    assert lines_of("a b\r\nc\n") == ["a b", "c"] and lines_of("") == [] and lines_of("x") == ["x"]
+    assert toolbar_lines({"name": "N", "toolbar": [[40001, "a\nb"], -1, [40002, "c", "i x.png"]]}) == \
         ["item_0=40001 a b", "item_1=-1", "icon_2=i x.png", "item_2=40002 c", "title=ReaPersona: N", ""]
-    if "--help" in sys.argv or "-h" in sys.argv:
-        sys.exit(__doc__)
-    if "--after-reaper-quits" in sys.argv:
-        # (the picker's one-button install, or with --remove its Remove ReaPersona: REAPER starts this, then quits; we wait, install or
-        # remove, note the result and start REAPER again)
-        exe = sys.argv[sys.argv.index("--relaunch") + 1] if "--relaunch" in sys.argv else None
-        status = os.path.join(HERE, "last_install.txt")
-        cancelled = os.path.join(HERE, "install_cancelled")
+    # MIDI keys for one system (round 1: user personas' too): this system's kept without the mark, the other's dropped, junk left for run() to warn about
+    here_key, other = ("mac:Ctrl+Alt+Q", "win:Ctrl+Q") if MAC else ("win:Ctrl+Q", "mac:Ctrl+Alt+Q")
+    assert midi_keys_here([[here_key, "q"], [other, "q"], ["E", "e"], "junk"]) == [[here_key[4:], "q"], ["E", "e"], "junk"]
+    print("install_shortcuts.py self-test ok")
+
+
+def after_reaper_quits(argv):
+    """The picker's one-button install, or with --remove its Remove ReaPersona: REAPER starts this, then quits; we wait, install or
+    remove, note the result and start REAPER again. Whatever fails on the way (an exception, an assert, a SystemExit from run()), the
+    result is written to last_install.txt and REAPER is started again: before round 1 an error outside run() left REAPER closed for good."""
+    exe = argv[argv.index("--relaunch") + 1] if "--relaunch" in argv else None
+    status = os.path.join(HERE, "last_install.txt")
+    cancelled = os.path.join(HERE, "install_cancelled")
+    import contextlib, io as _io
+    out = _io.StringIO()
+    try:
         give_up = time.time() + 180  # (3 minutes: REAPER may be asking whether to save)
         while reaper_running() and time.time() < give_up and not os.path.exists(cancelled):
             time.sleep(0.5)
-        if os.path.exists(cancelled):  # (the picker saw the quit cancelled: nothing to do)
+        if os.path.exists(cancelled):  # (the picker saw the quit cancelled: REAPER is still open, so nothing to do and nothing to start)
             os.remove(cancelled)
-            sys.exit(1)
-        if reaper_running():
+            return 1
+        if reaper_running():  # (still open: nothing to start either)
             open(status, "w", encoding="utf-8").write("REAPER didn't close, so the shortcuts weren't installed.\n")
-            sys.exit(1)
-        import contextlib, io as _io
-        out = _io.StringIO()
-        try:
-            with contextlib.redirect_stdout(out):
-                if "--apply-setup" in sys.argv:  # (your setup from your other computers, waiting for REAPER to close: 5.11)
-                    for line in apply_setup():
+            return 1
+        with contextlib.redirect_stdout(out):
+            if "--apply-setup" in argv:  # (your setup from your other computers, waiting for REAPER to close: 5.11)
+                for line in apply_setup():
+                    print(line)
+            elif "--apply-prefs" in argv:  # (Remove ReaPersona: your own preferences back, nothing else from pending/. Review 2026-11-18)
+                try:
+                    for line in apply_prefs():
                         print(line)
-                elif "--apply-prefs" in sys.argv:  # (Remove ReaPersona: your own preferences back, nothing else from pending/. Review 2026-11-18)
-                    try:
-                        for line in apply_prefs():
-                            print(line)
-                    except Exception as e:  # (review 2: the removal goes on)
-                        print("REAPER's preferences weren't put back: %s" % e)
-                if "--remove" in sys.argv:
-                    try:
-                        for line in remove_window_set():
-                            print(line)
-                    except Exception as e:
-                        print("ReaPersona's window set wasn't taken out: %s" % e)
-                run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)  # (--remove: Settings > Remove ReaPersona, review 5.9.4)
-        except BaseException as e:  # (SystemExit included: whatever happened is written down for the picker)
-            out.write("not installed: %s\n" % e)
+                except Exception as e:  # (review 2: the removal goes on)
+                    print("REAPER's preferences weren't put back: %s" % e)
+            if "--remove" in argv:
+                try:
+                    for line in remove_window_set():
+                        print(line)
+                except Exception as e:
+                    print("ReaPersona's window set wasn't taken out: %s" % e)
+            run(remove="--remove" in argv, no_midi="--no-midi" in argv)  # (--remove: Settings > Remove ReaPersona, review 5.9.4)
+    except BaseException as e:  # (SystemExit and AssertionError included: whatever happened is written down for the picker)
+        why = str(e) if isinstance(e, SystemExit) else "%s: %s" % (type(e).__name__, e)
+        out.write("not installed: %s\n" % why)
+    try:
         open(status, "w", encoding="utf-8").write(out.getvalue())
-        projects = [sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a == "--open"]  # (the projects that were open)
-        cfg = sys.argv[sys.argv.index("--cfgfile") + 1] if "--cfgfile" in sys.argv else None  # (the same configuration again)
-        if exe:
-            args = ["-cfgfile", cfg] if cfg and os.path.exists(cfg) else []
-            if exe.endswith(".app"):
-                # (a Mac: open hands REAPER to LaunchServices and returns, so it's waited for, by its full path, in a session of its own. Started
-                # and left as this script exited, it never brought REAPER back (5.8.3). And right after the quit, LaunchServices still lists the
-                # REAPER going away: open "activated" that one, said 0, and nothing started (5.8.4). So: wait until it's gone from there too, then
-                # open, and believe it only when a REAPER is running; once more if not. StudioSync's Mac test)
-                def listed():
-                    try:
-                        return "ASN:" in subprocess.run(["/usr/bin/lsappinfo", "find", "bundleid=com.cockos.reaper"], capture_output=True,
-                                                        text=True, timeout=5).stdout or reaper_running()  # (it prints the app's ASN while it's listed)
-                    except Exception:
-                        return reaper_running()
-                gone_by = time.time() + 15
-                while listed() and time.time() < gone_by:
-                    time.sleep(0.5)
-                time.sleep(1)
-                note = "REAPER didn't start again: open it yourself"
-                for _ in range(2):
-                    try:
-                        r = subprocess.run(["/usr/bin/open", "-a", exe] + projects + (["--args"] + args if args else []), capture_output=True,
-                                           text=True, timeout=60, start_new_session=True)
-                        if r.returncode != 0:
-                            note = "REAPER didn't start again (open said %s: %s)" % (r.returncode, r.stderr.strip())
-                    except Exception as e:
-                        note = "REAPER didn't start again: %s" % e
-                    up_by = time.time() + 15
-                    while not reaper_running() and time.time() < up_by:
-                        time.sleep(0.5)
-                    if reaper_running():
-                        note = "REAPER started again"
-                        break
-                open(status, "a", encoding="utf-8").write(note + "\n")
-            elif os.name == "nt":
-                subprocess.Popen([exe] + args + projects, close_fds=True,
-                                 creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
-            else:
-                # (Linux: this script's output is a pipe to the REAPER that just quit, and the new one, writing its first line there, was killed by
-                # SIGPIPE before it showed: nothing inherited, a session of its own, and believed only once it runs; once more if not. Linux VM, 5.9.2)
-                note = "REAPER didn't start again: open it yourself"
-                for _ in range(2):
-                    try:
-                        subprocess.Popen([exe] + args + projects, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                         close_fds=True, start_new_session=True)
-                    except Exception as e:
-                        note = "REAPER didn't start again: %s" % e
-                    up_by = time.time() + 15
-                    while not reaper_running() and time.time() < up_by:
-                        time.sleep(0.5)
-                    if reaper_running():
-                        note = "REAPER started again"
-                        break
-                open(status, "a", encoding="utf-8").write(note + "\n")
+    except OSError:
+        pass  # (can't tell the picker: still start REAPER again below)
+    try:
+        relaunch(exe, argv, status)
+    except BaseException as e:
+        try:
+            open(status, "a", encoding="utf-8").write("REAPER didn't start again: %s\n" % e)
+        except OSError:
+            pass
+    return 0
+
+
+def relaunch(exe, argv, status):
+    """Start REAPER again after the install, with the projects that were open and the same -cfgfile."""
+    projects = [argv[i + 1] for i, a in enumerate(argv[:-1]) if a == "--open"]  # (the projects that were open)
+    cfg = argv[argv.index("--cfgfile") + 1] if "--cfgfile" in argv else None  # (the same configuration again)
+    if not exe:
+        return
+    args = ["-cfgfile", cfg] if cfg and os.path.exists(cfg) else []
+    if exe.endswith(".app"):
+        # (a Mac: open hands REAPER to LaunchServices and returns, so it's waited for, by its full path, in a session of its own. Started
+        # and left as this script exited, it never brought REAPER back (5.8.3). And right after the quit, LaunchServices still lists the
+        # REAPER going away: open "activated" that one, said 0, and nothing started (5.8.4). So: wait until it's gone from there too, then
+        # open, and believe it only when a REAPER is running; once more if not. StudioSync's Mac test)
+        def listed():
+            try:
+                return "ASN:" in subprocess.run(["/usr/bin/lsappinfo", "find", "bundleid=com.cockos.reaper"], capture_output=True,
+                                                text=True, timeout=5).stdout or reaper_running()  # (it prints the app's ASN while it's listed)
+            except Exception:
+                return reaper_running()
+        gone_by = time.time() + 15
+        while listed() and time.time() < gone_by:
+            time.sleep(0.5)
+        time.sleep(1)
+        note = "REAPER didn't start again: open it yourself"
+        for _ in range(2):
+            try:
+                r = subprocess.run(["/usr/bin/open", "-a", exe] + projects + (["--args"] + args if args else []), capture_output=True,
+                                   text=True, timeout=60, start_new_session=True)
+                if r.returncode != 0:
+                    note = "REAPER didn't start again (open said %s: %s)" % (r.returncode, r.stderr.strip())
+            except Exception as e:
+                note = "REAPER didn't start again: %s" % e
+            up_by = time.time() + 15
+            while not reaper_running() and time.time() < up_by:
+                time.sleep(0.5)
+            if reaper_running():
+                note = "REAPER started again"
+                break
+        open(status, "a", encoding="utf-8").write(note + "\n")
+    elif os.name == "nt":
+        subprocess.Popen([exe] + args + projects, close_fds=True,
+                         creationflags=getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+    else:
+        # (Linux: this script's output is a pipe to the REAPER that just quit, and the new one, writing its first line there, was killed by
+        # SIGPIPE before it showed: nothing inherited, a session of its own, and believed only once it runs; once more if not. Linux VM, 5.9.2)
+        note = "REAPER didn't start again: open it yourself"
+        for _ in range(2):
+            try:
+                subprocess.Popen([exe] + args + projects, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                 close_fds=True, start_new_session=True)
+            except Exception as e:
+                note = "REAPER didn't start again: %s" % e
+            up_by = time.time() + 15
+            while not reaper_running() and time.time() < up_by:
+                time.sleep(0.5)
+            if reaper_running():
+                note = "REAPER started again"
+                break
+        open(status, "a", encoding="utf-8").write(note + "\n")
+
+
+if __name__ == "__main__":
+    if "--help" in sys.argv or "-h" in sys.argv:
+        sys.exit(__doc__)
+    if "--self-test" in sys.argv:
+        self_test()
         sys.exit(0)
+    if "--after-reaper-quits" in sys.argv:
+        sys.exit(after_reaper_quits(sys.argv))
     run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)

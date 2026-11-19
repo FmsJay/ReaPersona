@@ -79,7 +79,7 @@ function check_page()
       check_msg = (#bad == 0 and "Everything resolves." or table.concat(bad, "\n")) .. string.format("\n(Action lists saved for validate.py: %d main, %d MIDI editor.) ", na, nb) .. d
     end
     ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "Register actions again") then check_msg = core.ensure_scripts() .. " ReaPersona actions registered (scripts.json)." end
+    if ImGui.Button(ctx, "Register actions again") then check_msg = core.ensure_scripts(true) .. " ReaPersona actions registered (scripts.json)." end
     ImGui.SetItemTooltip(ctx, "Writes and registers the one-key actions: 'ReaPersona - use <style>', 'next style', 'restore last style', and the MIDI key scripts. Put 'use' actions on a toolbar: they light up for the style in use.")
     if check_msg ~= "" then ImGui.TextWrapped(ctx, check_msg) end
     card_end()

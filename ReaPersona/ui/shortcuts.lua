@@ -130,7 +130,7 @@ function persona_keys_card()
               say(tostring(e.label) .. " is on " .. keyname(spec) .. " in your persona.")
             end)
             if e.extra then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Remove") then table.remove(b.extra, e.extra) end
-            elseif e.moved_from then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Undo") then b.rebind[core.canon(e.moved_from)] = nil end end
+            elseif e.moved_from then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Put back") then b.rebind[core.canon(e.moved_from)] = nil end; ImGui.SetItemTooltip(ctx, "Back on " .. keyname(e.moved_from) .. ".") end
           end
           ImGui.PopID(ctx)
         end
@@ -169,7 +169,10 @@ local function shortcuts_catalog()
   heading("Every shortcut", 16)
   muted("Every persona's keys and your own keymap's (keys you, a script or an extension set), the actions most personas use first. Add any to your persona.")
   if keys_for then local st = core.by_id(keys_for); if st then kq.source = st.name end; keys_for = nil end -- (from search)
-  if not kq.cat then kq.cat = core.catalog(styles, core.read(reaper.GetResourcePath() .. "/reaper-kb.ini") or "", reaper_keys()) end
+  if not kq.cat and not kq.reading then -- (the first look reads every action and key: a moment, so it says so first. Performance review 2026-11-19)
+    kq.reading = true; muted("Reading every shortcut..."); card_end(); return
+  end
+  if not kq.cat then kq.reading = nil; kq.cat = core.catalog(styles, core.read(reaper.GetResourcePath() .. "/reaper-kb.ini") or "", reaper_keys()) end
   if not rpage() then ImGui.TextColored(ctx, C.YELLOW, "REAPER's own keys (its defaults too) haven't been read on this computer yet.") ImGui.SameLine(ctx) end
   if ImGui.SmallButton(ctx, (rpage() and "Read REAPER's keys again" or "Read REAPER's keys") .. "##rpk") then read_rpage(true) end
   ImGui.SetItemTooltip(ctx, "REAPER lists every key it has, its defaults included, with Help > Mouse modifier keys and action shortcuts, which also opens the list in your browser.")

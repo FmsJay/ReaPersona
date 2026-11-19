@@ -1208,7 +1208,7 @@ do -- 33. the 2026-11-18 review's fixes
   local pj, ts = core.draft_get(bl, "project"), core.draft_get(bl, "themeset")
   assert(pj and pj.srate == 48000 and pj.bpm == 120 and pj.render and ts and ts.set.params.a == 1, "kept")
   -- a preference already queued for the restart counts as what REAPER will have
-  os.execute(win and ('mkdir "' .. (tmp .. "/pending"):gsub("/", "\\") .. '"') or ("mkdir -p '" .. tmp .. "/pending'"))
+  os.execute(win and ('mkdir "' .. (tmp .. "/pending"):gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. tmp .. "/pending'"))
   write(tmp .. "/pending/prefs.json", '{"deffadelen": 0.03}')
   assert(core.pref_effective("deffadelen") == 0.03, "the queued one")
   os.remove(tmp .. "/pending/prefs.json")
@@ -1262,6 +1262,337 @@ do -- 36. 5.39: the key helpers on their own, the action search, the faster JSON
   reaper.kbd_enumerateActions, reaper.SectionFromUniqueID = kea, sec
   local d = core.json_decode('{"a":"x\\"y\\\\z\\n\\u00e9","b":["",1,null,false],"c":{}}')
   assert(d.a == 'x"y\\z\n\195\169' and d.b[1] == "" and d.b[2] == 1 and d.b[3] == false and next(d.c) == nil, "escapes, empty strings, null left out")
+end
+do -- 37. Round 1 review (2026-11-19), the engine's fixes. One stand-in REAPER for all of them: toggles that flip, persisted writes counted.
+  write(tmp .. "/styles.json", read("ReaPersona/styles.json")) -- (12. left a stand-in there)
+  write(tmp .. "/user_styles.json", '{"styles": []}')
+  core = load_core()
+  local gt, mo, se, de, nl = reaper.GetToggleCommandState, reaper.Main_OnCommand, reaper.SetExtState, reaper.DeleteExtState, reaper.NamedCommandLookup
+  local states, persisted = {}, {}
+  reaper.GetToggleCommandState = function(id) return states[id] or 0 end
+  reaper.Main_OnCommand = function(id) states[id] = (states[id] == 1) and 0 or 1 end
+  reaper.SetExtState = function(s, k, v, p) ext[s .. "/" .. k] = v; if p then persisted[k] = (persisted[k] or 0) + 1 end end
+  reaper.DeleteExtState = function(s, k, p) ext[s .. "/" .. k] = nil; if p then persisted[k] = (persisted[k] or 0) + 1 end end
+  core.drain() -- (window moves left queued by the checks above: REAPER's loop never runs here)
+  local ep0 = reaper.EnumProjects
+  reaper.EnumProjects = function(i) if i == -1 then return "proj0", "" end end -- (a project in front: REAPER always has one)
+
+  -- A1: the persona being tried is found, said and put back; what it was tried over is kept (across a restart too)
+  ext["ReaPersona/style"] = "pro_tools"
+  local draft = assert(core.build_style({ { kind = "settings", group = "editing", values = { -1, -1, 1 } } }, "Draft", "built_try"))
+  core.use(draft)
+  assert(core.is_trial() and core.current() == draft and core.by_id("built_try") == draft and ext["ReaPersona/trial back"] == "pro_tools", "tried over Pro Tools: " .. tostring(ext["ReaPersona/style"]) .. " " .. tostring(ext["ReaPersona/trial back"]) .. " " .. tostring(core.trial))
+  assert(states[40041] == 1, "the draft's auto-crossfade is on")
+  core.use(draft) -- (Preview: each change tried again)
+  assert(ext["ReaPersona/trial back"] == "pro_tools", "still what it was tried over")
+  local none, why = core.save_my_look()
+  assert(not none and why:find("My REAPER", 1, true), "a trial isn't your look")
+  local back = core.end_trial(true)
+  assert(back == core.by_id("pro_tools") and ext["ReaPersona/style"] == "pro_tools", "Go back: Pro Tools: " .. tostring(back and back.id) .. " " .. tostring(ext["ReaPersona/style"]))
+  assert(states[40041] == 0 and not core.is_trial() and ext["ReaPersona/trial back"] == nil and core.end_trial() == nil, "auto-crossfade back off, nothing left of the trial")
+  ext["ReaPersona/style"] = "my_reaper"
+  core.use(draft) -- (REAPER closes during a preview: the next start puts back what it was tried over)
+  local c2 = load_core()
+  assert(c2.current().id == "my_reaper" and c2.by_id("built_try") == nil, "a fresh engine doesn't know the draft")
+  c2.restore_last()
+  assert(ext["ReaPersona/style"] == "my_reaper" and states[40041] == 0, "restore_last ended the trial")
+  ext["ReaPersona/style"] = "built_gone"
+  assert(not core.save_my_look(), "a persona that's gone isn't My REAPER")
+  -- a trial doesn't queue the draft's REAPER preferences for the next restart (a real persona does)
+  local cv, py = reaper.get_config_var_string, { core._py, core.py }
+  reaper.get_config_var_string = function() return true, "0.01" end
+  core._py, core.py = "Python 3.12", "python"
+  ext["ReaPersona/style"] = "my_reaper"
+  local pref_draft = { id = "built_try", name = "P", feel = { { "pref", "deffadelen", 0.5, "fade" } }, keys = {}, alt = 0 }
+  core.use(pref_draft)
+  assert(not read(tmp .. "/pending/prefs.json"), "tried: nothing queued")
+  core.end_trial()
+  core.use({ id = "built_pref", name = "P", feel = { { "pref", "deffadelen", 0.5, "fade" } }, keys = {}, alt = 0 })
+  assert(read(tmp .. "/pending/prefs.json"), "used: queued")
+  ext["ReaPersona/orig"] = ""; ext["ReaPersona/persona prefs"] = nil; os.remove(tmp .. "/pending/prefs.json")
+  reaper.get_config_var_string, core._py, core.py = cv, py[1], py[2]
+  -- a persona in use deleted on another computer: My REAPER, with what it changed put back
+  write(tmp .. "/user_styles.json", core.json_encode({ styles = { { id = "built_del", name = "Del", kind = "built", feel = { { "toggle", 1157, 1, "snap" } }, keys = {}, alt = 0 } } }))
+  core = load_core()
+  ext["ReaPersona/style"] = "my_reaper"
+  core.use(core.by_id("built_del"))
+  assert(states[1157] == 1)
+  local share2 = tmp .. "/share37"
+  os.execute(win and ('mkdir "' .. share2:gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. share2 .. "'"))
+  ext["ReaPersona/sync folder"] = share2
+  write(share2 .. "/OTHER-1.reapersona-sync.json", core.json_encode({ reapersona_sync = 1, computer = "OTHER", items = { ["persona built_del"] = { t = os.time() + 100, del = true } } }))
+  assert(core.sync_now())
+  assert(not core.by_id("built_del") and ext["ReaPersona/style"] == "my_reaper" and states[1157] == 0, "deleted there: My REAPER here, snap put back")
+  core.stop_sync()
+
+  -- A2: a mixer docked by the persona's own toggle before its dock entry is still put back floating
+  local docked, shown = false, true
+  local jf, jo, dg, dc, du = reaper.JS_Window_Find, reaper.JS_Window_OnCommand, reaper.DockGetPosition, reaper.DockIsChildOfDock, reaper.Dock_UpdateDockID
+  states[40078] = 1; states[40083] = 0
+  reaper.Main_OnCommand = function(id) states[id] = (states[id] == 1) and 0 or 1; if id == 40083 then docked = states[id] == 1 end end
+  reaper.JS_Window_Find = function(t) return (t == "Mixer" and shown) and "mx" or nil end
+  reaper.JS_Window_OnCommand = function() end
+  reaper.Dock_UpdateDockID = function() end
+  reaper.DockGetPosition = function(i) return i == 3 and 2 or -1 end
+  reaper.DockIsChildOfDock = function(h) return (h == "mx" and docked) and 0 or -1 end
+  ext["ReaPersona/style"] = "my_reaper"; ext["ReaPersona/orig"] = ""
+  core.use({ id = "built_mix", name = "M", feel = { { "toggle", 40083, 1, "docked" }, { "dock", "mixer", "top", 0, "top" } }, keys = {}, alt = 0 })
+  assert(docked and ext["ReaPersona/orig"]:find("d|mixer|1|-1,", 1, true), "the original is the floating mixer: " .. ext["ReaPersona/orig"])
+  core.drain()
+  ext["ReaPersona/orig"] = ""
+  reaper.JS_Window_Find, reaper.JS_Window_OnCommand, reaper.DockGetPosition, reaper.DockIsChildOfDock, reaper.Dock_UpdateDockID = jf, jo, dg, dc, du
+  reaper.Main_OnCommand = function(id) states[id] = (states[id] == 1) and 0 or 1 end
+
+  -- A3: colour keys a persona holds don't go out as yours
+  ext["ReaPersona/colour look"] = '{"scheme":"rainbow"}'
+  ext["ReaPersona/orig"] = "x|colour look|"
+  local ini0 = read(tmp .. "/reaper-extstate.ini")
+  write(tmp .. "/reaper-extstate.ini", "[ReaPersona]\ncolour look=x\n") -- (the keys REAPER keeps: setup_items looks there)
+  assert(core.setup_items()["setting colour look"] == nil, "held by the persona: not sent")
+  ext["ReaPersona/orig"] = ""
+  assert(core.setup_items()["setting colour look"] == '{"scheme":"rainbow"}', "yours: sent")
+  ext["ReaPersona/colour look"] = nil
+  if ini0 then write(tmp .. "/reaper-extstate.ini", ini0) else os.remove(tmp .. "/reaper-extstate.ini") end
+
+  -- A4: the follower isn't started again while it runs
+  reaper.NamedCommandLookup = function() return 77 end
+  core.scripts.main["follow projects"] = "_RSfollow"
+  states[77] = 0
+  ext["ReaPersona/follow beat"] = tostring(reaper.time_precise())
+  core.start_following()
+  assert(states[77] == 0, "its heartbeat is fresh: not run again")
+  ext["ReaPersona/follow beat"] = "-100"
+  core.start_following()
+  assert(states[77] == 1, "stale: started")
+  reaper.NamedCommandLookup = nl
+
+  -- A5: the follower applies a MIDI editor docking that waits for an editor
+  local mg, mi, mc = reaper.MIDIEditor_GetActive, reaper.MIDIEditor_OnCommand, reaper.DockIsChildOfDock
+  local toggled = 0
+  reaper.MIDIEditor_GetActive = function() return "ed" end
+  reaper.DockIsChildOfDock = function() return -1 end
+  reaper.MIDIEditor_OnCommand = function(_, id) if id == 40018 then toggled = toggled + 1 end end
+  ext["ReaPersona/follow projects"], ext["ReaPersona/midi dock"], ext["ReaPersona/follow beat"] = "1", "1", nil
+  core.follow_projects()
+  assert(toggled == 1 and ext["ReaPersona/midi dock"] == nil, "docked from the follower's loop")
+  reaper.MIDIEditor_GetActive, reaper.MIDIEditor_OnCommand, reaper.DockIsChildOfDock = mg, mi, mc
+  ext["ReaPersona/follow projects"], ext["ReaPersona/follow beat"] = nil, nil
+
+  -- A6: a switch persists each of its own keys once; the put-back list early and at the end; a sync value already there isn't written
+  local look = core.json_encode({ scheme = "gradient" }):gsub("\n%s*", "")
+  ext["ReaPersona/style"] = "my_reaper"; ext["ReaPersona/orig"] = ""
+  persisted = {}
+  core.use({ id = "built_six", name = "Six", feel = { { "toggle", 1157, 1, "snap" }, { "toggle", 40041, 1, "xf" }, { "midi_dock", 1, "dock" } }, colours = { ["colour look"] = look }, keys = {}, alt = 0 })
+  assert(persisted["colour look"] == 1 and persisted.style == 1 and (persisted["midi dock"] or 0) <= 1, "once each")
+  assert(persisted.orig == 3, "orig: emptied, after the first entry, and at the end (" .. tostring(persisted.orig) .. ")")
+  persisted = {}
+  core.use(core.by_id("my_reaper"))
+  assert(persisted["colour look"] == 1 and (persisted["midi dock"] or 0) <= 1 and persisted["theme my_reaper"] == nil, "back: once each, unchanged ones not at all")
+  assert(core.batch == nil, "the switch's batch is done")
+  persisted = {}
+  ext["ReaPersona/aspect mouse"] = "1"
+  core.import_setup({ reapersona_setup = 1, items = { ["setting aspect mouse"] = { v = "1" }, ["setting aspect toolbar"] = { v = "0" } } })
+  assert(persisted["aspect mouse"] == nil and persisted["aspect toolbar"] == 1, "the same value isn't written again")
+  ext["ReaPersona/aspect mouse"], ext["ReaPersona/aspect toolbar"] = nil, nil
+
+  -- A7: an error that escapes the per-entry checks still leaves the put-back list on disk
+  ext["ReaPersona/style"] = "my_reaper"; ext["ReaPersona/orig"] = ""
+  persisted = {}
+  core.use({ id = "built_err", name = "E", feel = { { "toggle", 1157, 1, "snap" } }, colours = setmetatable({}, { __index = function() error("boom") end }), keys = {}, alt = 0 })
+  assert(ext["ReaPersona/orig"]:find("t|1157|", 1, true) and persisted.orig >= 3 and core.batch == nil, "persisted after the error")
+  core.use(core.by_id("my_reaper"))
+
+  -- A8: a file back at an older content after its blob went (another computer tidied it) is published again
+  local share3 = tmp .. "/share38"
+  os.execute(win and ('mkdir "' .. share3:gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. share3 .. "'"))
+  os.execute(win and ('mkdir "' .. (tmp .. "/ColorThemes"):gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. tmp .. "/ColorThemes'"))
+  ext["ReaPersona/sync folder"], ext["ReaPersona/sync advanced"] = share3, "themes"
+  write(tmp .. "/ColorThemes/Test38.ReaperTheme", "X1")
+  assert(core.sync_now())
+  local bx = share3 .. "/blobs/" .. core.content_hash("X1")
+  assert(read(bx) == "X1", "published")
+  write(tmp .. "/ColorThemes/Test38.ReaperTheme", "Y1")
+  assert(core.sync_now()) -- (X1 is named by nothing now: no longer trusted)
+  os.remove(bx)
+  write(tmp .. "/ColorThemes/Test38.ReaperTheme", "X1")
+  assert(core.sync_now())
+  assert(read(bx) == "X1", "published again, not taken for there by the memo")
+  core.stop_sync()
+  ext["ReaPersona/sync advanced"] = nil
+  os.remove(tmp .. "/ColorThemes/Test38.ReaperTheme")
+  -- and ReaPack's package list is kept on disk with the registry's signature: a fresh engine doesn't start Python
+  local fs, ep = reaper.JS_File_Stat, reaper.ExecProcess
+  local runs = 0
+  reaper.JS_File_Stat = function(p) if p:find("registry.db", 1, true) then return 0, 10, "", "2026.11.19 00:00:00" end return -1 end
+  reaper.ExecProcess = function(cmd)
+    runs = runs + 1
+    write(tmp .. "/_packages.json", '{"installed": [["Repo", "Cat", "Pkg", "script", "d", "a"]], "owned": ["Scripts/Repo/x.lua"]}')
+    return "0\n"
+  end
+  write(tmp .. "/packages_missing.json", '{"Repo|Cat|Other": {"type": "script"}}')
+  core._py, core.py = "Python 3.12", "python"
+  assert(#core.packages_missing(true) == 1 and runs == 1)
+  local c3 = load_core()
+  assert(#c3.packages_missing(true) == 1 and runs == 1 and c3.owned["Scripts/Repo/x.lua"], "the next engine read it from the file")
+  reaper.JS_File_Stat, reaper.ExecProcess = fs, ep
+  core._py, core.py = nil, nil
+  os.remove(tmp .. "/packages_missing.json"); os.remove(tmp .. "/_packages.json")
+
+  -- A9: the Layout tab's quick look doesn't search for windows that say they're closed; a switch's look still does
+  local jf2, jr = reaper.JS_Window_Find, reaper.JS_Window_GetRect
+  local finds = 0
+  reaper.JS_Window_Find = function() finds = finds + 1 end
+  reaper.JS_Window_GetRect = function() end
+  core.windows_now(true)
+  assert(finds == 0, "closed: not looked for")
+  core.windows_now()
+  assert(finds == 11, "the put-back list looks for every one with a title")
+  reaper.JS_Window_Find, reaper.JS_Window_GetRect = jf2, jr
+
+  -- A10, A22, A23: stubs written and registered only when new or changed; helpers' stubs fall back to the core
+  local ar, rn, cw = reaper.AddRemoveReaScript, reaper.ReverseNamedCommandLookup, core.write
+  local regs, writes = 0, 0
+  reaper.AddRemoveReaScript = function(add) if add then regs = regs + 1; return 1000 + regs end end
+  reaper.ReverseNamedCommandLookup = function(id) return "RS" .. id end
+  core.ensure_scripts()
+  core.write = function(p, t) if p:find("/midi_keys/", 1, true) or p:find("/actions/", 1, true) then writes = writes + 1 end return cw(p, t) end
+  regs = 0
+  core.ensure_scripts()
+  assert(regs == 0 and writes == 0, "nothing new: nothing written or registered (" .. regs .. ", " .. writes .. ")")
+  assert(core.ensure_scripts(true) > 0 and regs > 0, "Check's button registers them all again")
+  core.write = cw
+  local K = dofile(tmp .. "/reapersona_keys.lua")
+  local pfs = assert(read(tmp .. "/actions/ReaPersona - play from start.lua"))
+  assert(pfs:find('pcall(dofile, p .. "/../reapersona_keys.lua")', 1, true) and pfs:find('dofile(p .. "/../reapersona_core.lua")', 1, true), "a helper's stub, with the core to fall back on")
+  for _, sub in ipairs({ "actions", "midi_keys" }) do
+    reaper.EnumerateFiles(tmp .. "/" .. sub, -1)
+    for i = 0, 500 do
+      local f = reaper.EnumerateFiles(tmp .. "/" .. sub, i)
+      if not f then break end
+      local text = read(tmp .. "/" .. sub .. "/" .. f)
+      assert(load(text), f .. " compiles")
+      local fn = text:match('k%[("[%w_]+")%]')
+      if fn then assert(K[load("return " .. fn)()], f .. ": its helper is in reapersona_keys.lua") end
+    end
+  end
+  dofile(tmp .. "/actions/ReaPersona - play from start.lua") -- (runs through the keys file)
+  reaper.AddRemoveReaScript, reaper.ReverseNamedCommandLookup = ar, rn
+  -- A13: without reapersona_keys.lua the engine still loads (only those keys go), and says why
+  local nk = tmp .. "/nokeys"
+  os.execute(win and ('mkdir "' .. nk:gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. nk .. "'"))
+  write(nk .. "/reapersona_core.lua", read(tmp .. "/reapersona_core.lua")); write(nk .. "/styles.json", read(tmp .. "/styles.json"))
+  local bare = dofile(nk .. "/reapersona_core.lua")
+  assert(bare.by_id("logic") and bare.memory_location == nil and read(nk .. "/errors.log"):find("reapersona_keys.lua didn't load", 1, true))
+
+  -- A11: the install without Python takes FL Studio's MIDI key for this system
+  local kb, _, _, _, warn = core.kb_plan("", { { name = "FL", alt = 0, keys = {}, midi_keys = { { "win:Ctrl+Q", "q", "a" }, { "mac:Ctrl+Alt+Q", "q", "b" }, { "E", "e", "c" } } } },
+    { midi = { ["Ctrl+Q"] = "_RSq", E = "_RSe" } }, nil, {}, {}, false, false, true)
+  assert(kb:find("KEY 9 81 _RSq 32060", 1, true) and kb:find("_RSe 32060", 1, true), kb)
+  for _, w in ipairs(warn) do assert(not w:find("win:", 1, true) and not w:find("mac:", 1, true), w) end
+
+  -- A12: a persona you build keeps both systems' keys, the same list on either system
+  local pt_blocks = { core.keys_block("pro_tools"), core.keys_block("fl_studio") }
+  local b1 = assert(core.build_style(pt_blocks, "Both", "built_both"))
+  local function has(list, spec) for _, k in ipairs(list) do if k[1] == spec then return true end end end
+  assert(has(b1.keys, "win:Ctrl+Tab") and has(b1.keys, "mac:Alt+Tab") and not has(b1.keys, "Ctrl+Tab"), "Pro Tools' pair, each marked")
+  assert(has(b1.midi_all, "win:Ctrl+Q") and has(b1.midi_all, "mac:Ctrl+Alt+Q") and has(b1.midi_keys, "Ctrl+Q") and not has(b1.midi_keys, "Ctrl+Alt+Q"), "FL's MIDI key: both kept, this system's in use")
+  core.IS_MAC = true
+  local b2 = assert(core.build_style(pt_blocks, "Both", "built_both"))
+  core.IS_MAC = false
+  assert(core.json_encode(b1.keys) == core.json_encode(b2.keys) and core.json_encode(b1.midi_all) == core.json_encode(b2.midi_all), "the same list built on a Mac")
+  local cut = { kind = "daw", id = "pro_tools", keys = true, off = { ["key Ctrl+Tab"] = true } }
+  local b3 = assert(core.build_style({ cut }, "Cut", "built_cut"))
+  assert(not has(b3.keys, "win:Ctrl+Tab") and not has(b3.keys, "mac:Alt+Tab") and has(b3.keys, "win:Ctrl+Enter"), "left out on one system: its twin too")
+  local saved = assert(core.save_built(pt_blocks, "Both", nil))
+  local file = read(tmp .. "/user_styles.json")
+  assert(file:find("mac:Alt+Tab", 1, true) and file:find("mac:Ctrl+Alt+Q", 1, true) and not file:find("midi_all", 1, true), "saved as written")
+  assert(has(saved.midi_keys, "Ctrl+Q") and core.load_json(tmp .. "/user_styles.json").styles[1].both_os, "in use: this system's")
+  -- one built before: its keys built again from its blocks, once, a key added by hand kept
+  write(tmp .. "/user_styles.json", core.json_encode({ styles = { { id = "built_old", name = "Old", kind = "built", alt = 16,
+    blocks = { cut }, keys = { { "Ctrl+Enter", 40043, "x" }, { "Ctrl+Shift+J", 40001, "by hand" } } } } }))
+  core = load_core()
+  local old = core.load_json(tmp .. "/user_styles.json").styles[1]
+  assert(old.both_os and has(old.keys, "mac:Alt+Enter") and has(old.keys, "win:Ctrl+Enter") and has(old.keys, "Ctrl+Shift+J"), "both systems', and yours kept")
+  assert(has(core.by_id("built_old").keys, "mac:Alt+Enter"), "in memory too")
+  write(tmp .. "/user_styles.json", '{"styles": []}')
+  core = load_core()
+
+  -- A14: the version is read again (ReaPack writes the new one a moment after its sync starts)
+  write(tmp .. "/ReaPersona.lua", "-- @version 1.0\n")
+  assert(core.version() == "1.0")
+  write(tmp .. "/ReaPersona.lua", "-- @version 2.0\n")
+  core._version_at = -10
+  assert(core.version() == "2.0", "not kept for good")
+  os.remove(tmp .. "/ReaPersona.lua")
+
+  -- A15: a test copy of ReaPersona never syncs, and one already in another computer's file isn't taken into this one's
+  assert(core.code_skipped("Scripts/ReaPersona_uitest_tmp/ReaPersona.lua") and not core.code_skipped("Scripts/ReaPersona theme scripts/x.lua"))
+  assert(not core.item_allowed("code Scripts/ReaPersona_uitest_tmp/user_styles.json", { h = "0123456789abcdef" }))
+  local st15 = {}
+  local out15 = core.sync_merge(st15, {}, {}, { { items = { ["code Scripts/ReaPersona_uitest_tmp/x.lua"] = { t = 5, v = { h = "0123456789abcdef", n = 1 } } } } }, 9, 9)
+  assert(#out15 == 0 and next(st15) == nil, "not in the state, so not sent on")
+
+  -- A16: room in the engine's main chunk for 15 more locals before Lua's 200
+  local src = read(tmp .. "/reapersona_core.lua")
+  local at = src:find("\nreturn M%s*$")
+  local extra = {}
+  for n = 1, 15 do extra[n] = "local _h" .. n .. " = " .. n end
+  assert(load(src:sub(1, at) .. table.concat(extra, "\n") .. src:sub(at)), "the engine is within 15 locals of Lua's 200: move constants into a table or a do-block")
+
+  -- A17: tables that aren't plain lists are written whole
+  local j1 = core.json_decode(core.json_encode({ [2] = "a", [5] = "b" }))
+  assert(j1["2"] == "a" and j1["5"] == "b", "holes: keys kept, no nulls")
+  local j2 = core.json_decode(core.json_encode({ 1, 2, x = 3 }))
+  assert(j2["1"] == 1 and j2["2"] == 2 and j2.x == 3, "a list with a key beside it: nothing dropped")
+  assert(core.json_encode({ 1, 2, 3 }) == "[1, 2, 3]" and core.json_encode({}) == "[]", "plain lists as before")
+
+  -- A18: a failure caught by M.try is in errors.log
+  local log0 = read(tmp .. "/errors.log") or ""
+  assert(not core.try("probe 37", function() error("caught here") end))
+  assert((read(tmp .. "/errors.log") or ""):sub(#log0 + 1):find("probe 37: .*caught here"), "logged")
+
+  -- A19: a cancelled quit puts layers.json back as it was
+  write(tmp .. "/layers.json", '{"map": {"logic": 2}}')
+  core = load_core()
+  core.prepare_layers("pro_tools")
+  assert(read(tmp .. "/layers.json") ~= '{"map": {"logic": 2}}')
+  core.cancel_layers()
+  assert(read(tmp .. "/layers.json") == '{"map": {"logic": 2}}' and core.by_id("logic").alt == 2, "as it was")
+  os.remove(tmp .. "/layers.json")
+  core = load_core()
+
+  -- A20: a write replaces the file; curl is there on Windows
+  write(tmp .. "/r.txt", "old")
+  assert(core.write(tmp .. "/r.txt", "new") and read(tmp .. "/r.txt") == "new" and not read(tmp .. "/r.txt.tmp"))
+  os.remove(tmp .. "/r.txt")
+  assert(core.curl_missing() == nil)
+
+  -- A21: the follower applies a persona as it is now, after it was edited in the window
+  local function persona(feel) write(tmp .. "/user_styles.json", core.json_encode({ styles = { { id = "built_f", name = "F", kind = "built", feel = feel, keys = {}, alt = 0 } } })) end
+  persona({ { "toggle", 1157, 1, "snap" } })
+  core = load_core()
+  local gen, step, proj = 1, nil, "p1"
+  local fs2, df, ep2 = reaper.JS_File_Stat, reaper.defer, reaper.EnumProjects
+  reaper.JS_File_Stat = function(p) return 0, #(read(p) or ""), "", "2026.11.19 00:00:0" .. gen end
+  reaper.defer = function(f) step = f end
+  reaper.EnumProjects = function(i) if i == -1 then return proj, "" end end
+  states[1157], states[40041] = 0, 0
+  ext["ReaPersona/style"], ext["ReaPersona/follow projects"], ext["ReaPersona/project default"], ext["ReaPersona/follow beat"] = "my_reaper", "1", "built_f", nil
+  ext["ReaPersona/orig"] = ""
+  core.follow_projects()
+  assert(states[1157] == 1, "the project's persona")
+  persona({ { "toggle", 40041, 1, "crossfades" } })
+  gen = 2
+  ext["ReaPersona/style"], proj = "my_reaper", "p2"
+  step()
+  assert(states[40041] == 1, "as edited, not as it was when the follower started")
+  reaper.JS_File_Stat, reaper.defer, reaper.EnumProjects = fs2, df, ep2
+  ext["ReaPersona/follow projects"], ext["ReaPersona/project default"], ext["ReaPersona/follow beat"], ext["ReaPersona/orig"] = nil, nil, nil, ""
+  write(tmp .. "/user_styles.json", '{"styles": []}')
+
+  reaper.GetToggleCommandState, reaper.Main_OnCommand, reaper.SetExtState, reaper.DeleteExtState, reaper.NamedCommandLookup = gt, mo, se, de, nl
+  reaper.EnumProjects = ep0
+  ext["ReaPersona/style"] = nil
 end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
