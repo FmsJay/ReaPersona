@@ -238,13 +238,17 @@ def reaper_running():
     # (each running REAPER's resource folder: the -cfgfile ini's folder; else its program folder when that has a reaper.ini
     # (portable); else the user profile's REAPER folder. It's ours when that's RES.)
     if os.name == "nt":
-        listed = b"reaper.exe" in subprocess.run(["tasklist", "/FI", "IMAGENAME eq reaper.exe"], capture_output=True).stdout.lower()
+        # (no console window for these: this runs as windowless pythonw, so each one opened its own console, once a second while it
+        # waited for REAPER to quit. James, 2026-11-19: "command window spam after pressing set up everything")
+        no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        listed = b"reaper.exe" in subprocess.run(["tasklist", "/FI", "IMAGENAME eq reaper.exe"], capture_output=True,
+                                                 creationflags=no_window).stdout.lower()
         if not listed:
             return False
         try:
             out = subprocess.run(["powershell", "-NoProfile", "-Command", "[Console]::OutputEncoding=[Text.Encoding]::UTF8; "
                                   "Get-CimInstance Win32_Process -Filter \"Name='reaper.exe'\" | ForEach-Object { $_.ExecutablePath + '|' + $_.CommandLine }"],
-                                 capture_output=True, encoding="utf-8", errors="replace")
+                                 capture_output=True, encoding="utf-8", errors="replace", creationflags=no_window)
         except OSError:  # (no PowerShell: any REAPER counts)
             return True
         here = os.path.normcase(os.path.abspath(RES))

@@ -231,7 +231,9 @@ local function mouse_catalog_card()
   for _, st in ipairs(styles) do if has_mouse(st) and not st.keys_from then srcs[#srcs + 1] = st.name end end
   ImGui.SameLine(ctx); ImGui.SetNextItemWidth(ctx, 200 * UI)
   if ImGui.BeginCombo(ctx, "##msrc", "From: " .. mq.source) then for _, s in ipairs(srcs) do if ImGui.Selectable(ctx, s .. "##ms", s == mq.source) then mq.source = s end end ImGui.EndCombo(ctx) end
-  local q, n, total = (mq.filter or ""):lower(), 0, 0
+  ImGui.SameLine(ctx); every_action_box("m")
+  local only_common = not every_action() and mq.source == "All" -- (one persona picked in From: all of its lines)
+  local q, n, total, hidden = (mq.filter or ""):lower(), 0, 0, 0
   if ImGui.BeginTable(ctx, "allm", 5, ImGui.TableFlags_RowBg | ImGui.TableFlags_SizingStretchProp | ImGui.TableFlags_ScrollY, 0, 360 * UI) then
     ImGui.TableSetupColumn(ctx, "Where", ImGui.TableColumnFlags_WidthStretch, 0.5)
     ImGui.TableSetupColumn(ctx, "Keys", ImGui.TableColumnFlags_WidthFixed, 130 * UI)
@@ -243,6 +245,7 @@ local function mouse_catalog_card()
       local ok = mq.area == "All" or area_of(r.ctxname) == mq.area
       if ok and mq.source ~= "All" then ok = false; for _, s in ipairs(r.sources) do if s == mq.source then ok = true end end end
       if ok and q ~= "" then ok = r.ctxname:lower():find(q, 1, true) or tostring(r.name):lower():find(q, 1, true) end
+      if ok and only_common and not common_mouse(r) then ok = false; hidden = hidden + 1 end
       if ok then
         total = total + 1
         if n < mq.shown then
@@ -260,7 +263,7 @@ local function mouse_catalog_card()
     end
     ImGui.EndTable(ctx)
   end
-  muted(n .. " of " .. total .. " shown")
+  muted(n .. " of " .. total .. " shown" .. (hidden > 0 and (", and " .. hidden .. " more with Show all actions") or ""))
   if total > n then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Show more##mmore") then mq.shown = mq.shown + 200 end end
   card_end()
 end

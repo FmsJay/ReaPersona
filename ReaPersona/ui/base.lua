@@ -149,6 +149,30 @@ RESTART_BUTTON = FLATPAK and "How to put them in" or "Restart REAPER now"
 RESTART_TIP = FLATPAK and "This Flatpak REAPER can't restart itself: the steps say what to run in a terminal while REAPER is closed."
   or "REAPER closes (asking about anything unsaved), these go in (what's replaced is backed up first), and it opens again."
 keyname = core.keyname -- (on a Mac REAPER's Ctrl is Cmd, Alt is Option and Win is Control: styles store Windows names)
+-- Common actions (James, 2026-11-19: "only show common actions by default (timeline zooms, scrolls, transport stuff that most DAWs
+-- touch)"). Every shortcut and Every mouse action show these unless Show all actions is ticked (ExtState "every action", this computer
+-- only). Taken from the personas where it can be: a key at least 3 personas give the same action, a mouse line any persona sets; then by
+-- name: transport, zoom, scroll, undo and redo; and the mouse's main places (arrange view, items, tracks, the ruler, MIDI notes).
+-- A persona's own lists, and the search for an action to add, always have everything.
+local COMMON_NAMES = { "^Transport:", "^View: Zoom", "^View: Scroll", "^Edit: Undo", "^Edit: Redo" }
+local COMMON_PLACES = { "^MM_CTX_ARRANGE", "^MM_CTX_ITEM$", "^MM_CTX_ITEM_CLK$", "^MM_CTX_ITEM_DBLCLK$", "^MM_CTX_ITEMEDGE$", "^MM_CTX_TRACK", "^MM_CTX_RULER", "^MM_CTX_MIDI_NOTE" }
+function every_action() return reaper.GetExtState(SECTION, "every action") == "1" end
+function every_action_box(id) -- the Show all actions tick, the same one on both lists
+  local ch, v = ImGui.Checkbox(ctx, "Show all actions##" .. id, every_action())
+  if ch then reaper.SetExtState(SECTION, "every action", v and "1" or "0", true) end
+  ImGui.SetItemTooltip(ctx, "Off: the ones most DAWs share (play, stop, record, loop, zoom, scroll, undo) and those several personas use. On: every one.")
+end
+function common_key(r) -- a row of Every shortcut that most DAWs share
+  if (tonumber(r.common) or 0) >= 3 then return true end
+  local name = tostring(r.name)
+  for _, p in ipairs(COMMON_NAMES) do if name:find(p) then return true end end
+  return false
+end
+function common_mouse(r) -- a row of Every mouse action that most DAWs share
+  for _, s in ipairs(r.sources or {}) do if s ~= "REAPER (as set now)" then return true end end
+  for _, p in ipairs(COMMON_PLACES) do if tostring(r.ctx):find(p) then return true end end
+  return false
+end
 function keycap(text) -- a key, drawn like one
   text = keyname(text)
   local dl = ImGui.GetWindowDrawList(ctx)

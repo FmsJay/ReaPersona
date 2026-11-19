@@ -456,7 +456,15 @@ local function move_window(w, want)
   if want.docker then M.dock_assigned[want.docker] = true end
   if want.pref then M.dock_assigned[want.pref] = true end
   later(function() -- (returns true: not there yet, try again in a moment)
-    if reaper.GetToggleCommandState(W.show) ~= 1 then reaper.Main_OnCommand(W.show, 0); return true end
+    if reaper.GetToggleCommandState(W.show) ~= 1 then
+      -- (closed and staying closed: only the docker it opens into next time. Opening it to fix its docking flashed it open and shut with
+      -- every Preview change on the Layout tab. James, 2026-11-19. One docked behind another tab says closed too, but is found: moved)
+      if not want.shown and not reaper.JS_Window_Find(W.title, true) then
+        if want.pref or want.docker then reaper.Dock_UpdateDockID(W.ident, want.pref or want.docker) end
+        return
+      end
+      reaper.Main_OnCommand(W.show, 0); return true
+    end
     local h = reaper.JS_Window_Find(W.title, true)
     if not h then return true end
     local d = reaper.DockIsChildOfDock(h)
@@ -5408,7 +5416,7 @@ local HERE_ONLY = { style = true, orig = true, ["orig project"] = true, migrated
   ["midi dock"] = true, ["theme my_reaper"] = true, ["theme path my_reaper"] = true, welcomed = true, ["text size"] = true, look = true, view = true,
   ["last style"] = true, ["menu once"] = true, onboarded = true, ["screen reader"] = true, workflow = true, ["first setup"] = true,
   ["update seen"] = true, ["persona prefs"] = true, ["themeset orig"] = true, ["orig token"] = true, advanced = true, ["python found"] = true,
-  ["starts asked"] = true, ["trial back"] = true, ["draft preview"] = true } -- (the trial and the Preview tick: each computer's own, 2026-11-19) -- (review 2: the switch token, Show everything, start scripts asked about) -- (when this computer last looked, 5.23; what a persona holds here, 5.36.1) -- (screen reader: each computer's own, or one
+  ["starts asked"] = true, ["trial back"] = true, ["draft preview"] = true, ["every action"] = true } -- (Show all actions: each computer's own, 2026-11-19) -- (the trial and the Preview tick: each computer's own, 2026-11-19) -- (review 2: the switch token, Show everything, start scripts asked about) -- (when this computer last looked, 5.23; what a persona holds here, 5.36.1) -- (screen reader: each computer's own, or one
   -- computer turning the menu off could lock a screen-reader user on another out of it. Review, 5.14)
 local HERE_PREFIX = { "docker ", "params ", "forks ", "sync ", "declined ", "inputs " }
 function M.synced_setting(k) -- a ReaPersona ExtState key that goes to your other computers (pure)

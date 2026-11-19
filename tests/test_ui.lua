@@ -47,7 +47,7 @@ local function run()
   }, { __index = function(_, k) if nil_names[k] then return nil end return function() return nil end end })
 
   -- ------------------------------------------------ a stand-in ImGui: flags are 0, windows open, nothing pressed unless `press` says so
-  local press, active, images_made, texts = {}, false, 0, {}
+  local press, active, images_made, texts, inputs = {}, false, 0, {}, {}
   local FN_PREFIX = { DrawList = 1, ListClipper = 1, TextFilter = 1, Viewport = 1, Image = 1, Function = 1, FontAtlas = 1 }
   local OPEN = { Begin = 1, BeginChild = 1, BeginTable = 1, BeginTabBar = 1, BeginTabItem = 1, BeginGroup = 1, TreeNode = 1, TreeNodeEx = 1, CollapsingHeader = 1, BeginMenuBar = 1,
     BeginCombo = 1, BeginPopup = 1, BeginPopupModal = 1, BeginPopupContextItem = 1, BeginListBox = 1, BeginMenu = 1, BeginTooltip = 1 } -- (round 4: combos and popups open, so what's in them is drawn too)
@@ -62,6 +62,7 @@ local function run()
     if pre and not FN_PREFIX[pre] then rawset(t, k, 0); return 0 end
     local f
     if OPEN[k] then f = function() return true, true end
+    elseif k == "InputTextWithHint" then f = function(_, label, _, v) if inputs[label] ~= nil then return true, inputs[label] end return false, v end -- (its text is the 4th argument; a test can type one)
     elseif k:match("^Input") or k:match("^Slider") or k:match("^Drag") or k == "Checkbox" or k:match("^Color[EP]") or k:match("^Combo") or k:match("^RadioButtonEx") then
       f = function(_, _, v) return false, v end
     elseif k:match("Get") or k:match("^Calc") then f = function() return 100, 100, 100, 100 end
@@ -430,8 +431,9 @@ local function run()
   fresh()
   local real_find = core.find_actions
   core.find_actions = function() return { { 40001, "Probe action" } } end
-  tick_box["Ctrl##mbw2"] = true; pick["Probe action##asrwadd40001"] = true
+  tick_box["Ctrl##mbw2"] = true; pick["Probe action##asrwadd40001"] = true; inputs["##aswadd"] = "probe"
   frame("Mouse")
+  inputs = {}
   pick = {}
   assert(not core.draft_get(bld.blocks, "mouse"), "picking an action doesn't add it by itself")
   press["Add to my persona##wadd"] = true; frame("Mouse"); press["Add to my persona##wadd"] = nil
@@ -542,6 +544,83 @@ local function run()
 
   rawset(ImGui, "Selectable", real_sel); rawset(ImGui, "Checkbox", real_chk); rawset(ImGui, "BeginCombo", real_combo)
   fresh()
+
+  -- 12. James, 2026-11-19: save over a persona of yours or My REAPER (asked first, never a DAW); a name one of yours has asks too.
+  local pick2, labels2 = {}, {}
+  rawset(ImGui, "Selectable", function(_, label) labels2[#labels2 + 1] = label; return pick2[label] == true end)
+  local ru2, rsl2 = core.use, core.save_look
+  core.use = function(st) set_style(st.id) end
+  local mine_name = "Over target " .. os.time()
+  local target = core.save_built({ core.new_block("theme", "Before.ReaperTheme") }, mine_name)
+  assert(target and target.id, "a persona of yours to save over")
+  local vers0 = #core.versions(target.id)
+  fresh()
+  core.draft_add(bld.blocks, core.new_block("theme", "After.ReaperTheme"))
+  bld.name = "Typed elsewhere" -- (saved over, it keeps the name it has)
+  labels2 = {}; frame("Layout")
+  local offers_mine, offers_my, offers_daw = false, false, false
+  for _, l in ipairs(labels2) do
+    if l == mine_name .. "##sov" .. target.id then offers_mine = true end
+    if l == "My REAPER##sovmy_reaper" then offers_my = true end
+    for _, st in ipairs(R.styles) do if not st.user and st.id ~= "my_reaper" and l == st.name .. "##sov" .. st.id then offers_daw = true end end
+  end
+  assert(offers_mine and offers_my and not offers_daw, "Save over lists yours and My REAPER, never a DAW")
+  mb_answer = 7; pick2[mine_name .. "##sov" .. target.id] = true; frame("Layout"); pick2 = {}; mb_answer = 1
+  assert(mb_said[#mb_said]:find("Save over " .. mine_name .. "?", 1, true), "it asks first")
+  assert(core.draft_get(core.by_id(target.id).blocks, "theme").file == "Before.ReaperTheme" and not bld.id, "No leaves it as it was")
+  mb_answer = 6; pick2[mine_name .. "##sov" .. target.id] = true; frame("Layout"); pick2 = {}; mb_answer = 1
+  local after = core.by_id(target.id)
+  assert(after and core.draft_get(after.blocks, "theme").file == "After.ReaperTheme" and after.name == mine_name, "Yes saves over it, keeping its id and name")
+  assert(#core.versions(target.id) == vers0 + 1 and bld.id == target.id, "and keeps the one before under Earlier versions")
+  -- typing that name and pressing Save as new asks too, instead of making a second one of that name
+  fresh()
+  core.draft_add(bld.blocks, core.new_block("theme", "Again.ReaperTheme"))
+  bld.name = mine_name:upper()
+  mb_answer = 6; press["Save as new##strip"] = true; frame("Layout"); press["Save as new##strip"] = nil; mb_answer = 1
+  local named = 0
+  for _, st in ipairs(R.styles) do if st.name:lower() == mine_name:lower() then named = named + 1 end end
+  assert(named == 1 and core.draft_get(core.by_id(target.id).blocks, "theme").file == "Again.ReaperTheme", "a name you have: saved over it, not a second one")
+  -- My REAPER, through its own save (its look)
+  local looks = 0
+  core.save_look = function() looks = looks + 1 end
+  fresh()
+  core.draft_add(bld.blocks, core.new_block("theme", "Look.ReaperTheme"))
+  mb_answer = 6; pick2["My REAPER##sovmy_reaper"] = true; frame("Layout"); pick2 = {}; mb_answer = 1
+  assert(looks == 1 and bld.id == "my_reaper" and bld.msg:find("My REAPER is saved", 1, true), "saving over My REAPER saves its look: " .. tostring(bld.msg))
+  core.use, core.save_look = ru2, rsl2
+  core.delete_user_style(target.id)
+  rawset(ImGui, "Selectable", real_sel)
+  fresh()
+
+  -- 13. James, 2026-11-19: Every shortcut and Every mouse action show the common ones unless Show all actions is ticked (this computer only)
+  assert(R.common_key({ name = "Transport: Play/stop", common = 0 }) and R.common_key({ name = "Item: Split", common = 3 }), "transport, or 3 personas")
+  assert(not R.common_key({ name = "Item: Split", common = 2 }), "a key fewer than 3 personas share isn't")
+  assert(R.common_mouse({ ctx = "MM_CTX_ENVPT", sources = { "Logic Pro" } }) and R.common_mouse({ ctx = "MM_CTX_ITEM", sources = { "REAPER (as set now)" } }), "a persona's line, or a main place")
+  assert(not R.common_mouse({ ctx = "MM_CTX_ENVPT", sources = { "REAPER (as set now)" } }), "REAPER's own line in a side place isn't")
+  local adds, real_small = {}, ImGui.SmallButton
+  rawset(ImGui, "SmallButton", function(_, label) local i = label:match("^Add##ak(%d+)$"); if i then adds[#adds + 1] = tonumber(i) end return press[label] == true end)
+  reaper.SetExtState(R.SECTION, "every action", "0", true)
+  local cat = core.catalog(R.styles, core.read(tmp .. "/reaper-kb.ini") or "", nil)
+  frame("Shortcuts") -- (its first look may only say it's reading)
+  local function more_hidden() for s in pairs(texts) do if s:find("more with Show all actions", 1, true) then return true end end return false end
+  local function listed() for s in pairs(texts) do local a = s:match("^%d+ of (%d+) shown"); if a then return tonumber(a) end end return 0 end
+  adds, texts = {}, {}; frame("Shortcuts")
+  local common_total = listed()
+  assert(#adds > 0 and more_hidden(), "by default some rows wait for Show all actions")
+  for _, i in ipairs(adds) do assert(R.common_key(cat[i]), "only common rows by default: " .. tostring(cat[i] and cat[i].name)) end
+  reaper.SetExtState(R.SECTION, "every action", "1", true)
+  adds, texts = {}, {}; frame("Shortcuts")
+  assert(listed() > common_total and not more_hidden(), "Show all actions lists the rest too: " .. listed() .. " vs " .. common_total)
+  rawset(ImGui, "SmallButton", function(_, label) local i = label:match("^Add##am(%d+)$"); if i then adds[#adds + 1] = tonumber(i) end return press[label] == true end)
+  reaper.SetExtState(R.SECTION, "every action", "0", true)
+  adds, texts = {}, {}; frame("Mouse"); local mouse_common = #adds
+  local mouse_hid = more_hidden()
+  reaper.SetExtState(R.SECTION, "every action", "1", true)
+  adds, texts = {}, {}; frame("Mouse")
+  assert(mouse_common > 0 and #adds >= mouse_common and not more_hidden(), "the mouse list: common by default, all when ticked: " .. mouse_common .. " / " .. #adds)
+  assert(mouse_hid or #adds == mouse_common, "and anything left out is counted")
+  rawset(ImGui, "SmallButton", real_small)
+  reaper.SetExtState(R.SECTION, "every action", "0", true)
 end
 
 local ok, err = xpcall(run, debug.traceback)

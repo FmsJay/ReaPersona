@@ -66,6 +66,31 @@ function bld_blocks() -- what's saved: built in a fixed order, with your own key
   if not core.draft_get(blocks, "keys") then table.insert(blocks, 1, core.keys_block("my_reaper")) end
   return blocks
 end
+-- Saving over a persona (James, 2026-11-19: "should be able to overwrite personas just with a pop up confirming, just not base DAWs.
+-- Should be able to overwrite My REAPER"). The ones that can be saved over: your own built personas (save_built keeps their id, so
+-- favourites, projects and sync still point at them, and keeps the one before as an earlier version) and My REAPER (its look, as Save
+-- changes on it does). Never a DAW, Base REAPER or a saved setup.
+local function over_targets() -- -> My REAPER first, then yours by name; not the one being edited (Save changes is for that)
+  local out = {}
+  for _, st in ipairs(styles) do if st.user and st.kind == "built" and st.id ~= bld.id and st.id ~= "built_try" then out[#out + 1] = st end end
+  table.sort(out, function(a, b) return a.name:lower() < b.name:lower() end)
+  local mine = core.by_id("my_reaper")
+  if mine and bld.id ~= "my_reaper" then table.insert(out, 1, mine) end
+  return out
+end
+local function named_mine(name) -- one of those with this name (any case), or nil
+  local n = (name or ""):gsub("^%s+", ""):gsub("%s+$", ""):lower()
+  if n == "" then return nil end
+  for _, st in ipairs(over_targets()) do if st.name:lower() == n then return st end end
+end
+function bld_save_over(st) -- the persona being made, saved over st after asking. -> the saved persona, or nil
+  if reaper.MB("Save over " .. st.name .. "? Its earlier version is kept under Earlier versions, on its page." ..
+      (st.id == "my_reaper" and "\n\nMy REAPER takes this layout, mouse, theme and colours as your look on every computer; its shortcuts stay your own keymap." or ""),
+      "ReaPersona: save over", 4) ~= 6 then return nil end
+  bld.id, bld.from = st.id, nil
+  if st.id ~= "my_reaper" then bld.name = st.name end -- (it keeps its name, as it keeps its id)
+  return bld_save()
+end
 function bld_save() -- -> the saved persona, or nil (bld.msg says why)
   -- (James, rounds 3-4: saved during a preview or Try it, the saved persona is the one in use, My REAPER too, project part and all, and Undo
   -- switch takes you back to what you had before the preview. The preview is over: Go back and closing the window no longer put anything
@@ -236,11 +261,26 @@ function draft_strip() -- the persona being made, over every tab
     if ch then bld.colour = col; core.draft_add(bld.blocks, core.new_block("colour", string.format("#%06X", col))) end
     ImGui.SetItemTooltip(ctx, "Its colour in ReaPersona: its card, buttons and badge.")
     ImGui.SameLine(ctx); if ImGui.GetContentRegionAvail(ctx) < 110 * UI then ImGui.NewLine(ctx) end -- (a narrow window: the buttons go on)
-    if primary(bld.id and "Save changes##strip" or "Save as new##strip") then bld_save() end
+    if primary(bld.id and "Save changes##strip" or "Save as new##strip") then
+      local same = not bld.id and named_mine(bld.name) -- (a name one of yours has: saved over it, after asking, not a second one of that name)
+      if same then bld_save_over(same) else bld_save() end
+    end
     local saved_as = bld.id and (core.by_id(bld.id) or {}).name -- (its name as saved: the field may have been retyped)
     ImGui.SetItemTooltip(ctx, bld.id == "my_reaper" and "Saves it as your own look (layout, mouse, theme and colours) on every computer that syncs. Earlier versions, on its page, puts the old one back."
       or bld.id and ("Saves over " .. (saved_as or bld.name) .. ", which you made" ..
       ((saved_as and bld.name ~= "" and bld.name ~= saved_as) and (", renamed to " .. bld.name) or "") .. ".") or "A new persona of yours: the DAWs and personas it came from stay as they are.")
+    local targets = over_targets()
+    if #targets > 0 then -- (James, 2026-11-19: "overwrite personas just with a pop up confirming, just not base DAWs ... overwrite My REAPER")
+      ImGui.SameLine(ctx); if ImGui.GetContentRegionAvail(ctx) < 140 * UI then ImGui.NewLine(ctx) end
+      ImGui.SetNextItemWidth(ctx, 130 * UI)
+      if ImGui.BeginCombo(ctx, "##saveover", "Save over...") then
+        for _, st in ipairs(targets) do
+          if ImGui.Selectable(ctx, st.name .. "##sov" .. st.id) then bld_save_over(st) end
+        end
+        ImGui.EndCombo(ctx)
+      end
+      ImGui.SetItemTooltip(ctx, "Saves this over one of your personas, or My REAPER (it asks first). The DAWs can't be saved over. The one it replaces is kept under Earlier versions, on its page.")
+    end
     ImGui.SameLine(ctx); if ImGui.GetContentRegionAvail(ctx) < 60 * UI then ImGui.NewLine(ctx) end
     if not bld.preview and ImGui.Button(ctx, "Try it##strip") then bld.try() end
     ImGui.SameLine(ctx); if ImGui.GetContentRegionAvail(ctx) < 170 * UI then ImGui.NewLine(ctx) end

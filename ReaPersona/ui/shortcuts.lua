@@ -194,7 +194,9 @@ local function shortcuts_catalog()
   combo("##src", kq.source, srcs, function(x) kq.source = x end, "From")
   combo("##sec", kq.section, { "All", "Main", "MIDI editor" }, function(x) kq.section = x end, "Section")
   ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Refresh##kcat") then kq.cat = nil end
-  local q, n, total = filter:lower(), 0, 0
+  ImGui.SameLine(ctx); every_action_box("k")
+  local only_common = not every_action() and kq.source == "All" -- (one persona or your keymap picked in From: all of theirs)
+  local q, n, total, hidden = filter:lower(), 0, 0, 0
   if ImGui.BeginTable(ctx, "allk", 5, ImGui.TableFlags_RowBg | ImGui.TableFlags_SizingStretchProp | ImGui.TableFlags_ScrollY, 0, 360 * UI) then
     ImGui.TableSetupColumn(ctx, "Key", ImGui.TableColumnFlags_WidthFixed, 170 * UI)
     ImGui.TableSetupColumn(ctx, "Action", ImGui.TableColumnFlags_WidthStretch)
@@ -206,6 +208,7 @@ local function shortcuts_catalog()
       local ok = (kq.kind == "All" or r.kind == kq.kind) and (kq.section == "All" or r.section == kq.section)
       if ok and kq.source ~= "All" then ok = false; for _, s in ipairs(r.sources) do if s == kq.source then ok = true end end end
       if ok and q ~= "" then ok = r.spec:lower():find(q, 1, true) or r.name:lower():find(q, 1, true) or table.concat(r.sources, " "):lower():find(q, 1, true) end
+      if ok and only_common and not common_key(r) then ok = false; hidden = hidden + 1 end
       if ok then
         total = total + 1
         if n < kq.shown then
@@ -225,7 +228,7 @@ local function shortcuts_catalog()
     end
     ImGui.EndTable(ctx)
   end
-  muted(n .. " of " .. total .. " shown")
+  muted(n .. " of " .. total .. " shown" .. (hidden > 0 and (", and " .. hidden .. " more with Show all actions") or ""))
   if total > n then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Show more##kmore") then kq.shown = kq.shown + 200 end end
   card_end()
 end

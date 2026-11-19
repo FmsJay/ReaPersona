@@ -1346,6 +1346,15 @@ do -- 37. Round 1 review (2026-11-19), the engine's fixes. One stand-in REAPER f
   assert(docked and ext["ReaPersona/orig"]:find("d|mixer|1|-1,", 1, true), "the original is the floating mixer: " .. ext["ReaPersona/orig"])
   core.drain()
   ext["ReaPersona/orig"] = ""
+  -- (a closed Media Explorer that a layout keeps closed isn't opened to set its docking: it flashed with every Preview change, James 11-19)
+  local opened = {}
+  states[50124] = 0
+  reaper.Main_OnCommand = function(id) opened[#opened + 1] = id; states[id] = (states[id] == 1) and 0 or 1 end
+  core.use({ id = "built_hid", name = "H", feel = { { "dock", "explorer", "float", 0, "closed" } }, keys = {}, alt = 0 })
+  core.drain()
+  for _, id in ipairs(opened) do assert(id ~= 50124, "a closed explorer kept closed isn't opened") end
+  assert(states[50124] == 0, "still closed")
+  ext["ReaPersona/orig"] = ""
   reaper.JS_Window_Find, reaper.JS_Window_OnCommand, reaper.DockGetPosition, reaper.DockIsChildOfDock, reaper.Dock_UpdateDockID = jf, jo, dg, dc, du
   reaper.Main_OnCommand = function(id) states[id] = (states[id] == 1) and 0 or 1 end
 

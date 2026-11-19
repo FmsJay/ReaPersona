@@ -1,5 +1,17 @@
 # Changelog
 
+## 5.45.0
+James's notes from 11-19.
+- **Save over a persona:** a "Save over..." list next to Save puts what you've made over one of your own personas or My REAPER, after a
+  confirm (never over a DAW or Base REAPER). The old version stays under Earlier versions; the persona keeps its name, favourites and
+  per-project use. Save as new with a name you already have asks to save over it instead of making a second one.
+- **Common actions first:** Every shortcut (Shortcuts) and Every mouse action (Mouse & trackpad) show the actions most DAWs share by
+  default: transport, zooming, scrolling, undo, the keys three or more personas give, and the main mouse places. "Show all actions" shows
+  the rest. Searches for an action to add still search them all.
+- **No more console windows** flashing up once a second while Set up everything waits for REAPER to close (Windows).
+- **No window flashing open with Preview on:** a closed Media Explorer a layout keeps closed is no longer opened and shut again with each
+  change on the Layout tab.
+
 ## 5.44.0
 Fixes from review round 4 (fresh reviewers on 5.43.0; performance came back solid; reports in reapersona-round4/). The review loop pauses here.
 - **Window dockers go by side now** (James): a persona says a window docks bottom, left, top, right or in a floating docker, and each
