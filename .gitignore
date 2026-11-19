@@ -42,3 +42,8 @@ ReaPersona/_staged/
 ReaPersona/install_cancelled
 ReaPersona/_template.RPP
 ReaPersona/_capture.RPP
+# (review round 2) backups ReaPersona keeps (backups/, presets.json.before-sources...) and a self-update's leftover .new files
+ReaPersona/backups/
+*.before-*
+*.new
+ReaPersona/layers.json.before-install

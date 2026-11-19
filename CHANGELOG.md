@@ -1,5 +1,23 @@
 # Changelog
 
+## 5.41.0
+Fixes from review round 2 (the same seven reviewers on 5.40.0; performance came back solid; reports in reapersona-round2/).
+- **No more sync freeze:** a full sync now runs a little at a time across frames (James's call), so REAPER keeps responding; Settings > Sync
+  says "Syncing..." meanwhile. Only the theme files at the top of ColorThemes sync, not unpacked theme folders, which nearly halves a full sync.
+- **Personas you build:** their keys come out the same on Windows and on a Mac, also for ones saved before 5.40 and first opened on the other
+  system (no Cmd+Tab left on a Mac, no Win+ keys on Windows); unticking a key takes out its other-system twin too.
+- **After Remove ReaPersona,** coming back registers all of its actions again (they stayed unregistered).
+- **Colours** synced in while a persona holds them no longer replace the persona's look or bounce back.
+- **Docked windows** you had closed come back docked and closed; floating ones floating (James's call).
+- **Previews:** picking a persona from a toolbar or key during a preview ends it in the window too; saving My REAPER no longer says it isn't
+  saved; "(preview)" and "(trying)" match the bar's name.
+- **Linux:** keys your desktop keeps (GNOME/KDE) are named on the persona's page, as macOS's are; Flatpak REAPER gets two terminal commands
+  that put the shortcuts in (and take them out) without a restart that can't happen there; an AppImage relaunch only when REAPER is the AppImage.
+- **Smaller:** a failed install puts the layer numbers back (also after a restart); the installer checks REAPER really closed; errors in the
+  window are logged; plain words in a few more places.
+- **For developers:** tools/check.py runs every check (sources, test_core, test_ui, test_installers, lint) in temp copies, and make_index.py
+  refuses a release that fails it.
+
 ## 5.40.0
 Fixes from review round 1 (seven reviewers on 5.39.0: changes, persona engine, UX, performance, cross-platform, install and update, code
 health; reports and the fix list in the side-session notes, reapersona-round1/).

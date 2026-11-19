@@ -49,17 +49,18 @@ def main():
         out = os.path.join(work, "check.json")
         r = subprocess.run([luals(), "--check=" + ws, "--checklevel=Information", "--check_format=json", "--check_out_path=" + out,
                             "--logpath=" + os.path.join(work, "log")], capture_output=True, text=True, errors="replace")
+        # (no report is never a clean result: the ui files always carry their shared-name diagnostics. A LuaLS that ignores
+        # --check_out_path, an older one on PATH say, exits 0 and leaves the report elsewhere: that passed as "lint ok" before. Round 2, R2-5)
         if not os.path.exists(out):
-            if r.returncode != 0:
-                sys.exit("lua-language-server failed (%d): %s" % (r.returncode, (r.stderr or r.stdout).strip()[-500:]))
-            report = {}  # (no diagnostics at all: no file)
-        else:
-            report = json.load(open(out, encoding="utf-8"))
-        counts, failures = Counter(), []
+            sys.exit("lua-language-server wrote no report (exit %d; check its version, 3.7 or newer takes --check_out_path): %s"
+                     % (r.returncode, (r.stderr or r.stdout).strip()[-500:]))
+        report = json.load(open(out, encoding="utf-8"))
+        counts, failures, ui_seen = Counter(), [], False
         base = "file:///" + ws.replace("\\", "/").lstrip("/")
         for uri, diags in report.items():
             path = urllib.parse.unquote(uri)
             rel = path[len(base):].lstrip("/") if path.lower().startswith(base.lower()) else path
+            ui_seen = ui_seen or (rel.startswith("ui/") and len(diags) > 0)
             for d in diags:
                 counts[d["code"]] += 1
                 if must_fix(rel, d["code"]):
@@ -69,6 +70,8 @@ def main():
             print("FIX " + f)
         if failures:
             sys.exit(1)
+        if os.path.isdir(os.path.join(ws, "ui")) and not ui_seen:  # (ui/ was copied but nothing in it reported: it wasn't really checked)
+            sys.exit("lua-language-server reported nothing for ui/, which always has shared-name diagnostics: it didn't check the folder")
         print("lint ok: no undefined globals, no globals written outside ui/")
     finally:
         shutil.rmtree(work, ignore_errors=True)

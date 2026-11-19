@@ -101,8 +101,11 @@ local function plan_keys(core)
   -- REAPER quit and never came back. install_shortcuts.py opens a .app with `open -a`)
   local d = reaper.GetExePath():gsub("\\", "/"):gsub("/+$", "")
   local exe = d .. (reaper.GetOS():find("^Win") and "/reaper.exe" or "/reaper") -- (Linux: the reaper binary beside it)
-  -- (an AppImage: GetExePath is its temporary mount, gone once REAPER quits; $APPIMAGE is the file itself. Round 1, cross-platform 6)
-  if not core.IS_MAC and not reaper.GetOS():find("^Win") then exe = os.getenv("APPIMAGE") or exe end
+  -- (an AppImage: GetExePath is its temporary mount, gone once REAPER quits; $APPIMAGE is the file itself. Only when this REAPER runs from
+  -- that mount ($APPDIR): a REAPER started from some other AppImage'd launcher inherits its APPIMAGE too. Round 1 / round 2, cross-platform N2)
+  local ai, appdir = os.getenv("APPIMAGE"), (os.getenv("APPDIR") or ""):gsub("/+$", "")
+  if not core.IS_MAC and not reaper.GetOS():find("^Win") and ai and ai ~= "" and appdir ~= ""
+    and (d == appdir or d:sub(1, #appdir + 1) == appdir .. "/") then exe = ai end
   if core.IS_MAC then
     exe = d:match("^(.-%.app)") or d .. "/REAPER.app"
     for _, a in ipairs({ d .. "/REAPER.app", d .. "/REAPER64.app" }) do if not d:match("%.app") and reaper.file_exists(a .. "/Contents/Info.plist") then exe = a; break end end
@@ -179,15 +182,16 @@ local function apply(path)
   local unsaved = false
   for i = 0, 99 do local p, fn = reaper.EnumProjects(i); if not p then break end; if reaper.IsProjectDirty(p) ~= 0 and (fn ~= "" or reaper.CountTracks(p) > 0) then unsaved = true end end
   -- (a Flatpak REAPER: when it quits, its sandbox ends and takes the waiting install step with it, so the restart install would quit REAPER
-  -- and change nothing. A keymap file to import by hand instead; install_linux.sh says how. Round 1, cross-platform M3)
+  -- and change nothing. The same install run by hand from a terminal on the computer, with REAPER closed, does it all (shortcuts, toolbars,
+  -- anything waiting) and records it in installed.json. A keymap file to import is made too, for a computer without python3. Round 2, B1)
   if reaper.file_exists("/.flatpak-info") then
-    local ok, path, n, skipped = pcall(core.make_keymap)
+    local ok, path, n, skipped = pcall(core.make_keymap) -- (also writes midi_defaults.json, which the terminal install needs for MIDI keys)
     local made = ok and path ~= nil
     step("shortcuts", made, made and (n .. " keys in " .. path .. (skipped and #skipped > 0 and (" (" .. #skipped .. " left out)") or ""))
       or ("no keymap file: " .. tostring(not ok and path or (skipped and skipped[1]) or "unknown")))
-    out.note = "REAPER now looks and clicks like " .. st.name .. ". This Flatpak REAPER can't restart itself to load shortcuts: " ..
-      (made and "in REAPER, Actions > Show action list > Key Map... > Import..., pick " .. path .. " and choose to merge." or
-       "open ReaPersona (Extensions > ReaPersona), Help > Check and repair, Make the keymap file, and import that.")
+    out.note = "REAPER now looks and clicks like " .. st.name .. ". This Flatpak REAPER can't restart itself to load shortcuts, so: close REAPER, " ..
+      "run  python3 '" .. core.here .. "/install_shortcuts.py' --apply-setup  in a terminal, then start REAPER again." ..
+      (made and (" (No python3? In REAPER: Actions > Show action list > Key Map... > Import..., pick " .. path .. " and choose to merge; toolbars aren't included.)") or "")
     return finish()
   end
   local start, how

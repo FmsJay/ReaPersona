@@ -248,11 +248,39 @@ def check_python_alone(work):
     # the real install: its summary is what the window reads
     code, started, text = after(load_py(here))
     assert started == ["REAPER-EXE"] and re.search(r"installed \d+ shortcut", text), text
-    # the quit was cancelled: nothing installed, REAPER (still open) not started again
-    open(os.path.join(here, "install_cancelled"), "w").write("x")
+    # the quit was cancelled and REAPER is still open a while later: nothing installed, REAPER not started again
+    cancel = os.path.join(here, "install_cancelled")
+    open(cancel, "w").write("x")
     os.remove(status)
+    mod = load_py(here)
+    mod.reaper_running, mod.CANCEL_GRACE = (lambda: True), 0.6
+    code, started, text = after(mod)
+    assert code == 1 and started == [] and text is None and not os.path.exists(cancel)
+    # "cancelled", but REAPER was only slow to quit and is gone now (round 2, N6): installed and started again anyway
+    open(cancel, "w").write("x")
     code, started, text = after(load_py(here))
-    assert code == 1 and started == [] and text is None and not os.path.exists(os.path.join(here, "install_cancelled"))
+    assert code == 0 and started == ["REAPER-EXE"] and re.search(r"installed \d+ shortcut", text) and not os.path.exists(cancel), text
+    # the terminal route (a Flatpak REAPER, round 2 B1): --apply-setup puts in what waits, then installs
+    os.makedirs(os.path.join(here, "pending"), exist_ok=True)
+    open(os.path.join(here, "pending", "prefs.json"), "w").write('{"undomaxmem": "512"}')
+    open(os.path.join(here, "pending", "reaper-mouse.ini"), "w").write("[MM_CTX_ITEM]\nmm_0=1 m\n")
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        load_py(here).install_now(["install_shortcuts.py", "--apply-setup"])
+    text = out.getvalue()
+    assert "took in reaper-mouse.ini" in text and "set 1 of REAPER's preferences" in text and re.search(r"installed \d+ shortcut", text), text
+    assert "undomaxmem=512" in read(os.path.join(res, "reaper.ini")) and "mm_0=1 m" in read(os.path.join(res, "reaper-mouse.ini"))
+    assert not os.listdir(os.path.join(here, "pending")), "pending/ emptied"
+    # ... and --remove --apply-prefs: your preferences back, ReaPersona's window set out, its keys out
+    open(os.path.join(here, "pending", "prefs.json"), "w").write('{"undomaxmem": "256"}')
+    open(os.path.join(res, "reaper-screensets.ini"), "w").write("[sset1]\nname=Mine\n[sset2]\nname=ReaPersona: windows\nmask=1\n")
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        load_py(here).install_now(["install_shortcuts.py", "--remove", "--apply-prefs"])
+    text = out.getvalue()
+    assert "set 1 of REAPER's preferences" in text and "window set out" in text and "removed ReaPersona" in text, text
+    assert "undomaxmem=256" in read(os.path.join(res, "reaper.ini")) and "ReaPersona" not in read(os.path.join(res, "reaper-screensets.ini"))
+    assert "# ReaPersona" not in read(os.path.join(res, "reaper-kb.ini")), "its keys out"
     # outside a resource folder it refuses, as before
     loose = os.path.join(work, "loose")
     os.makedirs(loose)
@@ -267,7 +295,8 @@ def main():
     try:
         try:
             check_python_alone(work)
-            print("ok    install_shortcuts.py: --self-test, the post-quit install writes its result and restarts REAPER whatever fails")
+            print("ok    install_shortcuts.py: --self-test, the post-quit install writes its result and restarts REAPER whatever fails,"
+                  " a 'cancelled' quit that did close, the terminal route (--apply-setup, --remove --apply-prefs)")
         except AssertionError as e:
             failed += 1
             print("FAIL  install_shortcuts.py on its own: %s" % e)

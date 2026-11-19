@@ -25,15 +25,13 @@ function setting_row(id, label, on, tip)
 end
 -- Your other computers (5.10): the folder you pick, the first sync (whose setup wins), and a look every 20 s while the window is open.
 sync_next, sync_err, sync_seen, sync_full = reaper.time_precise() + 2, nil, "", reaper.time_precise() + 10 -- (the window draws before the first sync, about 1 s of loading: 5.39; and opens without waiting for REAPER's own parts)
-function sync_step(now) -- (now: Sync now pressed, so the result is said. The advanced parts every 5 minutes, or on Sync now)
-  if core.sync_folder() == "" then return end
-  sync_next = reaper.time_precise() + 20
-  core.quick = not (now or reaper.time_precise() >= sync_full)
-  if not core.quick then sync_full = reaper.time_precise() + 1800 end -- (REAPER's own parts: on opening, Sync now and every 30 minutes)
-  local ok, rep, why = pcall(core.sync_now)
-  core.quick = nil
-  if not ok then why, rep = rep, nil end
-  sync_err = not rep and ("Couldn't sync: " .. tostring(why)) or nil
+-- (Round 2, James: a sync is spread across frames so the window never freezes. While one is under way (syncing), the loop calls
+-- sync_more() each frame, which lets the engine work about 8 ms; Settings > Sync says "Syncing...".)
+syncing = nil -- { now = the result is to be said, quick = not REAPER's own parts } while a sync is under way
+local function sync_done(rep, why) -- the sync ended: rep is its report, or nil when it couldn't
+  local now = syncing and syncing.now
+  syncing, sync_next = nil, reaper.time_precise() + 20
+  sync_err = not rep and ("Couldn't sync: " .. (why and tostring(why) or "errors.log says why")) or nil
   if not rep then if now then say(sync_err) end return end
   local names = {}
   for _, o in ipairs(rep.others) do if o.d then names[#names + 1] = tostring(o.d.computer or o.name) end end -- (one that doesn't parse: its own line)
@@ -42,6 +40,23 @@ function sync_step(now) -- (now: Sync now pressed, so the result is said. The ad
     say((rep.changed and ("From your other computers: " .. core.setup_summary(rep) .. ".") or "Up to date.") ..
       ((rep.ext or 0) > 0 and (" " .. core.SETUP_RESTART) or "") .. (rep.install and " New shortcuts need installing (Home)." or ""))
   end
+end
+function sync_more() -- (each frame while a sync is under way: a little of it, then the report once it's done)
+  local rep, why = core.sync_tick(syncing.quick, 8)
+  if rep or not core.sync_job then sync_done(rep, why) end
+end
+function sync_step(now, wait) -- a sync starts (now: Sync now pressed, so the result is said; wait: to the end here, for the screen-reader menu)
+  if core.sync_folder() == "" then return end
+  if syncing then -- (one at a time: this one's result is said when it ends; Sync now during a quick one makes the next one full)
+    syncing.now = syncing.now or now
+    if now and syncing.quick then sync_full = 0 end
+    return
+  end
+  sync_next = reaper.time_precise() + 20
+  local quick = not (now or reaper.time_precise() >= sync_full)
+  if not quick then sync_full = reaper.time_precise() + 1800 end -- (REAPER's own parts: on opening, Sync now and every 30 minutes)
+  syncing = { now = now, quick = quick }
+  if wait then sync_done(core.sync_tick(quick)) else sync_more() end
 end
 function choose_sync_folder()
   if not reaper.JS_Dialog_BrowseForFolder then say("Choosing a folder needs js_ReaScriptAPI (ReaPack).") return end
@@ -58,6 +73,7 @@ function choose_sync_folder()
     if r == 2 then return end
     start = r == 6 and "theirs" or "mine"
   end
+  syncing = nil -- (a sync of the old folder isn't finished in the new one)
   local rep, why = core.start_sync(dir, start)
   sync_err = not rep and ("Couldn't sync: " .. tostring(why)) or nil
   if rep then sync_next = reaper.time_precise() + 20 end
@@ -102,7 +118,8 @@ function settings_page(sec) -- (5.33: in sub-tabs; sec = which)
     else
       ImGui.TextWrapped(ctx, "Syncing through " .. dir)
       local t, what, skipped = reaper.GetExtState(SECTION, "sync last"):match("^(%d+)|([^|]*)|?(.*)$")
-      if t then muted("Last looked " .. os.date("%H:%M", tonumber(t)) .. " (" .. what .. ")" .. (sync_seen ~= "" and ("; with " .. sync_seen) or ""))
+      if syncing then muted("Syncing...")
+      elseif t then muted("Last looked " .. os.date("%H:%M", tonumber(t)) .. " (" .. what .. ")" .. (sync_seen ~= "" and ("; with " .. sync_seen) or ""))
       else muted("Not synced yet.") end
       if skipped and skipped ~= "" then ImGui.TextColored(ctx, C.YELLOW, "Skipped (doesn't parse, left as it is): " .. skipped:gsub("^skipped ", "")) end
       if sync_err then ImGui.TextColored(ctx, C.YELLOW, sync_err) end
@@ -110,13 +127,14 @@ function settings_page(sec) -- (5.33: in sub-tabs; sec = which)
       ImGui.SameLine(ctx)
       if ImGui.Button(ctx, "Change folder...") then choose_sync_folder() end
       ImGui.SameLine(ctx)
-      if ImGui.Button(ctx, "Stop syncing") then core.stop_sync(); sync_err, sync_seen = nil, ""; say("Not syncing any more. Your setup here stays as it is.") end
+      if ImGui.Button(ctx, "Stop syncing") then core.stop_sync(); syncing, sync_err, sync_seen = nil, nil, ""; say("Not syncing any more. Your setup here stays as it is.") end
     end
     local pend = core.restart_pending() -- (shown whether or not the advanced parts are unfolded)
     if #pend > 0 then
       ImGui.TextColored(ctx, C.YELLOW, "Waiting for REAPER to restart: " .. core.pending_words(pend))
-      if primary("Restart REAPER now##applysetup") then install_shortcuts() end
-      ImGui.SetItemTooltip(ctx, "REAPER closes (asking about anything unsaved), these go in (what's replaced is backed up first), and it opens again.")
+      if primary((FLATPAK and "How to put them in" or "Restart REAPER now") .. "##applysetup") then install_shortcuts() end
+      ImGui.SetItemTooltip(ctx, FLATPAK and "This Flatpak REAPER can't restart itself: the steps say what to run in a terminal while REAPER is closed."
+        or "REAPER closes (asking about anything unsaved), these go in (what's replaced is backed up first), and it opens again.")
     end
     ImGui.Dummy(ctx, 0, 4)
     local n_adv = 0
@@ -290,11 +308,13 @@ function settings_page(sec) -- (5.33: in sub-tabs; sec = which)
   end
   if sec == "remove" and card("set remove") then -- (removed with ReaPack alone, its startup block, actions and settings stayed behind. Review, 5.9.4)
     heading("Remove ReaPersona")
-    muted("Puts My REAPER back, then takes out the startup line, ReaPersona's actions and its settings, and (REAPER restarting) its shortcut layers and toolbars. Your personas, presets and themes stay in their files. Then uninstall it in ReaPack.")
+    muted("Puts My REAPER back, then takes out the startup line, ReaPersona's actions and its settings, and " ..
+      (FLATPAK and "(with a command you run in a terminal while REAPER is closed)" or "(REAPER restarting)") .. " its shortcut layers and toolbars. Your personas, presets and themes stay in their files. Then uninstall it in ReaPack.")
     ImGui.BeginDisabled(ctx, removing ~= nil)
     if ImGui.Button(ctx, "Remove ReaPersona...") and reaper.MB("Take ReaPersona out of REAPER?\n\n" ..
         "- My REAPER comes back: your own shortcuts, theme, layout and settings\n- the startup line, ReaPersona's actions and its settings go\n" ..
-        "- REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap (backed up first), and REAPER opens again\n" ..
+        (FLATPAK and "- then a command for a terminal, run while REAPER is closed, takes the shortcut layers and toolbars out of your keymap (backed up first): this Flatpak REAPER can't restart itself\n"
+          or "- REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap (backed up first), and REAPER opens again\n") ..
         "\nYour personas, presets and themes stay in their files. Last, uninstall ReaPersona in Extensions > ReaPack > Browse packages.", "ReaPersona: remove", 4) == 6 then
       reaper.SetExtState(SECTION, "follow projects", "0", true) -- (the project-following script stops)
       use(core.by_id("my_reaper") or styles[1])

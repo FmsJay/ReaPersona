@@ -8,24 +8,23 @@ function bld_default_name() -- the name it gets when you don't give one
   local from = bld.from or (keys and keys.id ~= "my_reaper" and (core.by_id(keys.id) or {}).name)
   return core.custom_name(from or "My REAPER")
 end
-function bld_may_drop() -- true when nothing unsaved would be lost, or you said it may be (New and Edit threw a half-made persona away. Review 2026-11-19)
+function bld_may_drop(ask) -- true when nothing unsaved would be lost, or you said it may be (New and Edit threw a half-made persona away. Review 2026-11-19)
+  -- (ask: the question, in the words of what you pressed: "Edit Logic Pro instead?". Round 2: Edit asked "Stop editing...?")
   if not (bld.active and #bld.blocks > 0) or bld.snap == bld.json(bld.blocks) then return true end
-  return reaper.MB(bld.id and ("Stop editing " .. bld.name .. "? Changes you haven't saved are lost.") or "Stop making this persona? What you chose isn't saved.", "ReaPersona", 4) == 6
+  local what = bld.id and "Changes you haven't saved are lost." or "What you chose isn't saved."
+  ask = ask or (bld.id and ("Stop editing " .. ((core.by_id(bld.id) or {}).name or bld.name) .. "?") or "Stop making this persona?")
+  return reaper.MB(ask .. " " .. what, "ReaPersona", 4) == 6
 end
 function bld_end_trial(now) -- out of a preview or Try it: the persona you had, exactly as it was. -> that persona, or nil (now: the window is closing, no waiting steps)
-  local back = bld.back
   bld.back, bld.later = nil, nil
-  local st
-  if core.end_trial then st = core.end_trial(now) -- (the engine knows which one it was, also after the window was closed)
-  elseif back then st = core.by_id(back); if st then core.use(st) end end
-  return st
+  return core.end_trial(now) -- (the engine knows which one it was, also after the window was closed)
 end
 function bld.preview_off() -- (unticked and remembered as off, so the box and the next New or Edit agree)
   bld.preview = false
   reaper.SetExtState(SECTION, "draft preview", "0", true)
 end
 function bld_new() -- an empty persona to make from the tabs
-  if not bld_may_drop() then return end
+  if not bld_may_drop(bld.id and "Start a new persona instead?" or "Start a new one instead?") then return end
   if bld.back then bld_end_trial() end -- (a preview of the one before isn't left in REAPER)
   bld.blocks, bld.name, bld.id, bld.msg, bld.active, bld.colour, bld.from, bld.snap = {}, "", nil, "", true, nil, nil, nil
   bld.hist, bld.pos, bld.shown = nil, nil, nil
@@ -77,9 +76,12 @@ function bld_save() -- -> the saved persona, or nil (bld.msg says why)
     bld.msg = "My REAPER is saved: its layout, mouse, theme and colours are your look on every computer (Earlier versions, on its page, puts one back)." ..
       ((keys and keys.id ~= "my_reaper") and " Its shortcuts are your own keymap, so another persona's keys don't go into it." or "")
     say(bld.msg)
+    bld.snap = bld.json(bld.blocks) -- (saved: Stop, New and Edit don't ask about it. Round 2: they warned it wasn't)
     return core.by_id("my_reaper")
   end
-  if bld.name:match("^%s*$") then bld.name = bld_default_name() end -- (never over a DAW: a new persona, "<DAW> - custom" unless you name it)
+  if bld.name:match("^%s*$") then -- (never over a DAW: a new persona, "<DAW> - custom" unless you name it; one you're editing keeps its name)
+    bld.name = bld.id and (core.by_id(bld.id) or {}).name or bld_default_name()
+  end
   local st, install = core.save_built(bld_blocks(), bld.name, bld.id)
   if st then
     bld.id, selected, ensure_new = st.id, st.id, true
@@ -95,7 +97,7 @@ end
 -- look in real time, along with an undo"). Every change on any tab is kept (bld.hist: the blocks as JSON, looked at 4 times a second),
 -- Undo/Redo step through them, and with Preview on the persona as it stands goes into REAPER a moment after each change, as Try it does.
 function bld.try(quiet) -- the persona as chosen so far, in REAPER now; Go back, Stop or turning Preview off put yours back
-  local st, install = core.build_style(bld_blocks(), bld.name ~= "" and bld.name or "Your persona", "built_try")
+  local st, install = core.build_style(bld_blocks(), bld.name ~= "" and bld.name or bld_default_name(), "built_try") -- (the name the bar shows)
   if not st then bld.later = "Can't preview it: " .. tostring(install); if not quiet then say("Can't try it: " .. tostring(install)) end return end
   if install then st.alt = 0 end -- (keys from several DAWs need their layer installed: the trial keeps your own keys)
   -- (the project part waits for a new project, as the bar says: in a trial it loaded the template, sample rate and tracks into the
@@ -108,12 +110,8 @@ function bld.try(quiet) -- the persona as chosen so far, in REAPER now; Go back,
     elseif b.kind == "project" then later[#later + 1] = "the project part (with the next new project, once it's saved)" end
   end
   bld.later = #later > 0 and ("Not shown until later: " .. table.concat(later, "; ") .. ".") or nil
-  if not bld.back then -- (the persona to go back to: never the trial itself)
-    local cur, was = core.current().id, reaper.GetExtState(SECTION, "trial back")
-    bld.back = cur ~= "built_try" and cur or (was ~= "" and was) or "my_reaper"
-  end
-  core.use(st)
-  core.prefs_queued, core.prefs_need_python = false, false -- (the bar's "Not shown until later" says it: the toast came after every change)
+  if not bld.back then bld.back = not core.is_trial() and core.current().id or "my_reaper" end -- (the persona to go back to: never the trial itself)
+  core.use(st) -- (the engine queues no preferences for a trial, so the preferences toast doesn't come after every change)
   if not quiet then say("Trying it" .. (install and " (with your own shortcuts until it's saved and installed)" or "") .. ". Save it, or Go back.") end
 end
 -- Big strings (a project template, starter tracks with their plug-ins: often MBs) are swapped for a short token before the draft is
@@ -157,7 +155,7 @@ local function changed_parts(a, b) -- the names of the parts that differ between
   for _, x in ipairs(b) do local s = core.block_slot(x); mb[s] = x; slots[s] = true end
   for s in pairs(slots) do
     local x, y = ma[s], mb[s]
-    if not (x and y) or bld.json(x) ~= bld.json(y) then out[#out + 1] = core.block_title(x or y) end
+    if not (x and y) or bld.json(x) ~= bld.json(y) then out[#out + 1] = (x or y).kind == "colour" and "its colour" or core.block_title(x or y) end -- (not "Colour #3A86FF")
   end
   table.sort(out)
   return out
@@ -178,6 +176,12 @@ function bld.step(d) -- Undo (-1) or Redo (+1) of your changes to the persona be
 end
 function bld.tick() -- each frame: the change history, Ctrl+Z / Ctrl+Shift+Z, and the preview
   if not bld.active and #bld.blocks == 0 then bld.hist, bld.pos = nil, nil; return end
+  if bld.back and not core.is_trial() then -- (a persona picked outside the window, from a toolbar, a key or a project: the preview ends there too,
+    -- or the next change put the draft back over it. Engine review round 2)
+    bld.back, bld.later = nil, nil
+    if bld.preview then bld.preview_off() end
+    say(core.current().name .. " is in use now, so the preview has ended. Your persona is still here.")
+  end
   local now = reaper.time_precise()
   local held = ImGui.IsAnyItemActive(ctx) -- (a slider or colour being dragged, a field being typed in)
   if ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows) and not held and not (bld.kq and bld.kq.cap) then
@@ -249,7 +253,7 @@ function draft_strip() -- the persona being made, over every tab
     end
     ImGui.SameLine(ctx); if ImGui.GetContentRegionAvail(ctx) < 50 * UI then ImGui.NewLine(ctx) end
     if ImGui.Button(ctx, "Stop##strip") and bld_may_drop() then -- (asks first: review 2026-11-18)
-      if bld.back then bld_end_trial() end -- (out of a trial: what you had)
+      if bld.back then local back = bld_end_trial(); if back then say("Back to " .. back.name .. ", as it was.") end end -- (out of a trial: what you had)
       bld.blocks, bld.name, bld.id, bld.msg, bld.active, bld.colour, bld.from, bld.snap = {}, "", nil, "", false, nil, nil, nil
       bld.hist, bld.pos, bld.later = nil, nil, nil
     end

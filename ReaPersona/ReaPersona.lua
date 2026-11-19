@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from any of their parts, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.40.0
+-- @version 5.41.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a set of shortcuts (kept apart from your own), a theme, its feel (settings
@@ -22,10 +22,13 @@ local here = debug.getinfo(1, "S").source:match("^@?(.*)[/\\]")
 local R = setmetatable({ here = here }, { __index = _G })
 for _, f in ipairs({ "base", "personas", "settings", "theme_tools", "check", "home", "editing", "shortcuts", "mouse", "layout", "project", "main" }) do
   local chunk, err = loadfile(here .. "/ui/" .. f .. ".lua", "t", R)
-  local ok = chunk ~= nil
-  if ok then ok, err = xpcall(chunk, debug.traceback) end -- (an error while a file runs gets this message too, not REAPER's raw one)
-  if not ok then
-    if rawget(R, "core") then pcall(R.core.log, err) end -- (errors.log gets where it was)
-    return reaper.MB("ReaPersona couldn't load ui/" .. f .. ".lua: " .. tostring(err):match("^[^\n]*") .. "\n\nReinstall it (ReaPack > Synchronize packages).", "ReaPersona", 0)
+  if not chunk then -- (missing or half-written: reinstalling fixes that)
+    return reaper.MB("ReaPersona couldn't load ui/" .. f .. ".lua: " .. tostring(err) .. "\n\nReinstall it: Extensions > ReaPack > Browse packages, right-click ReaPersona > Reinstall.", "ReaPersona", 0)
+  end
+  local ok, why = xpcall(chunk, debug.traceback) -- (an error while a file runs gets a message too, not REAPER's raw one)
+  if not ok then -- (a mistake in ReaPersona: reinstalling the same files wouldn't help. Install review round 2)
+    if rawget(R, "core") then pcall(R.core.log, why) end -- (errors.log gets where it was)
+    return reaper.MB("ReaPersona stopped with an error while opening (ui/" .. f .. ".lua): " .. tostring(why):match("^[^\n]*") ..
+      "\n\nThe details are in errors.log, in ReaPersona's folder (Scripts/ReaPersona): send that file with your report, or look for an update.", "ReaPersona", 0)
   end
 end

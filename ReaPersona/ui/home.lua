@@ -58,22 +58,17 @@ end
 -- REAPER reads its keymap only when it starts: install_shortcuts.py waits for REAPER to close, installs, and starts it again. Without
 -- Python the same install is planned here and a swap step puts it in: a batch file on Windows (5.14), a /bin/sh script on a Mac or
 -- Linux (5.16; until then a Mac without Python got a keymap to import by hand, and no toolbars). core.stage_install.
--- A Flatpak REAPER (Linux): when REAPER quits, Flatpak ends everything it started, the install waiting for it too, so nothing would go
--- in and REAPER wouldn't come back. The shortcuts go in by import instead; the rest needs the installer run from a terminal outside
--- REAPER. (Cross-platform review 2026-11-19)
-local FLATPAK = not IS_MAC and not reaper.GetOS():find("^Win") and reaper.file_exists("/.flatpak-info")
+-- A Flatpak REAPER (FLATPAK, base.lua): the shortcuts go in by import, the rest with the installer from a terminal.
+local FLATPAK_REMOVE = "close REAPER, run this in a terminal (it takes the shortcut layers and toolbars out of your keymap, backed up first, and puts your own preferences and windows back), then start REAPER again:\n\n"
 local function flatpak_install(remove)
-  local py = 'python3 "' .. here .. '/install_shortcuts.py"'
-  if remove then
-    return reaper.MB("This REAPER runs as a Flatpak, which closes anything waiting for REAPER to quit, so ReaPersona can't take its shortcuts out with a restart.\n\n" ..
-      "To finish: close REAPER, run this in a terminal, then start REAPER again:\n\n" .. py .. " --remove", "ReaPersona: remove", 0)
-  end
+  if remove then return reaper.MB("This REAPER runs as a Flatpak, so ReaPersona can't finish with a restart. To finish, " .. FLATPAK_REMOVE .. flatpak_cmd("--remove --apply-prefs"), "ReaPersona: remove", 0) end
   local path, n, skipped = core.make_keymap()
-  if not path then return reaper.MB("No keymap made: " .. tostring(skipped[1]), "ReaPersona", 0) end
+  if not path then core.cancel_layers(); return reaper.MB("No keymap made: " .. tostring(skipped[1]), "ReaPersona", 0) end
   reaper.MB("This REAPER runs as a Flatpak, which closes anything waiting for REAPER to quit, so the shortcuts go in without a restart:\n\n" ..
     "1. In the Actions window (opening now), choose Key Map > Import... and pick\n" .. path .. "\n2. Choose to merge, not replace.\n\n" ..
     "That's " .. n .. " shortcuts." .. (#skipped > 0 and (" Skipped (no action here yet): " .. table.concat(skipped, ", ") .. ".") or "") ..
-    "\n\nToolbars, and anything waiting for a restart, need the installer: close REAPER, run this in a terminal, then start REAPER again:\n\n" .. py, "ReaPersona: install the shortcuts", 0)
+    "\n\nOr everything at once (the shortcuts, toolbars, and whatever is waiting for a restart): close REAPER, run this in a terminal, then start REAPER again:\n\n" ..
+    flatpak_cmd("--apply-setup"), "ReaPersona: install the shortcuts", 0)
   reaper.Main_OnCommand(40605, 0) -- (Show action list)
 end
 function install_shortcuts(remove, extra, asked) -- (remove: Remove ReaPersona, which has asked already: the lines come out instead. extra: a persona that
@@ -90,7 +85,10 @@ function install_shortcuts(remove, extra, asked) -- (remove: Remove ReaPersona, 
   -- (on a Mac GetExePath is the folder holding REAPER.app, e.g. /Applications, not the app: matching ".app" in it found nothing and REAPER never came back)
   local d = reaper.GetExePath():gsub("\\", "/"):gsub("/+$", "")
   local exe = d .. (reaper.GetOS():find("^Win") and "/reaper.exe" or "/reaper") -- (Linux: the reaper binary beside it)
-  if not IS_MAC and not reaper.GetOS():find("^Win") and (os.getenv("APPIMAGE") or "") ~= "" then exe = os.getenv("APPIMAGE") end -- (an AppImage: its own file, not the mount that goes away)
+  local ai, appdir = os.getenv("APPIMAGE") or "", (os.getenv("APPDIR") or ""):gsub("/+$", "")
+  if not IS_MAC and not reaper.GetOS():find("^Win") and ai ~= "" and appdir ~= "" and d:sub(1, #appdir) == appdir then -- (an AppImage REAPER: its own file, not the
+    exe = ai -- mount that goes away; only when this REAPER runs from that mount, not any program started from another AppImage. Cross-platform review round 2)
+  end
   if IS_MAC then
     exe = d:match("^(.-%.app)") or d .. "/REAPER.app"
     for _, a in ipairs({ d .. "/REAPER.app", d .. "/REAPER64.app" }) do if not d:match("%.app") and reaper.file_exists(a .. "/Contents/Info.plist") then exe = a; break end end
@@ -109,7 +107,7 @@ function install_shortcuts(remove, extra, asked) -- (remove: Remove ReaPersona, 
     reaper.ExecProcess(core.py_quiet() .. ' "' .. here .. '/install_shortcuts.py" --after-reaper-quits --relaunch "' .. exe .. '" --cfgfile "' .. cfg .. '"' .. (remove and " --remove" or "") .. setup .. table.concat(open), -1) -- (-1: don't wait)
   else
     local step, why = core.stage_install({ remove = remove, pid = core.reaper_pid(), exe = exe, cfg = cfg, projects = projects })
-    if not step then return reaper.MB("Nothing was installed: " .. tostring(why), "ReaPersona", 0) end
+    if not step then core.cancel_layers(); return reaper.MB("Nothing was installed: " .. tostring(why), "ReaPersona", 0) end -- (layer numbers back as installed)
     if reaper.GetOS():find("^Win") then
       reaper.ExecProcess('cmd.exe /c ""' .. step:gsub("/", "\\") .. '""', -2) -- (-2: minimized, so it isn't closed halfway by mistake)
     else
@@ -121,9 +119,10 @@ function install_shortcuts(remove, extra, asked) -- (remove: Remove ReaPersona, 
 end
 remove_finish = function() -- (Remove ReaPersona, once My REAPER is back) -> false: the window closes
   local done = core.uninstall()
-  reaper.MB(table.concat(done, "\n") .. "\n\nNext: REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap, and REAPER opens again." ..
+  reaper.MB(table.concat(done, "\n") .. (FLATPAK and ("\n\nNext, as this REAPER runs as a Flatpak: " .. FLATPAK_REMOVE .. flatpak_cmd("--remove --apply-prefs"))
+      or "\n\nNext: REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap, and REAPER opens again.") ..
     "\n\nLast: Extensions > ReaPack > Browse packages, right-click ReaPersona > Uninstall.", "ReaPersona: removed", 0)
-  install_shortcuts(true)
+  if not FLATPAK then install_shortcuts(true) end -- (Flatpak: the message above is the rest)
   return false
 end
 -- (in R: setup_job) -- (Set up everything: one step per frame behind a progress window, so REAPER never looks frozen. 5.25)
@@ -135,7 +134,8 @@ end
 function setup_all()
   if reaper.MB("Set up everything ReaPersona can do from here?\n\n" ..
     "- add the startup line that brings your persona back when REAPER starts\n" ..
-    "- offer the smooth playhead / smooth scrolling extensions\n- then the shortcut install: REAPER closes and opens again (about 10 seconds), which also loads new extensions\n\n" ..
+    "- offer the smooth playhead / smooth scrolling extensions\n- then the shortcut install: " ..
+    (FLATPAK and "the steps to import them (this Flatpak REAPER can't restart itself)" or "REAPER closes and opens again (about 10 seconds), which also loads new extensions") .. "\n\n" ..
     "(ReaPersona's own DAW themes are under Advanced, below.)", "ReaPersona: set up", 4) ~= 6 then return end
   local steps = { { "Adding the startup line", function(done)
     if not core.startup_on() then done[#done + 1] = core.add_startup() and "Startup line added" or "Startup line not added" end
@@ -192,7 +192,7 @@ function setup_page()
           selected = st.id; use(st); reaper.SetExtState(SECTION, "welcomed", "1", true)
           core.set_favourite("my_reaper", true); core.set_favourite(st.id, true) -- (your setup and the DAW you came from, on Favourites. 5.27)
           local kept = core.by_id(reaper.GetExtState(SECTION, "first setup"))
-          if setup_todo() then say(st.name .. " in use." .. (kept and (" Your own setup is kept as " .. kept.name .. ".") or "") .. " Next: Finish setting up, below (REAPER restarts once).") end
+          if setup_todo() then say(st.name .. " in use." .. (kept and (" Your own setup is kept as " .. kept.name .. ".") or "") .. " Next: Finish setting up, below" .. (FLATPAK and "." or " (REAPER restarts once).")) end
         end
       end
     end
@@ -208,7 +208,8 @@ function setup_page()
     local have, want = have0, want0
     local steps = {
       { core.current().id ~= "my_reaper", "1. Pick the DAW you're coming from", "Its look and feel straight away, and its shortcuts once they're installed (step 2). Back to My REAPER (top) puts yours back.", "Pick one", function() go("DAWs") end },
-      { have == want and core.startup_on(), "2. Finish setting up (one restart)", "REAPER restarts once (about 10 seconds; it asks about anything unsaved first). Your persona's shortcuts go in, and your persona comes back each time REAPER starts. Your keymap is backed up first.", "Finish setting up", function() finish_setup() end }, -- (5.37: one step, one restart)
+      { have == want and core.startup_on(), FLATPAK and "2. Finish setting up" or "2. Finish setting up (one restart)",
+        (FLATPAK and "You import the shortcuts in REAPER's Actions window (the button gives the steps)." or "REAPER restarts once (about 10 seconds; it asks about anything unsaved first).") .. " Your persona's shortcuts go in, and your persona comes back each time REAPER starts. Your keymap is backed up first.", "Finish setting up", function() finish_setup() end }, -- (5.37: one step, one restart)
       { core.sync_folder() ~= "" and true or "optional", "3. More than one computer? (optional)", "Save your setup to a file, or keep them the same through a shared folder.", "Set it up", function() go("Settings") end },
     }
     if ImGui.BeginTable(ctx, "first steps", 3, ImGui.TableFlags_SizingStretchProp) then
@@ -254,7 +255,7 @@ function setup_page()
       for _, st in ipairs(styles) do if (st.alt or 0) > 0 then layers_used[st.alt] = true end end
       local nl = 0; for _ in pairs(layers_used) do nl = nl + 1 end
       setup_row("keys", have == want, "Shortcut layers: " .. have .. " of " .. want .. " personas installed (" .. nl .. " of REAPER's 16 layers in use)",
-        "Each persona's keys. REAPER restarts to load them (about 10 seconds). REAPER has 16 layers, so ReaPersona gives them to the personas you use (favourites, the one in use, your own); a persona without one gets it the first time it's used, and personas with the same keys share one.", have < want and (FLATPAK and "Install" or "Install and restart") or "Reinstall", install_shortcuts)
+        "Each persona's keys. " .. (FLATPAK and "You import them in REAPER's Actions window." or "REAPER restarts to load them (about 10 seconds).") .. " REAPER has 16 layers, so ReaPersona gives them to the personas you use (favourites, the one in use, your own); a persona without one gets it the first time it's used, and personas with the same keys share one.", have < want and (FLATPAK and "Install" or "Install and restart") or "Reinstall", install_shortcuts)
       setup_row("start", core.startup_on(), "Brings your persona back when REAPER starts", "A few lines in REAPER's startup script (Scripts/__startup.lua).", not core.startup_on() and "Add it" or nil,
         function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end)
       local pend = core.restart_pending()
@@ -454,7 +455,7 @@ end
 -- Project and REAPER. The bar over every tab shows it, names it and saves it. Edit on any persona's page starts from that one.
 bld = { blocks = {}, name = "", id = nil, msg = "", colour = nil, back = nil, active = false }
 function bld_load(st) -- edit a persona: one you built is saved over itself; any other (a DAW, My REAPER, a saved setup) is saved as a new one of yours
-  if not bld_may_drop() then return end -- (a half-made persona isn't thrown away without asking)
+  if not bld_may_drop("Edit " .. st.name .. " instead?") then return end -- (a half-made persona isn't thrown away without asking)
   if bld.back then bld_end_trial() end -- (nor a preview of it left in REAPER)
   local mine = (st.blocks and st.user and st.kind == "built") or st.id == "my_reaper" -- (My REAPER is yours too: saved over, as its look. 5.28)
   bld.blocks = core.blocks_of(st)

@@ -150,7 +150,7 @@ end
 
 function save_preset_prompt()
   local cur = core.current()
-  if cur.id == "built_try" then -- (a preview isn't a persona of its own: saved, it named one that's gone. Review 2026-11-19)
+  if core.is_trial() then -- (a preview isn't a persona of its own: saved, it named one that's gone. Review 2026-11-19)
     return say("REAPER is showing the persona you're making: Save it from the bar at the top, or Go back there first to save what you had.")
   end
   local ok, name = reaper.GetUserInputs("Save as a persona", 1, "Name,extrawidth=160,separator=\n", (cur.preset and cur.name or (cur.name .. " (mine)")))
@@ -211,6 +211,10 @@ function detail(sel, alt)
     heading(sel.name, 24)
     if on then ImGui.SameLine(ctx, 0, 12); pill("In use", solid(col)) end
     muted(sel.description or "")
+    if core.IS_LINUX then -- (Linux: keys the desktop keeps, GNOME and KDE alike: review round 2)
+      local taken = core.taken_here(sel.keys)
+      if #taken > 0 then muted("Your desktop may keep these for itself, so they don't reach REAPER unless you change them in its keyboard settings: " .. table.concat(taken, ", ") .. ".") end
+    end
     if MOD == "Cmd" then -- (a Mac: keys macOS keeps, which never reach REAPER)
       local taken = core.mac_taken(sel.keys)
       if #taken > 0 then muted("macOS keeps these for itself, so they don't reach REAPER unless you turn them off in System Settings > Keyboard > Keyboard Shortcuts: " .. table.concat(taken, ", ") .. ".") end
@@ -466,7 +470,7 @@ function detail(sel, alt)
   end
   if sel.tips and #sel.tips > 0 and card("tips card") then
     heading("REAPER:") -- (not "REAPER tips": it read as the Reapertips theme)
-    muted((sel.id == "base_reaper" and "" or "With REAPER's own keys (Base REAPER has them all). ") .. "From REAPER 7.85's factory keymap.")
+    muted((sel.id == "base_reaper" and "" or "With REAPER's own keys (Base REAPER has them all). ") .. "From REAPER's factory keymap.")
     rows("tips", sel.tips, true)
     if ImGui.SmallButton(ctx, "REAPER User Guide") then core.open_url("https://www.reaper.fm/userguide.php") end
     card_end()
@@ -528,7 +532,7 @@ function import_theme()
   theme_list = nil
   if not name then return reaper.MB("Not added: " .. tostring(why), "ReaPersona", 0) end
   local cur = core.current()
-  if reaper.MB(name .. " is in ColorThemes now.\n\nUse it now, and keep it in " .. cur.name .. "'s Theme list?", "ReaPersona", 4) == 6 then
+  if reaper.MB(name .. " is in ColorThemes now.\n\nUse it now, and " .. (core.is_trial() and "make it the theme of the persona you're making?" or ("keep it in " .. cur.name .. "'s Theme list?")), "ReaPersona", 4) == 6 then
     add_fork(cur, name)
     reaper.OpenColorThemeFile(themes_dir .. name)
   end

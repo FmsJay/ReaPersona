@@ -233,8 +233,12 @@ else
 fi
 [ -n "$JS_NONE" ] && LEFT+=("js_ReaScriptAPI has no $ARCH build: ReaPersona works without it, minus its file pickers (sharing a persona, choosing a sync folder).")
 # (a Flatpak REAPER can't do the restart install: everything it starts, the waiting install step included, dies with it when it quits.
-# reapersona_setup.lua makes a keymap file instead; this says how to put it in. Round 1, cross-platform M3)
-[ "$REAPER_BIN" = flatpak ] && LEFT+=("This REAPER is the Flatpak one, which can't restart itself to put shortcuts in. Put them in by hand, once: in REAPER, Actions > Show action list > Key Map... > Import..., pick 'ReaPersona shortcuts.ReaperKeyMap' in the KeyMaps folder ($RES/KeyMaps) and choose to merge, not replace. Toolbars aren't included. REAPER from reaper.fm avoids this (move the Flatpak one aside and run this again: it installs that one in ~/opt/REAPER).")
+# The same install runs from a terminal here with REAPER closed. reapersona_setup.lua's note gives the command when it got that far;
+# otherwise it's said here, with the installer found under REAPER's Scripts folder. Round 2, B1)
+if [ "$REAPER_BIN" = flatpak ] && ! grep -q 'install_shortcuts.py' "$RESULT" 2>/dev/null; then
+  IS="$(find "$RES/Scripts/ReaPersona" -name install_shortcuts.py 2>/dev/null | head -1)"
+  LEFT+=("This REAPER is the Flatpak one, which can't restart itself to put shortcuts in. Once ReaPersona is set up: close REAPER, run  python3 \"${IS:-$RES/Scripts/ReaPersona/Workflow/install_shortcuts.py}\" --apply-setup  in a terminal, then start REAPER again. REAPER from reaper.fm avoids this (move the Flatpak one aside and run this again: it installs that one in ~/opt/REAPER).")
+fi
 LEFT+=("REAPER is a 60-day evaluation: after that it still works, and reminds you to buy a licence (reaper.fm/purchase.php).")
 say "Done. What's left:"
 for l in "${LEFT[@]}"; do echo "  - $l"; done

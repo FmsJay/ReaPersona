@@ -10,6 +10,10 @@ Only ReaPersona's own lines are added or replaced (installed.json lists the ones
     python install_shortcuts.py            install or update every style (styles.json and user_styles.json)
     python install_shortcuts.py --remove   take the ReaPersona lines out again
     python install_shortcuts.py --no-midi  arrange layers only
+    python install_shortcuts.py --apply-setup            first put in what waits for REAPER to close (settings from your other
+                                                         computers, REAPER preferences), then install: the terminal route for a
+                                                         REAPER that can't restart itself (Flatpak)
+    python install_shortcuts.py --remove --apply-prefs   remove, and put your own preferences and window set back
     python install_shortcuts.py --self-test   check the pure helpers (tests/test_installers.py runs it; installs never do)
 """
 import json, os, re, shutil, subprocess, sys, time
@@ -611,14 +615,39 @@ def self_test():
     assert set_prefs("[REAPER]\na=1\n", {"b": "2", "c": "3\n[Python]\npath=x", "d\n": "1"}) == "[REAPER]\na=1\nb=2\n"
     assert set_prefs("[reaper]\nfoo=1\nbar=2\n[x]\nq=1", {"bar": "5", "new": "7"}) == "[reaper]\nfoo=1\nbar=5\nnew=7\n[x]\nq=1\n"
     # (review 2: U+2028 and friends are line breaks to splitlines(): never a value's, and never split on)
-    assert set_prefs("[REAPER]\na=1\n", {"z": "1 pythonlibdll64=x", "y": "2\x85[Python]"}) == "[REAPER]\na=1\n"
-    assert lines_of("a b\r\nc\n") == ["a b", "c"] and lines_of("") == [] and lines_of("x") == ["x"]
-    assert toolbar_lines({"name": "N", "toolbar": [[40001, "a\nb"], -1, [40002, "c", "i x.png"]]}) == \
+    assert set_prefs("[REAPER]\na=1\n", {"z": "1\u2028pythonlibdll64=x", "y": "2\x85[Python]"}) == "[REAPER]\na=1\n"
+    assert lines_of("a\u2028b\r\nc\n") == ["a\u2028b", "c"] and lines_of("") == [] and lines_of("x") == ["x"]
+    assert toolbar_lines({"name": "N", "toolbar": [[40001, "a\nb"], -1, [40002, "c", "i\u2028x.png"]]}) == \
         ["item_0=40001 a b", "item_1=-1", "icon_2=i x.png", "item_2=40002 c", "title=ReaPersona: N", ""]
     # MIDI keys for one system (round 1: user personas' too): this system's kept without the mark, the other's dropped, junk left for run() to warn about
     here_key, other = ("mac:Ctrl+Alt+Q", "win:Ctrl+Q") if MAC else ("win:Ctrl+Q", "mac:Ctrl+Alt+Q")
     assert midi_keys_here([[here_key, "q"], [other, "q"], ["E", "e"], "junk"]) == [[here_key[4:], "q"], ["E", "e"], "junk"]
     print("install_shortcuts.py self-test ok")
+
+
+CANCEL_GRACE = 15  # (seconds REAPER gets to finish quitting after the window said the quit was cancelled)
+
+
+def install_now(argv):
+    """REAPER is closed: what waits (--apply-setup: everything in pending/ from your other computers, preferences included; or with
+    --remove --apply-prefs: only your own preferences back), ReaPersona's window set out on --remove, then the shortcuts in or out.
+    Prints what it did. Shared by the post-quit install and a run from a terminal (a Flatpak REAPER can't restart itself: round 2, B1)."""
+    if "--apply-setup" in argv:  # (your setup from your other computers, waiting for REAPER to close: 5.11)
+        for line in apply_setup():
+            print(line)
+    elif "--apply-prefs" in argv:  # (Remove ReaPersona: your own preferences back, nothing else from pending/. Review 2026-11-18)
+        try:
+            for line in apply_prefs():
+                print(line)
+        except Exception as e:  # (review 2: the removal goes on)
+            print("REAPER's preferences weren't put back: %s" % e)
+    if "--remove" in argv:
+        try:
+            for line in remove_window_set():
+                print(line)
+        except Exception as e:
+            print("ReaPersona's window set wasn't taken out: %s" % e)
+    run(remove="--remove" in argv, no_midi="--no-midi" in argv)  # (--remove: Settings > Remove ReaPersona, review 5.9.4)
 
 
 def after_reaper_quits(argv):
@@ -634,29 +663,20 @@ def after_reaper_quits(argv):
         give_up = time.time() + 180  # (3 minutes: REAPER may be asking whether to save)
         while reaper_running() and time.time() < give_up and not os.path.exists(cancelled):
             time.sleep(0.5)
-        if os.path.exists(cancelled):  # (the picker saw the quit cancelled: REAPER is still open, so nothing to do and nothing to start)
+        if os.path.exists(cancelled):
+            # (the window writes it when REAPER still runs 4 s after File: Quit. A REAPER slow to shut down looks the same, so it's
+            # believed only if REAPER is still there a while later; gone by then, the install goes on and REAPER comes back. Round 2, N6)
+            look_until = time.time() + CANCEL_GRACE
+            while reaper_running() and time.time() < look_until:
+                time.sleep(0.5)
             os.remove(cancelled)
-            return 1
+            if reaper_running():  # (really cancelled: REAPER is still open, so nothing to do and nothing to start)
+                return 1
         if reaper_running():  # (still open: nothing to start either)
             open(status, "w", encoding="utf-8").write("REAPER didn't close, so the shortcuts weren't installed.\n")
             return 1
         with contextlib.redirect_stdout(out):
-            if "--apply-setup" in argv:  # (your setup from your other computers, waiting for REAPER to close: 5.11)
-                for line in apply_setup():
-                    print(line)
-            elif "--apply-prefs" in argv:  # (Remove ReaPersona: your own preferences back, nothing else from pending/. Review 2026-11-18)
-                try:
-                    for line in apply_prefs():
-                        print(line)
-                except Exception as e:  # (review 2: the removal goes on)
-                    print("REAPER's preferences weren't put back: %s" % e)
-            if "--remove" in argv:
-                try:
-                    for line in remove_window_set():
-                        print(line)
-                except Exception as e:
-                    print("ReaPersona's window set wasn't taken out: %s" % e)
-            run(remove="--remove" in argv, no_midi="--no-midi" in argv)  # (--remove: Settings > Remove ReaPersona, review 5.9.4)
+            install_now(argv)
     except BaseException as e:  # (SystemExit and AssertionError included: whatever happened is written down for the picker)
         why = str(e) if isinstance(e, SystemExit) else "%s: %s" % (type(e).__name__, e)
         out.write("not installed: %s\n" % why)
@@ -742,4 +762,6 @@ if __name__ == "__main__":
         sys.exit(0)
     if "--after-reaper-quits" in sys.argv:
         sys.exit(after_reaper_quits(sys.argv))
-    run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)
+    if reaper_running():  # (checked before anything waiting is merged in: REAPER would write over it as it quits)
+        sys.exit("Close REAPER first: it reads its keymap and settings only when it starts.")
+    install_now(sys.argv)

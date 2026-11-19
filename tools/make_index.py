@@ -1,6 +1,9 @@
 """Write index.xml, the ReaPack index, for the files in ReaPersona/ at a given commit.
 
-    python tools/make_index.py <commit sha> <version> "<changelog>"
+    python tools/make_index.py <commit sha> <version> "<changelog>" [--skip-checks]
+
+It runs tools/check.py on that commit first (every test suite and the lint) and writes nothing if a check fails; --skip-checks
+writes the index anyway (round 2: a release used to run none of them).
 
 ReaPack installs the package into <REAPER resource path>/Scripts/ReaPersona/Workflow/ and registers ReaPersona.lua as an action;
 the other files come with it. Run it after committing the files, then commit index.xml (its URLs point at that earlier commit).
@@ -14,10 +17,10 @@ REPO = "https://github.com/FmsJay/ReaPersona"
 # Files ReaPersona writes on each computer (its .gitignore lists most). Published, ReaPack and the self-updater would write the
 # author's copy over every user's own (their personas, presets, sync state...), so a commit holding one of these isn't indexed.
 PER_COMPUTER = ("scripts.json", "user_styles.json", "presets.json", "sync_state.json", "layers.json", "user_themes.json", "midi_map.lua",
-                "midi_fallback.json", "midi_defaults.json", "installed.json", "errors.log", "last_install.txt", "install_cancelled",
+                "midi_fallback.json", "midi_defaults.json", "installed.json", "errors.log", "last_install.txt", "install_cancelled", "layers.json.before-install",
                 "packages_missing.json", "_packages.json", "venv_status.txt", "_starter.RTrackTemplate", "_template.RPP", "_capture.RPP")
 PER_COMPUTER_DIRS = ("actions/", "midi_keys/", "cheat sheets/", "pending/", "_downloads/", "_incoming/", "_staged/", "install_staged/",
-                     "feedback/", "versions/", "toolbars/", "venv/", "__pycache__/")
+                     "feedback/", "versions/", "toolbars/", "venv/", "__pycache__/", "backups/")
 
 
 def tracked(sha, folder):
@@ -33,7 +36,7 @@ def per_computer(rel):
     """Is this ReaPersona/ path one of each computer's own files? Pure."""
     name = rel.rsplit("/", 1)[-1]
     return (name in PER_COMPUTER or rel.startswith(PER_COMPUTER_DIRS) or (name.startswith("actions_") and name.endswith(".tsv"))
-            or name.endswith((".ReaperTheme", ".ReaperThemeZip", ".tmp")) or ".bad-" in name)
+            or name.endswith((".ReaperTheme", ".ReaperThemeZip", ".tmp", ".new")) or ".bad-" in name or ".before-" in name)
 
 
 def files(sha):
@@ -47,12 +50,17 @@ def files(sha):
 
 
 def main():
-    sha, version, changelog = sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else ""
+    skip = "--skip-checks" in sys.argv
+    args = [a for a in sys.argv[1:] if a != "--skip-checks"]
+    sha, version, changelog = args[0], args[1], args[2] if len(args) > 2 else ""
     # (the full commit id: a short one or a name like HEAD would put a moving or ambiguous ref in every URL)
     full = subprocess.run(["git", "-C", HERE, "rev-parse", "--verify", sha + "^{commit}"], capture_output=True, text=True)
     if full.returncode != 0:
         sys.exit("not a commit here: " + sha)
     sha = full.stdout.strip()
+    if not skip:  # (the commit being published, checked in a temp copy: tests, parity, lint)
+        if subprocess.run([sys.executable, os.path.join(HERE, "tools", "check.py"), "--commit", sha]).returncode != 0:
+            sys.exit("not indexed: tools/check.py failed for %s (fix it, or --skip-checks to write the index anyway)" % sha[:8])
     src = []
     for f in files(sha):
         url = "%s/raw/%s/ReaPersona/%s" % (REPO, sha, urllib.parse.quote(f))

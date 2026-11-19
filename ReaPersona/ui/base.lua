@@ -126,6 +126,11 @@ function pill(text, bg, fg)
   ImGui.DrawList_AddText(dl, x + 8, y + 3, fg or on_colour(bg >> 8), text)
 end
 IS_MAC = core.IS_MAC
+-- A Flatpak REAPER (Linux): when REAPER quits, Flatpak ends everything it started, an install waiting for it too, so nothing goes in
+-- with a restart. The shortcuts go in by import; the rest with the installer run from a terminal while REAPER is closed. (Cross-platform
+-- review 2026-11-19; the command lines are the installer's own, round 2)
+FLATPAK = not IS_MAC and not reaper.GetOS():find("^Win") and reaper.file_exists("/.flatpak-info")
+function flatpak_cmd(args) return 'python3 "' .. here .. '/install_shortcuts.py" ' .. args end
 keyname = core.keyname -- (on a Mac REAPER's Ctrl is Cmd, Alt is Option and Win is Control: styles store Windows names)
 function keycap(text) -- a key, drawn like one
   text = keyname(text)
@@ -181,7 +186,7 @@ changed, changed_on = {}, nil -- key -> native colour, what's been tweaked since
 -- (in R: trying, try_theme) -- (a theme on trial: { name, back = the theme to go back to, ends = time }; set up with the setup helpers)
 function refresh() reaper.ThemeLayout_RefreshAll(); reaper.UpdateArrange(); reaper.TrackList_AdjustWindows(false) end
 function add_fork(st, name)
-  if st.id == "built_try" then -- (a theme saved or added while a preview shows belongs to the persona being made: it went on My REAPER's list. Review 2026-11-19)
+  if core.is_trial() and st == core.current() then -- (a theme saved or added while a preview shows belongs to the persona being made: it went on My REAPER's list. Review 2026-11-19)
     core.draft_add(bld.blocks, core.new_block("theme", name)); bld.active = true
     return
   end
@@ -302,15 +307,12 @@ function use(st)
   -- (out of a preview or Try it: Undo switch goes back to the persona from before it, never to the trial or to My REAPER, and the
   -- preview ends, the persona being made staying in the bar. James, review 2026-11-19)
   local was, ended
-  if bld.back or reaper.GetExtState(SECTION, "style") == "built_try" then
-    was = core.by_id(bld.back or reaper.GetExtState(SECTION, "trial back"))
-    if bld.back then
-      ended = bld.preview
-      bld.back, bld.later = nil, nil
-      if ended then bld.preview_off() end
-    end
-  else was = core.current() end
-  if was and was.id ~= st.id and was.id ~= "built_try" then last_style = was.id; reaper.SetExtState(SECTION, "last style", was.id, true) end
+  if bld.back then
+    was, ended = core.by_id(bld.back), bld.preview
+    bld.back, bld.later = nil, nil
+    if ended then bld.preview_off() end
+  elseif not core.is_trial() then was = core.current() end -- (a trial the window didn't start: no persona to offer back)
+  if was and was.id ~= st.id then last_style = was.id; reaper.SetExtState(SECTION, "last style", was.id, true) end
   -- (a theme on trial gives way to the persona's, but the one it was trying over is what this persona had: leaving My REAPER
   -- mid-trial kept the trial theme as My REAPER's own. Review, 5.9.3)
   if trying and trying.back then reaper.OpenColorThemeFile(themes_dir .. trying.back) end
@@ -319,7 +321,8 @@ function use(st)
   core.use(st)
   if needs then -- (5.29: REAPER has 16 shortcut layers; a persona gets one the first time it's used here)
     if reaper.MB(st.name .. "'s shortcuts aren't installed on this computer yet: REAPER has only 16 shortcut layers, so ReaPersona gives them to the personas you use.\n\n" ..
-        "Install them now? REAPER closes (it asks first if anything is unsaved) and opens again, about 10 seconds. Until then its look and layout are on, with your own keys.", "ReaPersona: " .. st.name, 4) == 6 then
+        (FLATPAK and "Install them now? You import them in REAPER's Actions window (the steps come next). Until then its look and layout are on, with your own keys."
+          or "Install them now? REAPER closes (it asks first if anything is unsaved) and opens again, about 10 seconds. Until then its look and layout are on, with your own keys."), "ReaPersona: " .. st.name, 4) == 6 then
       install_shortcuts(false, st.id, true)
     end
   end
@@ -327,7 +330,7 @@ function use(st)
   local miss = {}
   for _, s in ipairs(core.starts_missing or {}) do miss[#miss + 1] = s[1] end
   say((ended and "Preview off: " or "") .. st.name .. " in use" .. (#setup > 0 and (", and this project has its " .. table.concat(setup, ", ")) or "") ..
-    ((was and was.id ~= st.id and was.id ~= "built_try") and (". Undo switch (top) puts " .. was.name .. " back.") or ".") ..
+    ((was and was.id ~= st.id) and (". Undo switch (top) puts " .. was.name .. " back.") or ".") ..
     (#miss > 0 and (" It starts " .. table.concat(miss, ", ") .. " with REAPER, not installed here: Get it on its page.") or ""))
   for _, key in ipairs(st.recommends or {}) do -- (offered once: no is remembered)
     local x = core.EXTENSIONS[key]

@@ -107,7 +107,7 @@ function persona_keys_card()
       ImGui.TableSetupColumn(ctx, "on", ImGui.TableColumnFlags_WidthFixed, 28 * UI)
       ImGui.TableSetupColumn(ctx, "Key", ImGui.TableColumnFlags_WidthFixed, 190 * UI)
       ImGui.TableSetupColumn(ctx, "Action", ImGui.TableColumnFlags_WidthStretch)
-      ImGui.TableSetupColumn(ctx, "do", ImGui.TableColumnFlags_WidthFixed, 150 * UI)
+      ImGui.TableSetupColumn(ctx, "do", ImGui.TableColumnFlags_WidthFixed, 165 * UI) -- (Change + Put back)
       for _, e in ipairs(lines) do
         if (e.kind == "key" or e.kind == "midi") and (q == "" or tostring(e.key):lower():find(q, 1, true) or tostring(e.label):lower():find(q, 1, true)) then
           ImGui.PushID(ctx, e.slot)

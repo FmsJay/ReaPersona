@@ -47,7 +47,7 @@ local function run()
   }, { __index = function(_, k) if nil_names[k] then return nil end return function() return nil end end })
 
   -- ------------------------------------------------ a stand-in ImGui: flags are 0, windows open, nothing pressed unless `press` says so
-  local press, active, images_made = {}, false, 0
+  local press, active, images_made, texts = {}, false, 0, {}
   local FN_PREFIX = { DrawList = 1, ListClipper = 1, TextFilter = 1, Viewport = 1, Image = 1, Function = 1, FontAtlas = 1 }
   local OPEN = { Begin = 1, BeginChild = 1, BeginTable = 1, BeginTabBar = 1, BeginTabItem = 1, BeginGroup = 1, TreeNode = 1, TreeNodeEx = 1, CollapsingHeader = 1, BeginMenuBar = 1 }
   local ImGui = setmetatable({
@@ -55,6 +55,7 @@ local function run()
     SmallButton = function(_, label) return press[label] == true end,
     IsAnyItemActive = function() return active end,
     CreateImage = function() images_made = images_made + 1; return {} end,
+    TextWrapped = function(_, s) texts[s] = true end, -- (what muted() and wrapped lines showed)
   }, { __index = function(t, k)
     local pre = k:match("^(%w+)_")
     if pre and not FN_PREFIX[pre] then rawset(t, k, 0); return 0 end
@@ -97,7 +98,14 @@ local function run()
   -- 3. The persona being made: the change history.
   local used = {}
   local real_use, real_busy, real_end = core.use, core.busy, core.end_trial
-  core.use = function(st) used[#used + 1] = st; core.prefs_queued = true end -- (a switch: only recorded)
+  local function set_style(id) reaper.SetExtState(R.SECTION, "style", id, true) end
+  core.use = function(st) used[#used + 1] = st; set_style(st.id) end -- (a switch: recorded, and the persona in use is noted as the engine does)
+  local ended, ended_with = 0, {}
+  core.end_trial = function(now) -- (stand-in: records whether the window said "now")
+    if not core.is_trial() then return nil end
+    ended = ended + 1; ended_with[#ended_with + 1] = now == true
+    set_style(R.styles[2].id); return R.styles[2]
+  end
   core.busy = function() return false end
   local said = function() return R.toast end
   local function theme_of() local b = core.draft_get(bld.blocks, "theme"); return b and b.file end
@@ -141,9 +149,10 @@ local function run()
 
   -- 5. Preview: one switch a moment after each change, without the project part, and no preferences toast each time.
   R.bld_new() -- (asks first: this draft isn't saved)
-  assert(#bld.blocks > 0 and mb_said[#mb_said]:find("Stop making", 1, true), "New asks before throwing an unsaved persona away")
+  assert(#bld.blocks > 0 and mb_said[#mb_said]:find("isn't saved", 1, true), "New asks before throwing an unsaved persona away")
   mb_answer = 6; R.bld_new(); mb_answer = 1
   assert(#bld.blocks == 0, "and goes ahead on yes")
+  set_style("my_reaper")
   tick()
   bld.preview = true
   local proj = core.new_block("project"); proj.srate = 48000
@@ -153,46 +162,112 @@ local function run()
   tick(0.7); assert(#used == 1, "once, a moment after the change")
   tick(0.7); assert(#used == 1, "and only once")
   assert(used[1].id == "built_try" and used[1].project == nil, "the project part stays out of a preview")
-  assert(core.prefs_queued == false, "the preferences toast doesn't come after every change")
+  assert(used[1].name == R.bld_default_name(), "the preview has the name the bar shows: " .. tostring(used[1].name))
   assert(bld.later and bld.later:find("project part", 1, true), "the bar lists the project part as not shown")
-  assert(bld.back == core.current().id, "Go back returns to the persona before the preview")
+  assert(bld.back == "my_reaper" and bld.preview, "Go back returns to the persona before the preview, and the preview stays on")
 
-  -- 6. What ends a preview: using another persona (James: the draft stays, Preview turns off), Go back, closing the window.
+  -- 6. What ends a preview: using another persona (James: the draft stays, Preview turns off), a switch made outside the window,
+  -- Go back, Stop, closing the window.
   local A, B = R.styles[2], R.styles[3]
-  bld.back, bld.preview = A.id, true
+  bld.back, bld.preview = A.id, true; set_style("built_try")
   R.use(B)
   assert(bld.back == nil and bld.preview == false, "using another persona ends the preview")
   assert(reaper.GetExtState(R.SECTION, "draft preview") == "0", "and the remembered tick agrees")
   assert(#bld.blocks > 0, "the persona being made stays")
   assert(R.last_style == A.id, "Undo switch goes back to the persona from before the preview, not the trial")
-  reaper.SetExtState(R.SECTION, "style", "built_try"); reaper.SetExtState(R.SECTION, "trial back", B.id) -- (a trial the engine knows about, the window just opened)
-  R.use(A)
-  assert(R.last_style == B.id, "nor My REAPER")
-  reaper.DeleteExtState(R.SECTION, "style"); reaper.DeleteExtState(R.SECTION, "trial back")
-  local ended = 0
-  core.end_trial = function() ended = ended + 1; return A end
-  bld.back, bld.preview = A.id, true
+  set_style("built_try") -- (a trial this window didn't start)
+  R.use(B)
+  assert(R.last_style == A.id, "nor to the trial or My REAPER")
+  bld.back, bld.preview = A.id, true; set_style(B.id) -- (B picked from a toolbar or key while previewing)
+  tick()
+  assert(bld.back == nil and bld.preview == false and #bld.blocks > 0, "a switch outside the window ends the preview, the draft stays")
+  assert(said():find("preview has ended", 1, true), "and says so: " .. said())
+  ended, ended_with = 0, {}
+  bld.back, bld.preview = A.id, true; set_style("built_try")
   press["Go back##strip"] = true; frame("Layout"); press["Go back##strip"] = nil
   assert(ended == 1 and bld.back == nil and bld.preview == false, "Go back ends the trial and turns Preview off")
-  bld.back = A.id
+  bld.back = A.id; set_style("built_try")
   at_exit()
   assert(ended == 2 and bld.back == nil, "closing the window ends a preview")
-  bld.back = A.id; mb_answer = 7
+  assert(ended_with[2] == true, "closing passes true to end_trial, so the window moves happen before the script ends")
+  bld.back = A.id; set_style("built_try"); mb_answer = 7
   press["Stop##strip"] = true; frame("Layout"); press["Stop##strip"] = nil
   assert(ended == 2 and #bld.blocks > 0, "Stop asks first, and No keeps everything")
   mb_answer = 6
   press["Stop##strip"] = true; frame("Layout"); press["Stop##strip"] = nil
   mb_answer = 1
   assert(ended == 3 and #bld.blocks == 0 and not bld.active, "Stop on yes ends the trial and the persona being made")
+  assert(said():find("Back to " .. R.styles[2].name, 1, true), "Stop says what came back: " .. said())
 
-  -- 7. Small things: a theme saved during a preview goes into the draft; a key capture closes when the page changes.
+  -- 7. Small things: a theme saved during a preview goes into the draft; a key capture closes when the page changes; My REAPER saved
+  -- doesn't ask again.
   R.bld_new()
-  R.add_fork({ id = "built_try", name = "Your persona" }, "Mine (mine 1).ReaperTheme")
+  local trial = { id = "built_try", name = "Your persona" }
+  local real_current = core.current
+  core.current = function() return trial end; set_style("built_try")
+  R.add_fork(trial, "Mine (mine 1).ReaperTheme")
+  core.current = real_current; set_style(A.id)
   assert(theme_of() == "Mine (mine 1).ReaperTheme", "a theme saved during a preview is the draft's")
   assert(reaper.GetExtState(R.SECTION, "theme built_try") == "", "not a setting for the trial")
   bld.kq.cap = "x"; R.go("Mouse")
   assert(bld.kq.cap == nil, "a key capture closes when the page changes")
+  local real_save_look = core.save_look
+  core.save_look = function() end
+  R.bld_load(core.by_id("my_reaper"))
+  core.draft_add(bld.blocks, core.new_block("theme", "Z.ReaperTheme"))
+  R.bld_save()
+  local asked = #mb_said
+  R.bld_new()
+  assert(#mb_said == asked and #bld.blocks == 0, "after saving My REAPER, New doesn't warn that it isn't saved")
+  core.save_look = real_save_look
+  R.bld_load(A); core.draft_add(bld.blocks, core.new_block("theme", "Y.ReaperTheme")); mb_answer = 7
+  R.bld_load(B)
+  assert(mb_said[#mb_said]:find("Edit " .. B.name .. " instead?", 1, true), "Edit asks in its own words: " .. mb_said[#mb_said])
+  mb_answer = 6; R.bld_load(B); mb_answer = 1
+
+  -- 8. The spread-out sync: started, a little each loop, "Syncing..." meanwhile, then the result (round 2, James).
+  local real_folder, real_tick = core.sync_folder, core.sync_tick
+  local calls, budgets = 0, {}
+  core.sync_folder = function() return "sync" end
+  core.sync_tick = function(quick, budget)
+    calls = calls + 1; budgets[#budgets + 1] = budget
+    if budget and calls < 3 then core.sync_job = {}; return nil end
+    core.sync_job = nil; return { others = {}, changed = false }
+  end
+  R.sync_step(true)
+  assert(R.syncing and calls == 1 and budgets[1] and budgets[1] <= 20, "Sync now starts a spread-out sync")
+  texts = {}; frame("Settings")
+  assert(texts["Syncing..."], "Settings > Sync says Syncing... meanwhile")
+  R.loop(); assert(R.syncing and calls == 2, "the loop does a little more")
+  R.loop(); assert(not R.syncing and calls == 3, "and ends it")
+  assert(said():find("Up to date", 1, true), "Sync now says the result: " .. said())
+  core.sync_tick = function() core.sync_job = nil; return nil end
+  R.sync_step(true)
+  assert(not R.syncing and R.sync_err and said():find("Couldn't sync", 1, true), "a sync that fails says so")
+  core.sync_folder, core.sync_tick, R.sync_err = real_folder, real_tick, nil
   core.use, core.busy, core.end_trial = real_use, real_busy, real_end
+
+  -- 9. Opening the window on a preview left from before ends it, through core.fix_current (code health round 2, R2-1).
+  local fixed, ended2 = 0, {}
+  local real_dofile = dofile
+  dofile = function(p, ...) -- (the second window's engine, with stand-ins that record what the window asked)
+    local m = real_dofile(p, ...)
+    if tostring(p):match("reapersona_core%.lua$") then
+      local real_fix = m.fix_current or function() if m.is_trial() then m.end_trial(true) end end -- (A's rule, if it isn't in yet)
+      m.end_trial = function(now) if not m.is_trial() then return nil end ended2[#ended2 + 1] = now; m.persist(m.SECTION, "style", A.id); return A end
+      m.fix_current = function(...) fixed = fixed + 1; return real_fix(...) end
+    end
+    return m
+  end
+  set_style("built_try"); reaper.SetExtState(R.SECTION, "trial back", A.id, true)
+  deferred = nil
+  local ok2, e2 = pcall(real_dofile, dir .. "/ReaPersona.lua")
+  dofile = real_dofile
+  assert(ok2, tostring(e2))
+  local R2; for i = 1, 30 do local n, v = debug.getupvalue(deferred, i); if not n then break end if n == "_ENV" then R2 = v end end
+  assert(fixed == 1, "opening the window calls core.fix_current once")
+  assert(not R2.core.is_trial(), "and the leftover preview is ended")
+  assert(R2.toast:find("A preview was still on", 1, true), "and the window says so: " .. tostring(R2.toast))
 end
 
 local ok, err = xpcall(run, debug.traceback)

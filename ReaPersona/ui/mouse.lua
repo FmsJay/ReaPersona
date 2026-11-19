@@ -126,7 +126,7 @@ local function persona_mouse_card()
           ImGui.TableSetupColumn(ctx, "on", ImGui.TableColumnFlags_WidthFixed, 28 * UI)
           ImGui.TableSetupColumn(ctx, "where", ImGui.TableColumnFlags_WidthStretch, 0.45)
           ImGui.TableSetupColumn(ctx, "what", ImGui.TableColumnFlags_WidthStretch)
-          ImGui.TableSetupColumn(ctx, "do", ImGui.TableColumnFlags_WidthFixed, 140 * UI)
+          ImGui.TableSetupColumn(ctx, "do", ImGui.TableColumnFlags_WidthFixed, 160 * UI) -- (Change + Put back)
           for _, e in ipairs(g[2]) do
             ImGui.PushID(ctx, e.slot)
             ImGui.TableNextRow(ctx)

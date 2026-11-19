@@ -96,7 +96,8 @@ function adjust_page(sel)
     ImGui.BeginDisabled(ctx, n == 0)
     if primary(n > 0 and ("Save my version (" .. n .. " colour" .. (n == 1 and "" or "s") .. ")") or "Save my version", accent_of(sel)) then
       local name, why = save_fork(sel, current)
-      reaper.MB(name and ("Saved as " .. name .. ".\n\nIt's in this persona's Theme list now, and in use.") or ("Not saved: " .. tostring(why)), "ReaPersona", 0)
+      reaper.MB(name and ("Saved as " .. name .. ".\n\n" .. (core.is_trial() and "It's the theme of the persona you're making now (Save it from the bar at the top), and in use."
+        or "It's in this persona's Theme list now, and in use.")) or ("Not saved: " .. tostring(why)), "ReaPersona", 0)
     end
     ImGui.SameLine(ctx)
     if ImGui.Button(ctx, "Undo colour changes") then
@@ -157,7 +158,7 @@ function merge_page(sel)
         local cur = core.current() -- (the theme goes on now, so it belongs to the style in use)
         add_fork(cur, name)
         merge.list = nil
-        merge.msg = "Made " .. name .. ", in use, and in " .. cur.name .. "'s Theme list."
+        merge.msg = "Made " .. name .. ", in use, and " .. (core.is_trial() and "the theme of the persona you're making (Save it from the bar at the top)." or ("in " .. cur.name .. "'s Theme list."))
       else merge.msg = "Couldn't merge: " .. tostring(why) end
     end
     ImGui.EndDisabled(ctx)

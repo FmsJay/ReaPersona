@@ -199,8 +199,8 @@ function top_bar(alt)
   ImGui.SetCursorPosY(ctx, y0 + 13)
   local col = accent_of(cur)
   local wf = core.current_workflow()
-  local trial = cur.id == "built_try" -- (the persona being made, on show: Preview or Try it)
-  pill(cur.name .. (trial and " (preview)" or "") .. (wf and wf.id ~= cur.id and ("  +  " .. wf.name) or "") .. ((trial or in_use(cur, alt)) and "" or "  (keys off)"), solid(col))
+  local trial = core.is_trial() -- (the persona being made, on show: Preview or Try it)
+  pill(cur.name .. (trial and (bld.preview and " (preview)" or " (trying)") or "") .. (wf and wf.id ~= cur.id and ("  +  " .. wf.name) or "") .. ((trial or in_use(cur, alt)) and "" or "  (keys off)"), solid(col))
   if trial then ImGui.SetItemTooltip(ctx, "The persona you're making, in REAPER for now. Save it, or Go back (in the bar below) to put back what you had.")
   elseif not in_use(cur, alt) then ImGui.SetItemTooltip(ctx, "Its shortcuts aren't on (REAPER restarted?): Use it again, or add the startup line on Home so it comes back each time REAPER starts.") end
   local w = ImGui.GetWindowWidth(ctx)
@@ -213,7 +213,7 @@ function top_bar(alt)
     search_q = q
   end
   if search_q ~= "" and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape) then search_q = "" end
-  local undo = last_style and last_style ~= cur.id and last_style ~= "built_try" and core.by_id(last_style)
+  local undo = last_style and last_style ~= cur.id and core.by_id(last_style) -- (never the trial: use() doesn't record it)
   local right = (undo and 520 or 410) * UI
   local after = ImGui.GetItemRectMax(ctx) - ImGui.GetWindowPos(ctx) + 12
   if w - right >= after then ImGui.SameLine(ctx, w - right); ImGui.SetCursorPosY(ctx, y0 + 8) else ImGui.SetCursorPosX(ctx, 16) end
@@ -258,6 +258,8 @@ function frame()
         os.remove(here .. "/last_install.txt")
         local n = note:match("installed (%d+) shortcut")
         say(n and ("Shortcuts installed (" .. n .. "). Your old keymap was backed up first.") or ((note:gsub("%s+$", "")):match("[^\n]*$") or ""):sub(1, 120))
+        if note:find("not installed", 1, true) then core.try("putting layer numbers back", core.cancel_layers)
+        elseif core.layers_done then core.try("the install went in", core.layers_done) end -- (an install that changed nothing: no persona points at a layer it didn't fill)
       end
     end
     local alt = core.active_alt()
@@ -342,7 +344,8 @@ function frame()
       end
       bld.tick() -- (5.38: the change history and the live preview, on every tab and in search)
       if search_q == "" then draft_strip() end -- (the persona being made, over every tab)
-      if core.prefs_queued then core.prefs_queued = false; say("Some of this persona's REAPER preferences go in when REAPER restarts (Home > Restart REAPER now).") end
+      -- (the one place these two flags are cleared: the engine queues none for a preview)
+      if core.prefs_queued then core.prefs_queued = false; say("Some of this persona's REAPER preferences go in when REAPER restarts (Home > " .. (FLATPAK and "How to put them in" or "Restart REAPER now") .. ").") end
       if core.prefs_need_python then core.prefs_need_python = false; say("This persona's REAPER preferences need Python 3 to go in (python.org): the rest of it is in use.") end
       if search_q ~= "" then search_page()
       elseif page == "Setup" then setup_page()
@@ -444,14 +447,15 @@ function loop()
   trial_over()
   if core.starts_missing and #core.starts_missing > 0 and reaper.time_precise() > starts_next then -- (installed through ReaPack since? started, and started with REAPER)
     starts_next = reaper.time_precise() + 3
-    local ok, added, _, still = pcall(core.ensure_starts, core.starts_missing)
+    local ok, added, _, still = core.try("starting what a persona starts", core.ensure_starts, core.starts_missing)
     if ok then core.starts_missing = still; if #added > 0 then say(table.concat(added, ", ") .. " installed: started, and starts with REAPER from now on.") end end
   end
-  if reaper.time_precise() > sync_next and core.sync_folder() ~= "" then sync_step() end
+  if syncing then sync_more() -- (a sync under way: a little more of it each frame. Round 2, James)
+  elseif reaper.time_precise() > sync_next and core.sync_folder() ~= "" then sync_step() end
   if quit_check and reaper.time_precise() > quit_check then
     quit_check = nil
     core.write(here .. "/install_cancelled", "quit was cancelled\n")
-    if core.cancel_layers then core.cancel_layers() end -- (layer numbers back as installed: review round 1)
+    core.cancel_layers() -- (layer numbers back as installed: review round 1)
     say("REAPER didn't close, so the shortcuts weren't installed.")
   end
   if removing and not core.busy() then removing = nil; if not remove_finish() then return end end -- (My REAPER's windows are back)
@@ -552,7 +556,7 @@ function screen_reader_menu(once) -- -> true: open the window instead. once: ope
     item(#pend > 0 and ("Restart REAPER to put in your persona shortcuts and " .. core.pending_words(pend)) or ((have < want and "Install" or "Reinstall") .. " the shortcuts (REAPER restarts)"), "install")
     if not core.startup_on() then item("Bring your persona back when REAPER starts (adds the startup line)", function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end) end
     sep()
-    if core.sync_folder() ~= "" then item("Sync with your other computers now", function() sync_step(true) end)
+    if core.sync_folder() ~= "" then item("Sync with your other computers now", function() sync_step(true, true) end) -- (to the end: the menu has no frames)
     else item("Keep your computers the same through a shared folder...", choose_sync_folder) end
     item("Save your setup to a file...", save_setup_file)
     item("Load a setup file...", load_setup_file)
@@ -591,7 +595,7 @@ if from_menu and not screen_reader_menu(once) then
     if reaper.time_precise() < quit_check then return reaper.defer(wait_quit) end
     quit_check = nil
     core.write(here .. "/install_cancelled", "quit was cancelled\n")
-    if core.cancel_layers then core.cancel_layers() end
+    core.cancel_layers()
     reaper.MB("REAPER didn't close, so the shortcuts weren't installed.", "ReaPersona", 0)
   end
   wait_quit()
@@ -606,17 +610,21 @@ end
 cmd = select(4, reaper.get_action_context()) -- (the picker's own action: lit on a toolbar while the window is open)
 if cmd and cmd ~= 0 then reaper.SetToggleCommandState(0, cmd, 1); reaper.RefreshToolbar2(0, cmd) end
 -- (a preview left by an earlier window, or a persona in use that no longer exists: what you had goes back, never a silent "My REAPER")
-if core.is_trial and core.is_trial() and not bld.back and core.end_trial then pcall(core.end_trial) end
-do local sid = reaper.GetExtState(SECTION, "style"); if sid ~= "" and not core.by_id(sid) and core.by_id("my_reaper") then pcall(core.use, core.by_id("my_reaper")) end end
+do -- (the rule lives in the engine, core.fix_current: round 2)
+  local was_trial, was = core.is_trial(), reaper.GetExtState(SECTION, "style")
+  core.try("putting back what was left in use", core.fix_current)
+  local now = reaper.GetExtState(SECTION, "style")
+  if was_trial and not core.is_trial() then say("A preview was still on from before: " .. core.current().name .. " is back, as it was.")
+  elseif now ~= was then say(core.current().name .. " is in use: the persona in use before isn't there any more.") end
+end
 reaper.atexit(function()
-  if bld.back or (core.is_trial and core.is_trial()) then -- (a preview or Try it ends when the window closes: what you had goes back. Review 2026-11-19)
-    local ok, e = pcall(bld_end_trial, true) -- (true: queued window moves can't wait for a frame that won't come)
-    if not ok then pcall(core.log, "closing a preview: " .. tostring(e)) end
+  if bld.back or core.is_trial() then -- (a preview or Try it ends when the window closes: what you had goes back. Review 2026-11-19)
+    core.try("closing a preview", bld_end_trial, true) -- (true: queued window moves can't wait for a frame that won't come)
   end
   if trying then trying.ends = 0; trial_over() end -- (a theme on trial goes back when the window closes)
-  pcall(colours.put_back_all) -- (and colours being tried)
-  pcall(core.sync_tick) -- (what you changed while it was open, to your other computers)
+  core.try("putting colours back", colours.put_back_all) -- (and colours being tried)
+  core.try("sync at close", core.sync_tick) -- (what you changed while it was open, to your other computers; to the end, not spread)
   if cmd and cmd ~= 0 then reaper.SetToggleCommandState(0, cmd, 0); reaper.RefreshToolbar2(0, cmd) end
 end)
-pcall(core.upgrade_startup) -- (now too, not only at REAPER's start: updated and removed in one session left the old block. Review, 5.9.4)
+core.try("updating the startup line", core.upgrade_startup) -- (now too, not only at REAPER's start: updated and removed in one session left the old block. Review, 5.9.4)
 reaper.defer(loop)
