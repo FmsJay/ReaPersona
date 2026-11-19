@@ -60,7 +60,7 @@ for ($i = 0; $i -lt 60; $i++) {
     if ($q -eq $pid0 -and [RPW.P]::IsWindowVisible($h)) { $sb = New-Object Text.StringBuilder 256; [void][RPW.P]::GetWindowText($h, $sb, 256)
       if ($sb.ToString().StartsWith("About REAPER")) { $script:nag = $h } }
     $true }, [IntPtr]::Zero) | Out-Null
-  if (-not $nag) { if ($i -ge 6) { break } } else { [void][RPW.P]::PostMessage($nag, 0x0111, [IntPtr]2, [IntPtr]::Zero); [void][RPW.P]::PostMessage($nag, 0x0111, [IntPtr]1, [IntPtr]::Zero) }
+  if (-not $nag) { if ($seen -or $i -ge 30) { break } } else { $seen = $true; [void][RPW.P]::PostMessage($nag, 0x0111, [IntPtr]2, [IntPtr]::Zero); [void][RPW.P]::PostMessage($nag, 0x0111, [IntPtr]1, [IntPtr]::Zero) }
   Start-Sleep -Milliseconds 500
 }
 if ($nag) { Note "its About box didn't close: no test run"; exit 1 }

@@ -548,6 +548,63 @@ end
 local function hexs(s) return (s:gsub(".", function(ch) return string.format("%02x", ch:byte()) end)) end
 local function unhexs(s) return (s:gsub("%x%x", function(h) return string.char(tonumber(h, 16)) end)) end
 
+-- ---------------------------------------------------------------- REAPER's preferences in a persona (5.35)
+-- ["pref", name, value, what]: a preference REAPER has no action for. REAPER reads them only as it starts, and ReaPersona never writes
+-- one into a running REAPER (a wrong-sized write crashed the laptop, 5.11.1), so they wait in pending/prefs.json for REAPER's next
+-- restart, as your other computers' do. Only these, each a plain number (no bitfields), checked for range.
+M.PREFS = { -- { name, what, kind ("num" min max | "shape" | "choice" labels | "db" amplitude | "db10" | "bool"), group }
+  { "deffadelen", "Default fade length (seconds)", "num", 0, 10, group = "Fades" },
+  { "deffadeshape", "Default fade shape", "shape", group = "Fades" },
+  { "defsplitxfadelen", "Crossfade length (seconds)", "num", 0, 10, group = "Fades" },
+  { "defxfadeshape", "Crossfade shape", "shape", group = "Fades" },
+  { "zoommode", "Zoom in and out around", "choice", { "the edit or play cursor", "the edit cursor", "the centre of the view", "the mouse" }, group = "Zoom" },
+  { "vzoommode", "Zoom tracks around", "choice", { "the track at the centre", "the top track in view", "the last selected track", "the track under the mouse" }, group = "Zoom" },
+  { "deftrackvol", "New track volume (dB)", "db", group = "New tracks" },
+  { "defsendvol", "New send volume (dB)", "db", group = "New tracks" },
+  { "defautomode", "New track automation mode", "choice", { "Trim/Read", "Read", "Touch", "Write", "Latch", "Latch Preview" }, group = "New tracks" },
+  { "promptendrec", "Ask what to do with new files after recording", "bool", group = "Recording" },
+  { "solodimen", "Solo dims the other tracks instead of muting them", "bool", group = "Solo" },
+  { "solodimdb10", "Solo dim level (dB)", "db10", group = "Solo" },
+}
+local PREF = {}
+for _, x in ipairs(M.PREFS) do PREF[x[1]] = x end
+function M.pref_info(k) return PREF[k] end
+function M.pref_ok(k, v) -- (pure) a known preference and a value it can take
+  local x, n = PREF[k], tonumber(v)
+  if not (x and n) or n ~= n then return false end
+  if x[3] == "num" then return n >= x[4] and n <= x[5]
+  elseif x[3] == "shape" then return n == math.floor(n) and n >= 0 and n <= 7
+  elseif x[3] == "choice" then return n == math.floor(n) and n >= 0 and n < #x[4]
+  elseif x[3] == "db" then return n >= 0 and n <= 4
+  elseif x[3] == "db10" then return n == math.floor(n) and n >= -600 and n <= 0
+  elseif x[3] == "bool" then return n == 0 or n == 1 end
+  return false
+end
+function M.pref_words(k, v) -- (pure) "0.01 s", "Shape 2", "Touch", "-6.0 dB", "on"
+  local x, n = PREF[k], tonumber(v)
+  if not (x and n) then return tostring(v) end
+  if x[3] == "num" then return string.format("%g s", n)
+  elseif x[3] == "shape" then return "Shape " .. (math.floor(n) + 1)
+  elseif x[3] == "choice" then return x[4][math.floor(n) + 1] or tostring(n)
+  elseif x[3] == "db" then return n <= 0 and "-inf dB" or string.format("%.1f dB", 20 * math.log(n, 10))
+  elseif x[3] == "db10" then return string.format("%.1f dB", n / 10)
+  else return n == 1 and "on" or "off" end
+end
+function M.same_pref(a, b) local x, y = tonumber(a), tonumber(b); return x ~= nil and y ~= nil and math.abs(x - y) < 1e-6 end
+function M.pref_now(k) -- the live value (reading is safe), or nil
+  if not (PREF[k] and reaper.get_config_var_string) then return nil end
+  local ok, v = reaper.get_config_var_string(k)
+  return ok and tonumber(v) or nil
+end
+local function hold_pref(k, on) -- (a persona's value isn't yours: syncing leaves it out while a persona holds it)
+  local held = reaper.GetExtState(M.SECTION, "persona prefs"):gsub(";" .. k:gsub("%p", "%%%0") .. ";", ";")
+  if on then held = (held == "" and ";" or held) .. k .. ";" end
+  reaper.SetExtState(M.SECTION, "persona prefs", held == ";" and "" or held, true)
+end
+function M.pref_held(k) return reaper.GetExtState(M.SECTION, "persona prefs"):find(";" .. k .. ";", 1, true) ~= nil end
+local function want_pref(k, v) -- queued for the restart, or the queue cleared when REAPER already has it
+  if M.same_pref(M.pref_now(k), v) then M.unpend_pref(k) else M.pend_pref(k, v); M.prefs_queued = true end
+end
 local function restore_feel(windows_left) -- (windows_left: a window's original is kept here when the next style moves it too)
   local list = orig_list()
   for n = #list, 1, -1 do
@@ -555,6 +612,9 @@ local function restore_feel(windows_left) -- (windows_left: a window's original 
     local ok, err = pcall(function()
     if kind == "d" then
       if windows_left then windows_left[a] = list[n] else window_back(list[n]) end
+    elseif kind == "p" and PREF[a] then -- (a preference, back as it was: at the next restart, unless REAPER still has it)
+      hold_pref(a, false)
+      want_pref(a, b)
     elseif kind == "w" and a ~= "" then -- (every other window, as it was before the persona: 5.34)
       M.apply_windows(M.json_decode(unhexs(a)))
     elseif kind == "t" then
@@ -597,6 +657,7 @@ M.ASPECTS = {
   { "settings", "Snap, ripple, follow-playhead, the loop range and overlapping clips", true, "Snap, ripple and loop" },
   { "editor", "Dock the MIDI editor in the main window, or let it float", true, "MIDI editor docking" },
   { "windows", "Every other window: which are open, docked or in their own window, and where (Actions list, Undo History, Region Manager, Routing Matrix...)", true, "Other windows" },
+  { "prefs", "REAPER's preferences: fades and crossfades, zoom, new tracks, recording and solo (they go in when REAPER restarts)", true, "REAPER preferences" },
 }
 function M.aspect_on(a)
   local v = reaper.GetExtState(M.SECTION, "aspect " .. a)
@@ -607,6 +668,7 @@ end
 function M.aspect_of(f)
   if f[1] == "midi_dock" then return "editor" end
   if f[1] == "windows" then return "windows" end
+  if f[1] == "pref" then return "prefs" end
   if f[1] == "dock" then return f[2] == "mixer" and "mixer_dock" or "browser" elseif f[1] == "radio" then return "transport" elseif f[1] == "switch" then return "toolbar"
   elseif f[1] == "mouse" then return "mouse"
   elseif f[1] == "toggle" then
@@ -670,6 +732,10 @@ local function apply_feel(st, windows_left, as_base) -- (as_base: your own look 
       end
       local id = cmd_id(f[3]) -- (these are "set" actions: run every time, as two of the ruler's can read on at once)
       if id ~= 0 then reaper.Main_OnCommand(id, 0) end
+    elseif f[1] == "pref" and M.pref_ok(f[2], f[3]) and M.pref_now(f[2]) then -- (5.35: a preference, for REAPER's next restart)
+      local live = M.pref_now(f[2])
+      if not as_base and not M.same_pref(live, f[3]) then list[#list + 1] = "p|" .. f[2] .. "|" .. string.format("%.10g", live); hold_pref(f[2], true) end
+      want_pref(f[2], f[3])
     elseif f[1] == "windows" and M.safe_windows(f[2]) and reaper.JS_Window_Find then -- (every other window: 5.34)
       if not as_base then -- (what they were is read once the last persona's windows are back: a queued step fills it in)
         local idx = #list + 1
@@ -941,6 +1007,10 @@ local function feel_now(base) -- every setting, mouse behaviour and window place
       feel[#feel + 1] = { "dock", w, side, tonumber(shown), WINDOWS[w].name .. ": " .. (side == "float" and "its own window" or ("docked " .. side)) .. (shown == "1" and ", open" or ", closed") }
     end
   end
+  for _, x in ipairs(M.PREFS) do -- (5.35: REAPER's preferences as they are)
+    local v = M.pref_now(x[1])
+    if v and M.pref_ok(x[1], v) then feel[#feel + 1] = { "pref", x[1], v, x[2] .. ": " .. M.pref_words(x[1], v) } end
+  end
   local wins = M.windows_now() -- (5.34: every other window)
   if wins then feel[#feel + 1] = { "windows", wins, M.windows_label(wins) } end
   return feel
@@ -1201,6 +1271,7 @@ function M.use(st)
   end
   reaper.PreventUIRefresh(1)
   local ok, err = pcall(function()
+  M.themeset_back() -- (5.35: the last persona's theme settings, while its theme is still loaded)
   reaper.Main_OnCommand(CLEAR, 0)
   if (st.alt or 0) > 0 then reaper.Main_OnCommand(TOGGLE_ALT + st.alt, 0) end
   local left = {}
@@ -1245,6 +1316,7 @@ function M.use(st)
     local own = th:match("^ReaPersona %- (.+)%.ReaperThemeZip$") -- (a ReaPersona theme built outside REAPER: its Default 7 settings, once)
     if own and M.params_for_loaded and reaper.GetExtState(M.SECTION, "params " .. own) == "" then M.params_for_loaded(own); reaper.ThemeLayout_RefreshAll() end
   end
+  M.themeset_apply(st) -- (5.35)
   reaper.SetExtState(M.SECTION, "style", st.id, true)
   M.write_midi_map(st)
   set_toggles(st.base or st.id)
@@ -1263,6 +1335,8 @@ end
 -- REAPER doesn't keep the shortcut override across a restart (the theme, toggles and mouse behaviours it does keep): put it back.
 function M.restore_last()
   local st = M.current()
+  if reaper.GetExtState(M.SECTION, "themeset orig") ~= "" then reaper.SetExtState(M.SECTION, "themeset orig", "", true) end -- (REAPER started with the theme's own)
+  pcall(M.themeset_apply, st and M.layered(st) or st)
   if st and (st.alt or 0) > 0 and M.active_alt() ~= st.alt then reaper.Main_OnCommand(CLEAR, 0); reaper.Main_OnCommand(TOGGLE_ALT + st.alt, 0) end
   M.write_midi_map(st) -- (script command ids can change between runs)
   set_toggles(st and (st.base or st.id))
@@ -1663,6 +1737,7 @@ local function feel_slot(f)
   elseif f[1] == "dock" then return "dock " .. f[2]
   elseif f[1] == "midi_dock" then return "midi_dock"
   elseif f[1] == "windows" then return "windows"
+  elseif f[1] == "pref" then return "pref " .. tostring(f[2])
   elseif f[1] == "choice" then return "choice " .. table.concat(f[2], ",")
   elseif f[1] == "mouse" then return "mouse " .. f[2] .. " " .. f[3]
   elseif f[1] == "switch" then local c = tonumber(f[2]) or 0; return (c >= 41956 and c <= 41959) and "switch midi" or "switch main" end
@@ -1787,7 +1862,9 @@ function M.new_block(kind, a, b) -- every part on; a settings block starts as RE
   elseif kind == "theme" then return { kind = "theme", file = a }
   elseif kind == "colour" then return { kind = "colour", hex = a }
   elseif kind == "colours" then return { kind = "colours", set = M.colours_now() or {} }
-  elseif kind == "project" then return { kind = "project", srate = 0, tracks = "", tracks_name = "", wset = 0 } end
+  elseif kind == "project" then return { kind = "project", srate = 0, tracks = "", tracks_name = "", wset = 0 }
+  elseif kind == "prefs" then return { kind = "prefs", values = {} }
+  elseif kind == "themeset" then return { kind = "themeset", set = M.theme_settings_now() } end
 end
 -- The layout designer (5.32; James: "show an interactive panel/square that lets you drag different items (mixer, launcher, transport) where you
 -- want it ... multiple items in the same space as there are tabs in the docks ... which order the tabs would be in"). A layout block holds
@@ -1889,7 +1966,7 @@ function M.split_blocks(blocks) -- (pure but for M.by_id)
   end
   return out
 end
-local SLOT_ORDER = { keys = 1, mouse = 2, feel = 3, layout = 3, settings = 4, theme = 5, colour = 6, colours = 7, project = 8 } -- ("layout" after "feel ...": the designer wins)
+local SLOT_ORDER = { keys = 1, mouse = 2, feel = 3, layout = 3, settings = 4, prefs = 4, theme = 5, themeset = 5, colour = 6, colours = 7, project = 8 } -- ("layout" after "feel ...": the designer wins)
 function M.draft_order(blocks) -- (pure) the order they're built in: the shortcuts first, then the mouse, the layout, REAPER settings (over a DAW's snap and ripple), the look, the project
   local out = {}
   for i, b in ipairs(blocks) do out[i] = b end
@@ -1937,7 +2014,9 @@ function M.block_title(b)
   elseif b.kind == "colour" then return "Colour " .. tostring(b.hex)
   elseif b.kind == "colours" then return M.colours_label(b.set)
   elseif b.kind == "project" then return "Project" .. ((b.name or "") ~= "" and (": " .. b.name) or "")
-  elseif b.kind == "layout" then return "Layout: your own" end
+  elseif b.kind == "layout" then return "Layout: your own"
+  elseif b.kind == "prefs" then return "REAPER preferences: your own"
+  elseif b.kind == "themeset" then return "Theme settings: " .. (M.safe_themeset(b.set) and M.themeset_words(M.safe_themeset(b.set)) or "none") end
   return "?"
 end
 function M.safe_feel(list) -- a shared file's feel, keeping only commands ReaPersona's own personas and settings use (a file can't run others)
@@ -1960,6 +2039,9 @@ function M.safe_feel(list) -- a shared file's feel, keeping only commands ReaPer
       good = type(f[2]) == "table" and ok[tostring(f[3])]
       for _, c in ipairs(good and f[2] or {}) do good = good and ok[tostring(c)] end
     elseif good and f[1] == "mouse" then good = type(f[2]) == "string" and type(f[4]) == "string" and not f[4]:find("_", 1, true) -- (no custom actions)
+    elseif good and f[1] == "pref" then
+      good = M.pref_ok(f[2], f[3])
+      if good then f = { "pref", f[2], tonumber(f[3]), PREF[f[2]][2] .. ": " .. M.pref_words(f[2], f[3]) } end
     elseif good and f[1] == "windows" then
       local w = M.safe_windows(f[2])
       good = w ~= nil
@@ -2023,6 +2105,11 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
     end
     local th = daw and b.theme and M.theme_for(st)
     if th then out[#out + 1] = { slot = "theme", kind = "theme", label = th, value = th } end
+  elseif b.kind == "feel" and b.aspect == "prefs" and type(b.values) == "table" then -- (5.35: the preferences as you set them on REAPER > Preferences)
+    for _, x in ipairs(M.PREFS) do
+      local v = tonumber(b.values[x[1]])
+      if v and M.pref_ok(x[1], v) then feel({ "pref", x[1], v, x[2] .. ": " .. M.pref_words(x[1], v) }) end
+    end
   elseif b.kind == "feel" and b.aspect == "windows" and type(b.items) == "table" then -- (5.34: the windows as you set them on Layout)
     local w = M.safe_windows(b.items)
     if w then feel({ "windows", w, M.windows_label(w) }) end
@@ -2036,6 +2123,13 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
     end
   elseif b.kind == "layout" then
     for _, f in ipairs(M.layout_entries(b.items)) do feel(f) end
+  elseif b.kind == "themeset" and M.safe_themeset(b.set) then -- (5.35)
+    out[1] = { slot = "themeset", kind = "themeset", label = "Theme settings: " .. M.themeset_words(M.safe_themeset(b.set)), value = M.safe_themeset(b.set) }
+  elseif b.kind == "prefs" and type(b.values) == "table" then -- (5.35)
+    for _, x in ipairs(M.PREFS) do
+      local v = tonumber(b.values[x[1]])
+      if v and M.pref_ok(x[1], v) then feel({ "pref", x[1], v, x[2] .. ": " .. M.pref_words(x[1], v) }) end
+    end
   elseif b.kind == "theme" and b.file then out[1] = { slot = "theme", kind = "theme", label = b.file, value = b.file }
   elseif b.kind == "colour" and b.hex then out[1] = { slot = "accent", kind = "accent", label = "Colour " .. b.hex, value = b.hex }
   elseif b.kind == "colours" and M.safe_colours(b.set) then
@@ -2074,6 +2168,7 @@ function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true
         elseif e.kind == "theme" then st.theme = e.value
         elseif e.kind == "accent" then st.accent = e.value
         elseif e.kind == "colours" then st.colours = e.value
+        elseif e.kind == "themeset" then st.themeset = e.value
         elseif e.kind == "project" then st.project = st.project or {}; for k, v in pairs(e.value) do st.project[k] = v end end
       end
     end
@@ -2133,9 +2228,103 @@ function M.project_entries(b) -- a project block's lines, for the Builder (pure)
   if num >= 1 and num <= 64 and (den == 1 or den == 2 or den == 4 or den == 8 or den == 16 or den == 32) then
     out[#out + 1] = { slot = "project ts", kind = "project", label = "Time signature " .. num .. "/" .. den .. " (a new project)", value = { ts_num = num, ts_den = den } }
   end
+  local r = M.safe_render(b.render) -- (5.35: render settings, for a new project)
+  if r then out[#out + 1] = { slot = "project render", kind = "project", label = "Render settings: " .. M.render_words(r) .. " (a new project)", value = { render = r } } end
   local grid = tonumber(b.grid) or 0
   if grid > 0 and grid <= 4 then out[#out + 1] = { slot = "project grid", kind = "project", label = "Grid " .. M.grid_name(grid) .. " (a new project)", value = { grid = grid } } end
   return out
+end
+-- Render settings (5.35): the format (REAPER's own encoded text: WAV, MP3, FLAC...), sample rate (0 = the project's), channels and the
+-- file name pattern. Not the output folder: that's this computer's. Set live in the new project with GetSetProjectInfo(_String).
+local RENDER_KINDS = { ZXZh = "WAV", bDNw = "MP3", Y2Fs = "FLAC", dmdn = "OGG", U2dn = "Opus", ZmZp = "AIFF", d3Bj = "WavPack", ZmZt = "video (FFmpeg)" } -- (the first 3 letters of its code, "eva" for "evaw")
+function M.safe_render(r) -- (pure) checked render settings, or nil
+  if type(r) ~= "table" or type(r.format) ~= "string" or not r.format:match("^[%w+/=]+$") or #r.format > 8192 or #r.format < 4 then return nil end
+  local sr, ch = math.floor(tonumber(r.srate) or 0), math.floor(tonumber(r.channels) or 2)
+  if not (sr == 0 or (sr >= 8000 and sr <= 768000)) or ch < 1 or ch > 64 then return nil end
+  local pat = type(r.pattern) == "string" and r.pattern:gsub("%c", "") or ""
+  if #pat > 256 or pat:find("..", 1, true) or pat:match("^%a:") or pat:match("^[/\\]") then pat = "" end -- (a name, not somewhere on this computer)
+  return { format = r.format, srate = sr, channels = ch, pattern = pat }
+end
+function M.render_words(r) -- (pure) "WAV, 48 kHz, stereo"
+  local kind = RENDER_KINDS[r.format:sub(1, 4)] or "its format"
+  return kind .. ", " .. (r.srate > 0 and M.khz(r.srate) or "the project's rate") .. ", " .. (r.channels == 1 and "mono" or r.channels == 2 and "stereo" or (r.channels .. " channels"))
+    .. (r.pattern ~= "" and (", named " .. r.pattern) or "")
+end
+function M.render_now(proj) -- the project's render settings now
+  local _, fmt = reaper.GetSetProjectInfo_String(proj or 0, "RENDER_FORMAT", "", false)
+  local _, pat = reaper.GetSetProjectInfo_String(proj or 0, "RENDER_PATTERN", "", false)
+  return M.safe_render({ format = fmt, srate = reaper.GetSetProjectInfo(proj or 0, "RENDER_SRATE", 0, false),
+    channels = reaper.GetSetProjectInfo(proj or 0, "RENDER_CHANNELS", 0, false), pattern = pat })
+end
+-- A theme's own settings in a persona (5.35): its adjuster values (Themes > Adjust) and its default layouts per panel, for one theme file.
+-- Applied once that theme is loaded, without saving them into REAPER's theme config (your theme's own settings stay as they were), and
+-- what they were is put back when you switch away.
+function M.safe_themeset(x) -- (pure) checked, or nil
+  if type(x) ~= "table" or type(x.theme) ~= "string" or x.theme == "" or x.theme:find("[/\\]") or #x.theme > 260 then return nil end
+  local out, n = { theme = x.theme, params = {}, layouts = {} }, 0
+  for k, v in pairs(type(x.params) == "table" and x.params or {}) do
+    if type(k) == "string" and k:match("^[%w_%.%-]+$") and #k <= 64 and tonumber(v) and n < 600 then out.params[k] = math.floor(tonumber(v)); n = n + 1 end
+  end
+  for k, v in pairs(type(x.layouts) == "table" and x.layouts or {}) do
+    if type(k) == "string" and k:match("^[%w_%.%-]+$") and #k <= 32 and type(v) == "string" and #v <= 64 and not v:find("%c") then out.layouts[k] = v end
+  end
+  return (next(out.params) or next(out.layouts)) and out or nil
+end
+function M.themeset_words(x) -- (pure) "Reapertips: 12 settings, 2 layouts"
+  local np, nl = 0, 0
+  for _ in pairs(x.params) do np = np + 1 end
+  for _ in pairs(x.layouts) do nl = nl + 1 end
+  return (x.theme:gsub("%.ReaperTheme%a*$", "")) .. ": " .. np .. " setting" .. (np == 1 and "" or "s") .. ", " .. nl .. " layout" .. (nl == 1 and "" or "s")
+end
+function M.theme_settings_now() -- the loaded theme's settings that differ from its own, and its default layouts
+  local th = M.loaded_theme()
+  if not th then return nil end
+  local x = { theme = th, params = {}, layouts = {} }
+  for i = 0, 600 do
+    local name, _, val, def = reaper.ThemeLayout_GetParameter(i)
+    if not name or name == "" then break end
+    if val ~= def then x.params[name] = val end
+  end
+  for s = 0, 40 do
+    local ok, sec = reaper.ThemeLayout_GetLayout("seclist", s)
+    if not ok or sec == "" then break end
+    local _, cur = reaper.ThemeLayout_GetLayout(sec, -1)
+    if cur ~= "" then x.layouts[sec] = cur end
+  end
+  return M.safe_themeset(x)
+end
+local function set_theme_settings(x) -- onto the loaded theme -> what they were before
+  local was = { theme = x.theme, params = {}, layouts = {} }
+  for i = 0, 600 do
+    local name, _, val = reaper.ThemeLayout_GetParameter(i)
+    if not name or name == "" then break end
+    if x.params[name] then was.params[name] = val; reaper.ThemeLayout_SetParameter(i, x.params[name], false) end
+  end
+  for sec, name in pairs(x.layouts) do
+    local _, cur = reaper.ThemeLayout_GetLayout(sec, -1)
+    was.layouts[sec] = cur
+    reaper.ThemeLayout_SetLayout(sec, name)
+  end
+  reaper.ThemeLayout_RefreshAll()
+  return was
+end
+function M.themeset_back() -- the last persona's theme settings, back as they were (while its theme is still the one loaded)
+  local raw = reaper.GetExtState(M.SECTION, "themeset orig")
+  if raw == "" then return end
+  reaper.SetExtState(M.SECTION, "themeset orig", "", true)
+  local ok, d = pcall(M.json_decode, raw)
+  local x = ok and type(d) == "table" and d or nil
+  if x and type(x.theme) == "string" and x.theme == M.loaded_theme() then
+    x.params = type(x.params) == "table" and x.params or {}
+    x.layouts = type(x.layouts) == "table" and x.layouts or {}
+    set_theme_settings(x)
+  end
+end
+function M.themeset_apply(st) -- a persona's theme settings, once its theme is loaded
+  local x = M.safe_themeset(st and st.themeset)
+  if not x or x.theme ~= M.loaded_theme() then return end
+  local was = set_theme_settings(x)
+  reaper.SetExtState(M.SECTION, "themeset orig", (M.json_encode(was):gsub("\r?\n%s*", "")), true)
 end
 M.GRIDS = { { 1, "1/1" }, { 0.5, "1/2" }, { 0.25, "1/4" }, { 0.125, "1/8" }, { 1 / 16, "1/16" }, { 1 / 32, "1/32" }, { 1 / 6, "1/4 triplet" }, { 1 / 12, "1/8 triplet" }, { 1 / 24, "1/16 triplet" } }
 function M.grid_name(g) for _, x in ipairs(M.GRIDS) do if math.abs(x[1] - g) < 1e-9 then return x[2] end end return string.format("%g", g) end
@@ -2341,6 +2530,14 @@ function M.apply_project(st) -- the persona's project part, in the project in fr
   end
   local grid = tonumber(p.grid)
   if empty and grid and grid > 0 then reaper.SetProjectGrid(0, grid); done[#done + 1] = "grid " .. M.grid_name(grid) end
+  local r = empty and M.safe_render(p.render) -- (5.35)
+  if r then
+    reaper.GetSetProjectInfo_String(0, "RENDER_FORMAT", r.format, true)
+    reaper.GetSetProjectInfo(0, "RENDER_SRATE", r.srate, true)
+    reaper.GetSetProjectInfo(0, "RENDER_CHANNELS", r.channels, true)
+    if r.pattern ~= "" then reaper.GetSetProjectInfo_String(0, "RENDER_PATTERN", r.pattern, true) end
+    done[#done + 1] = "render settings (" .. M.render_words(r) .. ")"
+  end
   if st.colours and st.colours["colour look"] and #done > 0 and reaper.CountTracks(0) > 0 then -- (the tracks it brought, in its colours)
     local ok, n = pcall(function() return M.colours().colour_project(0, st.colours) end)
     if ok and n and n > 0 then done[#done + 1] = M.colours_label(st.colours):lower() elseif not ok then M.log("colouring the new project: " .. tostring(n)) end
@@ -4611,7 +4808,7 @@ local COLLECT = {
     local body = t:match("^%[[Rr][Ee][Aa][Pp][Ee][Rr]%]\r?\n(.-)\n%[") or t:match("\n%[[Rr][Ee][Aa][Pp][Ee][Rr]%]\r?\n(.-)\n%[") or ""
     for k, v in body:gmatch("([^=\r\n]+)=([^\r\n]*)") do
       if reaper.get_config_var_string and not M.project_var(k) then local ok, live = reaper.get_config_var_string(k); if ok then v = live end end
-      if M.pref_synced(k, v) and waiting[k] == nil then items["pref " .. k] = v end
+      if M.pref_synced(k, v) and waiting[k] == nil and not M.pref_held(k) then items["pref " .. k] = v end -- (5.35: not a persona's)
     end
   end,
   xstate = function(items, ini)
@@ -4704,6 +4901,15 @@ local function pend_pref(k, v)
   local d = M.load_json(p) or {}
   d[k] = v
   return M.save_json(p, setmetatable(d, M.OBJECT))
+end
+M.pend_pref = pend_pref
+function M.unpend_pref(k) -- (5.35) a queued preference out again (REAPER already has that value)
+  local p = M.here .. "/pending/prefs.json"
+  if not reaper.file_exists(p) then return end
+  local d = M.load_json(p) or {}
+  if d[k] == nil then return end
+  d[k] = nil
+  if next(d) == nil then os.remove(p) else M.save_json(p, setmetatable(d, M.OBJECT)) end
 end
 M.ADVANCED_APPLY = {
   -- (Preferences are never written into REAPER's memory: SWS's double getter also answers for int variables, so a type guessed from it

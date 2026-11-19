@@ -1,5 +1,13 @@
 # Changelog
 
+## 5.35.0
+- **REAPER's preferences in a persona** (REAPER > Preferences): default fade and crossfade length and shape, where zoom centres (horizontal and vertical), new track and send volume, new track automation mode, the prompt after recording, and solo dimming. Tick *In my persona* and set each, or load them from any persona or your saved look. REAPER reads its preferences only as it starts, so a persona's go in at REAPER's next restart (*Restart REAPER now*), and yours go back the same way when you switch away; while a persona holds one, syncing leaves it out.
+- **Render settings in the project part** (Project > *Use this project's*): format, sample rate, channels and file name pattern for each new project. Not the output folder: that's each computer's.
+- **A theme's own settings in a persona** (Themes > Adjust > *Put this theme's settings in my persona*): the adjuster settings you changed and the default layouts, used with that theme, put back when you switch away; your theme's own saved settings aren't changed.
+- The layout designer lets you drag again: the docks no longer take the mouse from the windows drawn on them.
+- REAPER's tabs wrap onto a second line when they don't fit.
+- On a DAW's page, "REAPER tips" is now "REAPER:" (it read as the Reapertips theme).
+
 ## 5.34.0
 - **Every other window in your persona.** The Actions list, Region/Marker Manager, Track Manager, Undo History, Navigator, Performance Meter, Virtual MIDI keyboard, Routing Matrix, Video window, Project Bay and Crossfade Editor: open or closed, docked on a side, or in their own window with their place and size. Big Clock and the FX browser open and close. Saved with My REAPER's look, *Save what I'm using* and any persona; using one puts them back, and switching away puts yours back, so a stray window no longer stays when you go back to My REAPER.
 - **Layout > Other windows:** load them from any persona, take them as they are now, or set each window. Settings > Personas can switch the part off.

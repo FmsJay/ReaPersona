@@ -81,6 +81,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
   - turns your own Cubase/Nuendo key commands into a persona;
   - makes a ReaPersona theme from an Ableton Live theme (`.ask`).
 - **What a persona may change:** switch off the parts you want to keep as they are, whatever persona you use: mixer docking, mixer layout, transport, Media Explorer, toolbar, mouse, snap/ripple.
+- **REAPER preferences** (REAPER > Preferences): fades and crossfades, zoom centres, new track and send volume, automation mode, the prompt after recording and solo dimming, in any persona; they go in at REAPER's next restart.
 - **REAPER** (its own tab, an area per sub-tab): about 60 of REAPER's and SWS's options in groups, switched live: playback and scrolling, editing, recording (count-in, recording over items, lanes), view, colours and icons (SWS auto-colour, auto icons and layouts), automation, monitoring and mixer. *In my persona* makes a group, as you set it here, part of the persona you're making.
 - **Theme adjuster:** pops out into its own window; REAPER's own Theme Adjuster is one click away.
 

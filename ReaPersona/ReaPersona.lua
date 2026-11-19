@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.34.0
+-- @version 5.35.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -261,6 +261,7 @@ local function go(pg) -- (a screen reader with OSARA hears the page's name)
 end
 local merge = { base = "Default_7.0.ReaperThemeZip", colours = "", graphics = "", parts = {}, fonts = false, msg = "" }
 local PARTS = { "faders", "knobs", "meters", "transport", "buttons", "toolbar", "backgrounds" }
+local bld -- (the persona being made: set up with the tabs' section; pages above it, Adjust say, reach it through this. 5.35)
 local bld_load -- (starts the persona being made from one you have; set up with the tabs' section)
 local in_persona, persona_row, bld_new, persona_keys_card, persona_theme_line, shortcuts_page, rpage, read_rpage -- (any tab: a block into the persona being made, and the "Use in my persona" buttons for one persona; 5.26)
 local drop_report, install_theme_ui -- (what came in, and a one-click theme install: set up with the setup helpers)
@@ -797,7 +798,7 @@ local function detail(sel, alt)
     card_end()
   end
   if sel.tips and #sel.tips > 0 and card("tips card") then
-    heading("REAPER tips")
+    heading("REAPER:") -- (not "REAPER tips": it read as the Reapertips theme)
     muted((sel.id == "base_reaper" and "" or "With REAPER's own keys (Base REAPER has them all). ") .. "From REAPER 7.85's factory keymap.")
     rows("tips", sel.tips, true)
     if ImGui.SmallButton(ctx, "REAPER User Guide") then core.open_url("https://www.reaper.fm/userguide.php") end
@@ -1286,6 +1287,17 @@ local function adjust_page(sel)
     if ImGui.Button(ctx, "REAPER's theme adjuster") then reaper.Main_OnCommand(42234, 0) end
     ImGui.SetItemTooltip(ctx, "REAPER's own Theme Adjuster window (Options > Themes > Theme adjuster).")
     ImGui.TextWrapped(ctx, "Everything here changes the look right away. The theme's own settings and layouts are kept by REAPER as you go; colours are kept when you press Save my version.")
+    if ImGui.Button(ctx, "Put this theme's settings in my persona##adjin") then -- (5.35)
+      local b = core.new_block("themeset")
+      if b.set then core.draft_add(bld.blocks, b); bld.active = true; say("In your persona: " .. core.themeset_words(b.set) .. ". Its theme is the one it applies to.")
+      else say("This theme's settings are all its own defaults, and it has no layouts chosen: nothing to put in.") end
+    end
+    ImGui.SetItemTooltip(ctx, "The settings above that differ from the theme's own, and the layouts chosen below, go into the persona you're making. Used only with this theme; your theme's own settings aren't changed.")
+    local tb = core.draft_get(bld.blocks, "themeset")
+    if tb and core.safe_themeset(tb.set) then
+      ImGui.SameLine(ctx); ImGui.TextColored(ctx, C.MUTED, "In your persona: " .. core.themeset_words(core.safe_themeset(tb.set)))
+      ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Leave out##adjout") then core.draft_clear(bld.blocks, "themeset") end
+    end
     card_end()
   end
   if card("adj params") then
@@ -1974,7 +1986,7 @@ end
 -- built automatically from all settings, then constructed into the persona. More tabs for each type of block"). The persona being made holds
 -- one block per slot (core.block_slot); each tab chooses what fills its slots, line by line: Shortcuts, Mouse, Layout, Themes, Colours,
 -- Project and REAPER. The bar over every tab shows it, names it and saves it. Edit on any persona's page starts from that one.
-local bld = { blocks = {}, name = "", id = nil, msg = "", colour = nil, back = nil, active = false }
+bld = { blocks = {}, name = "", id = nil, msg = "", colour = nil, back = nil, active = false }
 function bld_load(st) -- edit a persona: one you built is saved over itself; any other (a DAW, My REAPER, a saved setup) is saved as a new one of yours
   local mine = (st.blocks and st.user and st.kind == "built") or st.id == "my_reaper" -- (My REAPER is yours too: saved over, as its look. 5.28)
   bld.blocks = core.blocks_of(st)
@@ -2733,6 +2745,7 @@ do -- (the layout designer: its own scope)
       ImGui.DrawList_AddRectFilled(dl, r[1], r[2], r[1] + r[3], r[2] + r[4], can and solid(mix(P.card, P.accent, 0.35)) or C.CARD, 4)
       ImGui.DrawList_AddText(dl, r[1] + 6, r[2] + 3, C.MUTED, ZONE_LABEL[z])
       ImGui.SetCursorScreenPos(ctx, r[1], r[2])
+      ImGui.SetNextItemAllowOverlap(ctx) -- (5.35: the windows drawn over it get the mouse first, so they can be dragged; James: "wasn't letting me drag things")
       ImGui.InvisibleButton(ctx, "##zone" .. z, math.max(r[3], 1), math.max(r[4], 1))
       if ImGui.BeginDragDropTarget(ctx) then
         local ok, w = ImGui.AcceptDragDropPayload(ctx, "RP_WIN")
@@ -2777,6 +2790,99 @@ do -- (the layout designer: its own scope)
       if ImGui.SmallButton(ctx, "Back to the persona's own##lyreset") then core.draft_clear(bld.blocks, "layout"); cache.items = nil end
     end
     muted("REAPER's other windows (the Actions list, Undo History, Region Manager and the rest) are below, under Other windows.")
+    ImGui.Unindent(ctx, IND * UI)
+    card_end()
+  end
+end
+local prefs_page -- (5.35: REAPER's preferences in a persona)
+do
+  local function block() return core.draft_get(bld.blocks, "feel prefs") end
+  local function values() -- the block's values (made from what it loads, the first time it's changed here)
+    local b = block()
+    if not b then return nil end
+    if type(b.values) ~= "table" then
+      local v = {}
+      for _, e in ipairs(core.build_preview({ b })[1]) do if e.entry[1] == "pref" then v[e.entry[2]] = e.entry[3] end end
+      b.values, b.id = v, nil
+    end
+    return b.values
+  end
+  local function control(x, v) -- -> changed?, the new value
+    local k = x[1]
+    ImGui.SetNextItemWidth(ctx, 220 * UI)
+    if x[3] == "num" then
+      local ch, n = ImGui.DragDouble(ctx, "##pfv" .. k, v, 0.001, x[4], x[5], "%.3f s")
+      return ch, math.max(x[4], math.min(x[5], n))
+    elseif x[3] == "bool" then
+      local ch, on = ImGui.Checkbox(ctx, "##pfv" .. k, v == 1)
+      return ch, on and 1 or 0
+    elseif x[3] == "db" or x[3] == "db10" then
+      local db = x[3] == "db10" and v / 10 or (v <= 0 and -60 or 20 * math.log(v, 10))
+      local ch, n = ImGui.SliderDouble(ctx, "##pfv" .. k, db, -60, x[3] == "db10" and 0 or 12, "%.1f dB")
+      if x[3] == "db10" then return ch, math.floor(n * 10 + 0.5) end
+      return ch, n <= -60 and 0 or 10 ^ (n / 20)
+    else
+      local labels = {}
+      if x[3] == "shape" then for i = 1, 8 do labels[i] = "Shape " .. i end else labels = x[4] end
+      local out, changed = v, false
+      if ImGui.BeginCombo(ctx, "##pfv" .. k, labels[math.floor(v) + 1] or tostring(v)) then
+        for i, l in ipairs(labels) do if ImGui.Selectable(ctx, l .. "##pfo" .. k .. i, i - 1 == v) then out, changed = i - 1, true end end
+        ImGui.EndCombo(ctx)
+      end
+      return changed, out
+    end
+  end
+  function prefs_page()
+    if card("pf top") then
+      heading("REAPER's preferences")
+      muted("The ones REAPER has no action for: fades and crossfades, zoom, new tracks, recording and solo. Tick In my persona and set it: the persona you're making gets that value. REAPER reads its preferences only as it starts, so a persona's go in at REAPER's next restart, and yours go back the same way when you switch away.")
+      ImGui.Indent(ctx, IND * UI)
+      ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Load from:"); ImGui.SameLine(ctx)
+      ImGui.SetNextItemWidth(ctx, 260 * UI)
+      if ImGui.BeginCombo(ctx, "##pfload", "a persona or your saved look") then
+        for _, st in ipairs(sources(function(s) return has_aspect(core.source(s.id) or s, "prefs") end)) do
+          if ImGui.Selectable(ctx, st.name .. "##pfl" .. st.id) then
+            core.draft_add(bld.blocks, core.new_block("feel", st.id, "prefs")); bld.active = true
+            say(st.name .. "'s preferences are in your persona: change any below.")
+          end
+        end
+        ImGui.EndCombo(ctx)
+      end
+      if block() then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Leave them all as they are##pfclr") then core.draft_clear(bld.blocks, "feel prefs") end end
+      local waiting = core.load_json(here .. "/pending/prefs.json")
+      if waiting and next(waiting) then
+        ImGui.TextColored(ctx, C.YELLOW, "Waiting for REAPER to restart: " .. #(function() local n = {}; for k in pairs(waiting) do n[#n + 1] = k end return n end)() .. " preference(s).")
+        ImGui.SameLine(ctx)
+        if ImGui.SmallButton(ctx, "Restart REAPER now##pfrestart") then install_shortcuts() end
+        ImGui.SetItemTooltip(ctx, "REAPER closes (asking about anything unsaved), the preferences go in, and REAPER opens again.")
+        if not core.python() then muted("Putting them in needs Python 3 (python.org) on this computer.") end
+      end
+      ImGui.Unindent(ctx, IND * UI)
+      card_end()
+    end
+    if not card("pf list") then return end
+    local vals, group = values(), nil
+    ImGui.Indent(ctx, IND * UI)
+    for _, x in ipairs(core.PREFS) do
+      if x.group ~= group then group = x.group; heading(group, 15) end
+      local live = core.pref_now(x[1])
+      local v = vals and tonumber(vals[x[1]])
+      local ch, on = ImGui.Checkbox(ctx, "##pfin" .. x[1], v ~= nil)
+      ImGui.SetItemTooltip(ctx, v and "In your persona: untick to leave it as it is" or "Tick to put it in your persona, at the value set here")
+      if ch then
+        if not block() then core.draft_add(bld.blocks, { kind = "feel", aspect = "prefs", values = {} }) end
+        values()[x[1]] = on and (live or 0) or nil
+        bld.active = true
+      end
+      ImGui.SameLine(ctx); ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, x[2]); ImGui.SameLine(ctx, 400 * UI)
+      if v then
+        local c2, n = control(x, v)
+        if c2 then values()[x[1]] = n; bld.active = true end
+        ImGui.SameLine(ctx); ImGui.TextColored(ctx, C.MUTED, "now " .. core.pref_words(x[1], live))
+      else
+        ImGui.TextColored(ctx, C.MUTED, live and core.pref_words(x[1], live) or "not in this REAPER")
+      end
+    end
     ImGui.Unindent(ctx, IND * UI)
     card_end()
   end
@@ -2863,11 +2969,11 @@ local function layout_page()
     ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Load the whole layout from:"); ImGui.SameLine(ctx)
     ImGui.SetNextItemWidth(ctx, 260 * UI)
     if ImGui.BeginCombo(ctx, "##layoutall", "choose a persona or DAW") then
-      for _, st in ipairs(sources(function(s) for _, x in ipairs(core.ASPECTS) do if x[1] ~= "mouse" and has_aspect(s, x[1]) then return true end end end)) do
+      for _, st in ipairs(sources(function(s) for _, x in ipairs(core.ASPECTS) do if x[1] ~= "mouse" and x[1] ~= "prefs" and has_aspect(s, x[1]) then return true end end end)) do
         if ImGui.Selectable(ctx, st.name .. "##lall" .. st.id) then
           core.draft_clear(bld.blocks, "layout")
           for _, x in ipairs(core.ASPECTS) do
-            if x[1] ~= "mouse" then
+            if x[1] ~= "mouse" and x[1] ~= "prefs" then
               if has_aspect(st, x[1]) then core.draft_add(bld.blocks, core.new_block("feel", st.id, x[1])) else core.draft_clear(bld.blocks, "feel " .. x[1]) end
             end
           end
@@ -2882,7 +2988,7 @@ local function layout_page()
   end
   local arranged = core.draft_get(bld.blocks, "layout") ~= nil
   for _, x in ipairs(core.ASPECTS) do
-    if x[1] ~= "mouse" then
+    if x[1] ~= "mouse" and x[1] ~= "prefs" then
       if arranged and COVERED[x[1]] then
         if card("slot " .. x[1]) then heading(x[4], 16); muted("Set by your arrangement above."); card_end() end
       else
@@ -2976,6 +3082,17 @@ local function project_editor(b)
     for _, g in ipairs(core.GRIDS) do if ImGui.Selectable(ctx, g[2] .. "##g" .. g[2], b.grid == g[1]) then b.grid = g[1] end end
     ImGui.EndCombo(ctx)
   end
+  -- (5.35: render settings, taken from the project in front)
+  local r = core.safe_render(b.render)
+  ImGui.AlignTextToFramePadding(ctx)
+  ImGui.Text(ctx, "Render settings: " .. (r and core.render_words(r) or "leave as they are"))
+  ImGui.SameLine(ctx)
+  if ImGui.SmallButton(ctx, "Use this project's##prender") then
+    b.render = core.render_now(0)
+    say(b.render and ("Render settings in your persona: " .. core.render_words(b.render) .. ".") or "This project's render settings couldn't be read.")
+  end
+  ImGui.SetItemTooltip(ctx, "The format, sample rate, channels and file name pattern of the project in front (File > Render), for each new project. Not the output folder: that's this computer's.")
+  if r then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Leave as they are##prenderx") then b.render = nil end end
 end
 local function project_page()
   if card("project top") then
@@ -3106,7 +3223,10 @@ local GROUPS = { -- { name, what it's for, its pages (tabs), the tabs' labels }
 do -- (REAPER's tabs: one per setting group. 5.33)
   local short = { playback = "Playback", editing = "Editing", recording = "Recording", view = "View", colours = "Colours & icons", automation = "Automation", monitoring = "Monitoring & FX", mixer = "Mixer" }
   for _, g in ipairs(GROUPS) do
-    if g[1] == "REAPER" then for _, s in ipairs(core.SETTING_GROUPS) do g[3][#g[3] + 1] = "R_" .. s.id; g[4][#g[4] + 1] = short[s.id] or s.name end end
+    if g[1] == "REAPER" then
+      for _, s in ipairs(core.SETTING_GROUPS) do g[3][#g[3] + 1] = "R_" .. s.id; g[4][#g[4] + 1] = short[s.id] or s.name end
+      g[3][#g[3] + 1] = "R_prefs"; g[4][#g[4] + 1] = "Preferences" -- (5.35)
+    end
   end
 end
 -- Help > How it works (5.14), also the screen-reader menu's Help: plain sentences, so the same text reads in a message box.
@@ -3367,15 +3487,20 @@ local function frame()
       local g = group_of(page)
       last_tab[g[1]] = page
       if #g[3] > 1 then -- (the group's pages as tabs)
+        local row_end = ImGui.GetCursorScreenPos(ctx) + ImGui.GetContentRegionAvail(ctx) -- (5.35: tabs that don't fit go on a second line)
         for i, pg in ipairs(g[3]) do
-          if i > 1 then ImGui.SameLine(ctx) end
           local tw = ImGui.CalcTextSize(ctx, g[4][i]) + 24
+          if i > 1 then
+            ImGui.SameLine(ctx)
+            if ImGui.GetCursorScreenPos(ctx) + tw > row_end then ImGui.NewLine(ctx) end
+          end
           if ImGui.Selectable(ctx, g[4][i] .. "##tab", page == pg or (page == "Styles" and pg == "DAWs"), ImGui.SelectableFlags_None, tw, 28) then go(pg) end
         end
         ImGui.Separator(ctx)
         ImGui.Dummy(ctx, 0, 2)
       end
       if search_q == "" then draft_strip() end -- (the persona being made, over every tab)
+      if core.prefs_queued then core.prefs_queued = false; say("Some of this persona's REAPER preferences go in when REAPER restarts: REAPER > Preferences has Restart REAPER now.") end
       if search_q ~= "" then search_page()
       elseif page == "Setup" then setup_page()
       elseif page == "DAWs" or page == "Styles" then daws_page(sel, alt)
@@ -3393,6 +3518,7 @@ local function frame()
       elseif page == "SetUpdates" then settings_page("updates")
       elseif page == "SetRemove" then settings_page("remove")
       elseif page == "Tweaks" then tweaks_page("playback") -- (the old REAPER tweaks page: REAPER's first tab)
+      elseif page == "R_prefs" then prefs_page()
       elseif page:match("^R_") then tweaks_page(page:sub(3))
       elseif page == "Shortcuts" then keys_page()
       elseif page == "Adjust" then
