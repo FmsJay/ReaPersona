@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.35.0
+-- @version 5.35.1
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -2818,12 +2818,12 @@ do
       return ch, on and 1 or 0
     elseif x[3] == "db" or x[3] == "db10" then
       local db = x[3] == "db10" and v / 10 or (v <= 0 and -60 or 20 * math.log(v, 10))
-      local ch, n = ImGui.SliderDouble(ctx, "##pfv" .. k, db, -60, x[3] == "db10" and 0 or 12, "%.1f dB")
+      local ch, n = ImGui.SliderDouble(ctx, "##pfv" .. k, db, -60, x[3] == "db10" and -1 or 12, "%.1f dB")
       if x[3] == "db10" then return ch, math.floor(n * 10 + 0.5) end
       return ch, n <= -60 and 0 or 10 ^ (n / 20)
     else
       local labels = {}
-      if x[3] == "shape" then for i = 1, 8 do labels[i] = "Shape " .. i end else labels = x[4] end
+      if x[3] == "shape" then for i = 1, 7 do labels[i] = "Shape " .. i end else labels = x[4] end
       local out, changed = v, false
       if ImGui.BeginCombo(ctx, "##pfv" .. k, labels[math.floor(v) + 1] or tostring(v)) then
         for i, l in ipairs(labels) do if ImGui.Selectable(ctx, l .. "##pfo" .. k .. i, i - 1 == v) then out, changed = i - 1, true end end

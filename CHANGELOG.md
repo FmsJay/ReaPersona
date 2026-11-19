@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.35.1
+- REAPER > Preferences, checked against REAPER's config-variable reference: the default automation mode no longer changes *Arm new envelopes* (they share a number), the recording prompt changes only *on stop* (not *on punch-out*), fade and crossfade shapes are the 7 REAPER has, and the solo dim level goes to -1 dB at most. *Solo in front* itself is the switch on REAPER > Mixer (live, no restart), so it's no longer here too.
+- The layout designer's dragging, checked with a real mouse drag on the laptop.
+
 ## 5.35.0
 - **REAPER's preferences in a persona** (REAPER > Preferences): default fade and crossfade length and shape, where zoom centres (horizontal and vertical), new track and send volume, new track automation mode, the prompt after recording, and solo dimming. Tick *In my persona* and set each, or load them from any persona or your saved look. REAPER reads its preferences only as it starts, so a persona's go in at REAPER's next restart (*Restart REAPER now*), and yours go back the same way when you switch away; while a persona holds one, syncing leaves it out.
 - **Render settings in the project part** (Project > *Use this project's*): format, sample rate, channels and file name pattern for each new project. Not the output folder: that's each computer's.

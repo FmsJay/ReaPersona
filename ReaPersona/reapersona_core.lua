@@ -551,20 +551,20 @@ local function unhexs(s) return (s:gsub("%x%x", function(h) return string.char(t
 -- ---------------------------------------------------------------- REAPER's preferences in a persona (5.35)
 -- ["pref", name, value, what]: a preference REAPER has no action for. REAPER reads them only as it starts, and ReaPersona never writes
 -- one into a running REAPER (a wrong-sized write crashed the laptop, 5.11.1), so they wait in pending/prefs.json for REAPER's next
--- restart, as your other computers' do. Only these, each a plain number (no bitfields), checked for range.
-M.PREFS = { -- { name, what, kind ("num" min max | "shape" | "choice" labels | "db" amplitude | "db10" | "bool"), group }
+-- restart, as your other computers' do. Only these, checked for range. A few share their number with other settings (mask: the bits
+-- this one is; the others are kept as REAPER has them). Meanings from Mespotine's config-variable reference (checked 2026-11-18).
+M.PREFS = { -- { name, what, kind ("num" min max | "shape" | "choice" labels | "db" amplitude | "db10" | "bool"), group, mask }
   { "deffadelen", "Default fade length (seconds)", "num", 0, 10, group = "Fades" },
   { "deffadeshape", "Default fade shape", "shape", group = "Fades" },
   { "defsplitxfadelen", "Crossfade length (seconds)", "num", 0, 10, group = "Fades" },
   { "defxfadeshape", "Crossfade shape", "shape", group = "Fades" },
   { "zoommode", "Zoom in and out around", "choice", { "the edit or play cursor", "the edit cursor", "the centre of the view", "the mouse" }, group = "Zoom" },
-  { "vzoommode", "Zoom tracks around", "choice", { "the track at the centre", "the top track in view", "the last selected track", "the track under the mouse" }, group = "Zoom" },
+  { "vzoommode", "Zoom tracks around", "choice", { "the track at the centre", "the top of the view", "the last selected track", "the track under the mouse" }, group = "Zoom" },
   { "deftrackvol", "New track volume (dB)", "db", group = "New tracks" },
   { "defsendvol", "New send volume (dB)", "db", group = "New tracks" },
-  { "defautomode", "New track automation mode", "choice", { "Trim/Read", "Read", "Touch", "Write", "Latch", "Latch Preview" }, group = "New tracks" },
-  { "promptendrec", "Ask what to do with new files after recording", "bool", group = "Recording" },
-  { "solodimen", "Solo dims the other tracks instead of muting them", "bool", group = "Solo" },
-  { "solodimdb10", "Solo dim level (dB)", "db10", group = "Solo" },
+  { "defautomode", "New track automation mode", "choice", { "Trim/Read", "Read", "Touch", "Write", "Latch", "Latch Preview" }, group = "New tracks", mask = 7 }, -- (&512: arm new envelopes, kept)
+  { "promptendrec", "Ask what to do with new files when recording stops", "bool", group = "Recording", mask = 1 }, -- (&2: on punch-out, kept)
+  { "solodimdb10", "Solo in front: how far the others are dimmed (dB)", "db10", group = "Solo" }, -- (Solo in front itself: REAPER > Mixer)
 }
 local PREF = {}
 for _, x in ipairs(M.PREFS) do PREF[x[1]] = x end
@@ -573,10 +573,10 @@ function M.pref_ok(k, v) -- (pure) a known preference and a value it can take
   local x, n = PREF[k], tonumber(v)
   if not (x and n) or n ~= n then return false end
   if x[3] == "num" then return n >= x[4] and n <= x[5]
-  elseif x[3] == "shape" then return n == math.floor(n) and n >= 0 and n <= 7
+  elseif x[3] == "shape" then return n == math.floor(n) and n >= 0 and n <= 6
   elseif x[3] == "choice" then return n == math.floor(n) and n >= 0 and n < #x[4]
   elseif x[3] == "db" then return n >= 0 and n <= 4
-  elseif x[3] == "db10" then return n == math.floor(n) and n >= -600 and n <= 0
+  elseif x[3] == "db10" then return n == math.floor(n) and n >= -600 and n <= -10
   elseif x[3] == "bool" then return n == 0 or n == 1 end
   return false
 end
@@ -591,19 +591,32 @@ function M.pref_words(k, v) -- (pure) "0.01 s", "Shape 2", "Touch", "-6.0 dB", "
   else return n == 1 and "on" or "off" end
 end
 function M.same_pref(a, b) local x, y = tonumber(a), tonumber(b); return x ~= nil and y ~= nil and math.abs(x - y) < 1e-6 end
-function M.pref_now(k) -- the live value (reading is safe), or nil
+function M.pref_part(k, v) -- (pure) this setting's own part of the number (its bits, for one that shares it)
+  local x, n = PREF[k], tonumber(v)
+  if not (x and n) then return nil end
+  return x.mask and (math.floor(n) & x.mask) or n
+end
+function M.pref_full(k, v, live) -- (pure) the number to write: this setting's part in, the other bits as REAPER has them
+  local x = PREF[k]
+  if not (x and x.mask) then return v end
+  return (math.floor(tonumber(live) or 0) & ~x.mask) | (math.floor(v) & x.mask)
+end
+function M.pref_raw(k) -- the whole live number (reading is safe), or nil
   if not (PREF[k] and reaper.get_config_var_string) then return nil end
   local ok, v = reaper.get_config_var_string(k)
   return ok and tonumber(v) or nil
 end
+function M.pref_now(k) return M.pref_part(k, M.pref_raw(k)) end -- the live value of this setting
 local function hold_pref(k, on) -- (a persona's value isn't yours: syncing leaves it out while a persona holds it)
   local held = reaper.GetExtState(M.SECTION, "persona prefs"):gsub(";" .. k:gsub("%p", "%%%0") .. ";", ";")
   if on then held = (held == "" and ";" or held) .. k .. ";" end
   reaper.SetExtState(M.SECTION, "persona prefs", held == ";" and "" or held, true)
 end
 function M.pref_held(k) return reaper.GetExtState(M.SECTION, "persona prefs"):find(";" .. k .. ";", 1, true) ~= nil end
-local function want_pref(k, v) -- queued for the restart, or the queue cleared when REAPER already has it
-  if M.same_pref(M.pref_now(k), v) then M.unpend_pref(k) else M.pend_pref(k, v); M.prefs_queued = true end
+local function want_pref(k, v, whole) -- queued for the restart, or the queue cleared when REAPER already has it (whole: v is the full number)
+  local raw = M.pref_raw(k)
+  local full = whole and v or M.pref_full(k, v, raw)
+  if M.same_pref(raw, full) then M.unpend_pref(k) else M.pend_pref(k, full); M.prefs_queued = true end
 end
 local function restore_feel(windows_left) -- (windows_left: a window's original is kept here when the next style moves it too)
   local list = orig_list()
@@ -614,7 +627,7 @@ local function restore_feel(windows_left) -- (windows_left: a window's original 
       if windows_left then windows_left[a] = list[n] else window_back(list[n]) end
     elseif kind == "p" and PREF[a] then -- (a preference, back as it was: at the next restart, unless REAPER still has it)
       hold_pref(a, false)
-      want_pref(a, b)
+      want_pref(a, tonumber(b), true) -- (the whole number it was)
     elseif kind == "w" and a ~= "" then -- (every other window, as it was before the persona: 5.34)
       M.apply_windows(M.json_decode(unhexs(a)))
     elseif kind == "t" then
@@ -734,7 +747,7 @@ local function apply_feel(st, windows_left, as_base) -- (as_base: your own look 
       if id ~= 0 then reaper.Main_OnCommand(id, 0) end
     elseif f[1] == "pref" and M.pref_ok(f[2], f[3]) and M.pref_now(f[2]) then -- (5.35: a preference, for REAPER's next restart)
       local live = M.pref_now(f[2])
-      if not as_base and not M.same_pref(live, f[3]) then list[#list + 1] = "p|" .. f[2] .. "|" .. string.format("%.10g", live); hold_pref(f[2], true) end
+      if not as_base and not M.same_pref(live, f[3]) then list[#list + 1] = "p|" .. f[2] .. "|" .. string.format("%.10g", M.pref_raw(f[2])); hold_pref(f[2], true) end
       want_pref(f[2], f[3])
     elseif f[1] == "windows" and M.safe_windows(f[2]) and reaper.JS_Window_Find then -- (every other window: 5.34)
       if not as_base then -- (what they were is read once the last persona's windows are back: a queued step fills it in)
