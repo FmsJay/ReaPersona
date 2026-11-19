@@ -903,6 +903,28 @@ do
   assert(again.id == st.id, "one you built is saved over")
   for n = #core.styles, 1, -1 do if core.styles[n].id == st.id then table.remove(core.styles, n) end end
 end
+-- 22. Versions and My REAPER (5.28): saving over keeps the one before; My REAPER opens as its look and saves as its look.
+do
+  local st, why0 = core.save_built({ core.new_block("theme", "One.ReaperThemeZip") }, "Versioned", nil); assert(st, why0)
+  local n0 = #core.versions(st.id) -- (an id used earlier in this run may have some already)
+  assert(core.save_built({ core.new_block("theme", "Two.ReaperThemeZip") }, "Versioned", st.id))
+  local v = core.versions(st.id)
+  assert(#v == n0 + 1 and v[1].data.blocks[1].file == "One.ReaperThemeZip", "the version before is kept")
+  core.save_user_style(v[1].data)
+  assert(core.by_id(st.id).blocks[1].file == "One.ReaperThemeZip" and #core.versions(st.id) == n0 + 2, "putting one back keeps the one you had too")
+  for n = #core.styles, 1, -1 do if core.styles[n].id == st.id then table.remove(core.styles, n) end end
+  -- My REAPER's look: its parts open from the look, and saving keeps the look before
+  ext["ReaPersona/my look"] = core.json_encode({ theme = "A.ReaperThemeZip", feel = { { "radio", { 41603, 41604, 41605, 41606, 41608 }, 41606, "Transport at the top" } } }):gsub("\n%s*", "")
+  local mine = core.blocks_of(core.by_id("my_reaper"))
+  local tr = core.draft_get(mine, "feel transport")
+  assert(tr and tr.id == "my_reaper", "My REAPER opens with its look's transport")
+  local built = core.build_style(core.draft_order(mine), "My REAPER", "built_try")
+  local look = core.look_from_style(built)
+  assert(look.feel[1][3] == 41606, "and saves it back as its look")
+  core.save_look(look)
+  assert(#core.versions("my_reaper") == 1 and core.versions("my_reaper")[1].data.theme == "A.ReaperThemeZip", "the look before is kept")
+  ext["ReaPersona/my look"] = nil
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")

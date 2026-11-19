@@ -1,5 +1,14 @@
 # Changelog
 
+## 5.28.0
+- **My REAPER can be edited and saved over.** *Edit* on My REAPER opens its real look (its layout, mouse, theme and colours) on the tabs; *Save changes* makes the result its look on every computer. Its shortcuts are your own keymap, so another persona's keys don't go into it.
+- **Earlier versions.** Every save over a persona of yours, and over My REAPER's look, keeps the version before (the newest 20, on this computer). *Earlier versions* on its page puts one back, keeping the one you had too.
+- **Load from another persona or DAW on every tab.** Shortcuts, Mouse & trackpad, each part of the layout (and *Load the whole layout from*), the theme, the colours, the project and REAPER settings each load just that part from any persona.
+- **Mouse & trackpad.** The Mouse tab shows the mouse wheel, the trackpad's sideways swipe and the drags and clicks apart, explains how pinch and two-finger scroll arrive, and has Smooth Wheel Scroll's trackpad zoom direction.
+- **Themes and Colours come first** after Personas, and Themes shows the theme in use on its own at the top.
+- **Colours:** *Set as this persona's default* instead of a tick box, separate from colouring the project. A project's own colours always win; the persona's are the default for projects without their own.
+- What edits the persona sits indented on each tab, so it reads as part of it.
+
 ## 5.27.1
 - **A DAW persona is never saved over.** Editing a DAW, My REAPER, Base REAPER or a saved setup always saves a new persona of yours (*Save as new*); only one you made yourself is saved over (*Save changes*). Leave the name empty and it's saved as "<DAW> - custom" ("Pro Tools - custom", then "Pro Tools - custom 2"...), shown in the name box until you type one. The engine refuses too: a save aimed at a persona you didn't make becomes a new one.
 

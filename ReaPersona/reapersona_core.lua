@@ -158,7 +158,7 @@ end
 local function save_user_style(st) -- add (or replace) a style of yours in user_styles.json and the list. -> st, or nil + why
   local users = load(USERS)
   if bad[USERS] then return nil, "user_styles.json doesn't parse, so it isn't written over (a copy is next to it)" end
-  for n = #users, 1, -1 do if users[n].id == st.id then table.remove(users, n) end end
+  for n = #users, 1, -1 do if users[n].id == st.id then M.keep_version(st.id, users[n]); table.remove(users, n) end end -- (the one before, to put back. 5.28)
   st.user = nil
   local out = st
   if st.keys_from then out = {}; for k, v in pairs(st) do out[k] = v end; out.keys, out.midi_keys, out.alt = nil, nil, nil end
@@ -698,7 +698,42 @@ function M.my_look() -- -> { theme, feel, from, saved } or nil (from a file or a
   local ok, d = pcall(M.json_decode, reaper.GetExtState(M.SECTION, M.LOOK_KEY))
   if not ok or type(d) ~= "table" or type(d.feel) ~= "table" then return nil end
   return { theme = type(d.theme) == "string" and d.theme:match("[^/\\]+$") or nil, feel = M.safe_feel(d.feel), starts = M.safe_starts(d.starts),
+           colours = d.colours ~= nil and M.safe_colours(d.colours) or nil,
            from = type(d.from) == "string" and d.from:gsub("%c", " ") or nil, saved = type(d.saved) == "string" and d.saved:gsub("%c", " ") or nil }
+end
+-- Earlier versions (5.28; James: "Each change should allow you to restore a previous version"). Saving over a persona of yours, or over My
+-- REAPER's look, keeps what was there in ReaPersona/versions/<id>.json (the newest 20, on this computer), to put back from the persona's page.
+local function versions_path(id) return M.here .. "/versions/" .. tostring(id):gsub("[^%w_%-]", "_") .. ".json" end
+function M.versions(id) local d = M.load_json(versions_path(id)); return type(d.list) == "table" and d.list or {} end -- (newest first)
+function M.keep_version(id, data)
+  if data == nil then return end
+  reaper.RecursiveCreateDirectory(M.here .. "/versions", 0)
+  local list = M.versions(id)
+  table.insert(list, 1, { saved = os.date("%Y-%m-%d %H:%M:%S"), data = data })
+  while #list > 20 do table.remove(list) end
+  M.save_json(versions_path(id), { list = list })
+end
+function M.save_look(look) -- My REAPER's look, the one before kept as a version
+  local was = reaper.GetExtState(M.SECTION, M.LOOK_KEY)
+  if was ~= "" and was ~= "{}" then local ok, d = pcall(M.json_decode, was); if ok and type(d) == "table" then M.keep_version("my_reaper", d) end end
+  reaper.SetExtState(M.SECTION, M.LOOK_KEY, (M.json_encode(look):gsub("\r?\n%s*", "")), true) -- (one line: REAPER keeps only the first across restarts)
+end
+function M.look_from_style(st) -- a persona made on the tabs, as My REAPER's look (5.28: My REAPER can be saved over): all but its keys
+  local feel = {}
+  for _, f in ipairs(st.feel or {}) do if f[1] ~= "switch" then feel[#feel + 1] = f end end
+  local now = M.my_look()
+  return { theme = st.theme, feel = feel, colours = st.colours, starts = (now and now.starts) or M.starts_now(), from = M.computer(), saved = os.date("%Y-%m-%d %H:%M") }
+end
+function M.source(id) -- a persona to take parts from; My REAPER is its look (so editing it shows what it really sets)
+  if id == "my_reaper" then
+    local mine, look = M.by_id("my_reaper"), M.my_look()
+    if not (mine and look) then return mine end
+    local v = {}
+    for k, x in pairs(mine) do v[k] = x end
+    v.feel, v.theme, v.colours = look.feel, look.theme or mine.theme, look.colours
+    return v
+  end
+  return M.by_id(id)
 end
 function M.save_my_look() -- -> the look, or nil + why. Only from My REAPER: a persona's settings aren't your look
   if (M.current() or {}).id ~= "my_reaper" then return nil, "switch to My REAPER first: your look is what you have there" end
@@ -706,8 +741,8 @@ function M.save_my_look() -- -> the look, or nil + why. Only from My REAPER: a p
   for _, f in ipairs(feel_now(M.by_id("my_reaper") or M.styles[1])) do
     if f[1] ~= "switch" and not (f[1] == "mouse" and (f[4] or "") == "") then feel[#feel + 1] = f end -- (a mouse context left at REAPER's default: each computer's own)
   end
-  local look = { theme = M.loaded_theme(), feel = feel, starts = M.starts_now(), from = M.computer(), saved = os.date("%Y-%m-%d %H:%M") }
-  reaper.SetExtState(M.SECTION, M.LOOK_KEY, (M.json_encode(look):gsub("\r?\n%s*", "")), true) -- (one line: REAPER keeps only the first across restarts)
+  local look = { theme = M.loaded_theme(), feel = feel, starts = M.starts_now(), colours = M.colours_now(), from = M.computer(), saved = os.date("%Y-%m-%d %H:%M") }
+  M.save_look(look)
   return look
 end
 function M.forget_my_look() reaper.SetExtState(M.SECTION, M.LOOK_KEY, "{}", true) end -- (not deleted: "{}" is a change, so your other computers forget it too)
@@ -867,7 +902,7 @@ function M.use(st)
   if back then reaper.SelectProjectInstance(back) end
   local look = st.id == "my_reaper" and M.my_look()
   if look then -- (your look from wherever you saved it, as this computer's own setup; its theme when this computer has it)
-    apply_feel({ id = "my look", feel = look.feel }, left, true)
+    apply_feel({ id = "my look", feel = look.feel, colours = look.colours }, left, true)
     if look.theme and reaper.file_exists(M.themes_dir .. look.theme) then
       reaper.SetExtState(M.SECTION, "theme my_reaper", look.theme, true)
       reaper.SetExtState(M.SECTION, "theme path my_reaper", "", true)
@@ -1465,7 +1500,7 @@ function M.keys_block(id) local b = M.new_block("daw", id); b.feel, b.theme, b.m
 function M.split_blocks(blocks) -- (pure but for M.by_id)
   local out = {}
   for _, b in ipairs(blocks or {}) do
-    local st = b.kind == "daw" and M.by_id(b.id)
+    local st = b.kind == "daw" and M.source(b.id)
     if st and M.block_slot(b) ~= "keys" then
       local mouse = b.mouse; if mouse == nil then mouse = b.keys and b.feel end -- (a block from before 5.10)
       local function part(nb) nb.off = type(b.off) == "table" and M.json_decode(M.json_encode(b.off)) or nil; M.draft_add(out, nb) end -- (a copy: unticking while editing mustn't change the saved one)
@@ -1559,7 +1594,7 @@ function M.safe_feel(list) -- a shared file's feel, keeping only commands ReaPer
 end
 -- (e.mouse: a wheel shortcut or a mouse drag/click, the part a mouse block takes over)
 local function block_entries(b) -- what one block sets: { slot, kind = "key"|"midi"|"feel"|"theme"|"accent", label, key, entry, value }
-  local out, st = {}, b.id and M.by_id(b.id)
+  local out, st = {}, b.id and M.source(b.id)
   local function feel(f) local s = feel_slot(f); if s then out[#out + 1] = { slot = s, kind = "feel", label = f[#f], entry = f, mouse = f[1] == "mouse" or nil } end end
   local function key(k, wheel) out[#out + 1] = { slot = "key " .. M.canon(k[1]), kind = "key", label = k[3], key = k[1], entry = k, mouse = wheel or nil } end
   if (b.kind == "daw" or b.kind == "mouse") and st then
