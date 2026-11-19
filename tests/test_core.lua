@@ -10,6 +10,7 @@ local win = package.config:sub(1, 1) == "\\"
 local tmp = "tests/_tmp-" .. os.time() .. "-" .. math.random(1000, 9999)
 os.execute(win and ('mkdir "' .. tmp:gsub("/", "\\") .. '"') or ("mkdir -p '" .. tmp .. "'"))
 write(tmp .. "/reapersona_core.lua", assert(read("ReaPersona/reapersona_core.lua"), "run this from the repo root"))
+write(tmp .. "/reapersona_keys.lua", assert(read("ReaPersona/reapersona_keys.lua"))) -- (the key helpers, 5.39)
 write(tmp .. "/styles.json", read("ReaPersona/styles.json"))
 
 local ext, listing = {}, {}
@@ -1240,6 +1241,27 @@ do -- 35. Second review (5.37.1): what comes from elsewhere
   assert(#st.toolbar == 2 and st.toolbar[1][2] == "a b" and st.toolbar[2] == -1 and st.toolbar_file == "x.ReaperMenu" and st.toolbar_slot == nil, "toolbars: one line, a file name, a slot number")
   local t = core.template_from_rpp("<REAPER_PROJECT 0.1\n  S&M_PROJACTION _RSevil\n  TEMPO 120 4 4\n>\n")
   assert(not t:find("PROJACTION", 1, true) and t:find("TEMPO", 1, true), "no SWS project action in a template")
+end
+do -- 36. 5.39: the key helpers on their own, the action search, the faster JSON strings
+  local K = dofile(tmp .. "/reapersona_keys.lua")
+  for _, n in ipairs({ "memory_location", "play_from_start", "duplicate_to_new_track", "autopunch", "without_ripple", "notation_editor", "run_modes", "run_cmds", "duplicate_selection", "new_track_like_this" }) do
+    assert(type(K[n]) == "function" and type(core[n]) == "function", "key helper " .. n)
+  end
+  local ran = {}
+  local mo = reaper.Main_OnCommand
+  reaper.Main_OnCommand = function(id) ran[#ran + 1] = id end
+  K.run_modes("40310,40753"); assert(#ran == 2 and ran[1] == 40310 and ran[2] == 40753, "run_modes runs each")
+  reaper.Main_OnCommand = mo
+  local kea, sec = reaper.kbd_enumerateActions, reaper.SectionFromUniqueID
+  local acts = { { 40001, "Track: Insert new track" }, { 40044, "Transport: Play/stop" }, { 40005, "Track: Remove tracks" } }
+  reaper.SectionFromUniqueID = function() return {} end
+  reaper.kbd_enumerateActions = function(_, i) local a = acts[i + 1]; if a then return a[1], a[2] end return 0 end
+  local found = core.find_actions("TRACK", 5)
+  assert(#found == 2 and found[1][3] == "track: insert new track" and core.find_actions("TRACK", 5) == found, "any case, lowered once, the answer kept")
+  assert(#core.find_actions("track", 5, "remove") == 1, "both words")
+  reaper.kbd_enumerateActions, reaper.SectionFromUniqueID = kea, sec
+  local d = core.json_decode('{"a":"x\\"y\\\\z\\n\\u00e9","b":["",1,null,false],"c":{}}')
+  assert(d.a == 'x"y\\z\n\195\169' and d.b[1] == "" and d.b[2] == 1 and d.b[3] == false and next(d.c) == nil, "escapes, empty strings, null left out")
 end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))

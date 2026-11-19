@@ -52,21 +52,27 @@ function M.log(msg) -- ReaPersona/errors.log: what went wrong, for fixing it
   if f then f:write(os.date("%Y-%m-%d %H:%M:%S ") .. tostring(msg) .. "\n"); f:close() end
 end
 
+local JSON_ESC = { n = "\n", t = "\t", r = "\r", b = "\b", f = "\f" }
 function M.json_decode(s) -- objects, arrays, strings, numbers, booleans, null (pure)
   local i = 1
   local function ws() i = s:find("[^%s]", i) or #s + 1 end
   local val
-  local function str()
-    local out, j = {}, i + 1
+  local function str() -- (5.39: jumps to the next quote or backslash, not a character at a time: 2.5x faster on styles.json and the sync files)
+    local j, out = i + 1, nil
     while true do
-      local c = s:sub(j, j)
-      if c == "" then error("unterminated string") end
-      if c == '"' then i = j + 1; return table.concat(out) end
-      if c == "\\" then
-        local n = s:sub(j + 1, j + 1)
-        if n == "u" then out[#out + 1] = utf8.char(tonumber(s:sub(j + 2, j + 5), 16) or 63); j = j + 6
-        else out[#out + 1] = ({ n = "\n", t = "\t", r = "\r", b = "\b", f = "\f" })[n] or n; j = j + 2 end
-      else out[#out + 1] = c; j = j + 1 end
+      local k = s:find('["\\]', j)
+      if not k then error("unterminated string") end
+      if s:byte(k) == 34 then
+        i = k + 1
+        if not out then return s:sub(j, k - 1) end
+        out[#out + 1] = s:sub(j, k - 1)
+        return table.concat(out)
+      end
+      out = out or {}
+      out[#out + 1] = s:sub(j, k - 1)
+      local n = s:sub(k + 1, k + 1)
+      if n == "u" then out[#out + 1] = utf8.char(tonumber(s:sub(k + 2, k + 5), 16) or 63); j = k + 6
+      else out[#out + 1] = JSON_ESC[n] or n; j = k + 2 end
     end
   end
   function val()
@@ -731,7 +737,9 @@ local function apply_feel(st, windows_left, as_base) -- (as_base: your own look 
   if token then reaper.SetExtState(M.SECTION, "orig token", token, false) end
   -- (after every entry: a switch cut short can still be put back. A step queued behind window moves writes only while this switch is still
   -- the latest: an older one's would overwrite a newer switch's list. Review 2026-11-18)
-  local function save() if token and reaper.GetExtState(M.SECTION, "orig token") == token then reaper.SetExtState(M.SECTION, "orig", table.concat(list, ";;"), true) end end
+  -- (persist only at the end and in queued steps: REAPER rewrites reaper-extstate.ini on each persisted set, 12.9 ms measured on the laptop,
+  -- about 20 times a switch. The session copy is current after every entry. 5.39)
+  local function save(persist) if token and reaper.GetExtState(M.SECTION, "orig token") == token then reaper.SetExtState(M.SECTION, "orig", table.concat(list, ";;"), persist == true) end end
   local moves = {}
   local function wanted(f) return as_base or M.aspect_on(M.aspect_of(f)) end -- (the aspect switches are about personas, not your look)
   for _, f in ipairs(st.feel or {}) do if f[1] == "dock" and wanted(f) then moves[f[2]] = true end end
@@ -759,7 +767,7 @@ local function apply_feel(st, windows_left, as_base) -- (as_base: your own look 
       end
       -- (the mixer shown or docked waits behind window moves still going, such as the last persona's mixer being put back: run
       -- now, the move would undo it, and what it was would be read mid-move)
-      if (f[2] == 40078 or f[2] == 40083) and busy then later(function() set(); save() end) else set() end
+      if (f[2] == 40078 or f[2] == 40083) and busy then later(function() set(); save(true) end) else set() end
     elseif f[1] == "switch" then -- ["switch", command, command that undoes it, what]: no on/off state to read (main toolbar contents)
       local id = cmd_id(f[2])
       local slot = type(f[2]) == "number" and ((f[2] >= 42729 and f[2] <= 42744 and ("Floating toolbar " .. (f[2] - 42729 + 17)))
@@ -796,7 +804,7 @@ local function apply_feel(st, windows_left, as_base) -- (as_base: your own look 
         list[idx] = "w||"
         later(function()
           list[idx] = "w|" .. hexs(M.json_encode(M.windows_now() or {})) .. "|"
-          save()
+          save(true)
         end)
       end
       M.apply_windows(f[2])
@@ -822,7 +830,7 @@ local function apply_feel(st, windows_left, as_base) -- (as_base: your own look 
       end
     end
   end
-  save()
+  save(true)
 end
 -- what a mouse entry is set to now matches the style? (for the picker's "not applied" warnings)
 function M.mouse_ok(f) local c = M.for_os(f[2]); return not c or (reaper.GetMouseModifier and reaper.GetMouseModifier(c, f[3], "") ~= "") end
@@ -1727,10 +1735,14 @@ end
 
 -- ---------------------------------------------------------------- helper scripts (written and registered once, by the picker)
 local function safe(spec) return (spec:gsub("[^%w]", function(c) return string.format("_%02X", c:byte()) end)) end
-local STUBS = 8 -- (bump when the stubs below change, so they're written again. 4: the Actions list sorted once, M.ensure_scripts. 5: duplicate, gap, autopunch. 6: screen-reader menu. 7: notation editor. 8: pt modes, new track like this, pt duplicate)
+local STUBS = 9 -- (bump when the stubs below change, so they're written again. 4: the Actions list sorted once, M.ensure_scripts. 5: duplicate, gap, autopunch. 6: screen-reader menu. 7: notation editor. 8: pt modes, new track like this, pt duplicate. 9: key helpers from reapersona_keys.lua)
 local HEAD = '-- @noindex\n-- (made by ReaPersona)\nlocal p = debug.getinfo(1, "S").source:match("^@?(.*)[/\\\\]")\n'
-local function stub(path, fn, arg) -- a one-line action: core.<fn>(arg), arg written as a Lua string literal
-  return M.write(path, HEAD .. 'dofile(p .. "/../reapersona_core.lua").' .. fn .. "(" .. (arg and string.format("%q", arg) or "") .. ")\n")
+local KEY_HELPERS = { memory_location = 1, play_from_start = 1, duplicate_to_new_track = 1, autopunch = 1, without_ripple = 1, notation_editor = 1,
+  run_modes = 1, run_cmds = 1, duplicate_selection = 1, new_track_like_this = 1 } -- (in reapersona_keys.lua: a key press loads only that, 5.39)
+local function stub(path, fn, arg) -- a one-line action: core.<fn>(arg), arg written as a Lua string literal (written only when it differs: 5.39)
+  local text = HEAD .. 'dofile(p .. "/../' .. (KEY_HELPERS[fn] and "reapersona_keys.lua" or "reapersona_core.lua") .. '").' .. fn .. "(" .. (arg and string.format("%q", arg) or "") .. ")\n"
+  if M.read(path) == text then return true end
+  return M.write(path, text)
 end
 local function midi_stub(path, spec) -- reads midi_map.lua (written when a style is used); loads the whole core only without it
   return M.write(path, HEAD .. "local spec = " .. string.format("%q", spec) .. "\n" ..
@@ -1827,79 +1839,16 @@ function M.remove_script(key) -- unregister and delete one of the "use" actions 
 end
 
 -- ---------------------------------------------------------------- features some styles' keys call
-function M.memory_location() -- Pro Tools: period, number, period on the numeric keypad recalls a memory location (here: a marker)
-  local ok, s = reaper.GetUserInputs("Memory Location", 1, "Number (then Enter),extrawidth=-40", "")
-  local n = ok and tonumber((s:gsub("%D", "")))
-  if n then reaper.GoToMarker(0, n, false) end
-end
-function M.play_from_start() -- Bitwig: Alt+Space plays the arrangement from the beginning
-  reaper.CSurf_GoStart(); reaper.OnPlayButton()
-end
+-- The key helpers (memory location, play from start, the edit modes, duplicate...) live in reapersona_keys.lua (5.39): their action
+-- stubs load only that. Here too, for the window and scripts.
+for k, f in pairs(dofile(M.here .. "/reapersona_keys.lua")) do M[k] = f end
 -- Audacity: Ctrl+D puts a copy of the selection (the time selection's part of the selected items, else the items) on a new track below,
 -- at the same time. shortcut: one new track, below the first selected item's track; items on several tracks paste onto the tracks under it.
-function M.duplicate_to_new_track()
-  local item = reaper.GetSelectedMediaItem(0, 0)
-  if not item then return end
-  local s, e = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
-  local pos = s
-  if s >= e then
-    pos = math.huge
-    for i = 0, reaper.CountSelectedMediaItems(0) - 1 do pos = math.min(pos, reaper.GetMediaItemInfo_Value(reaper.GetSelectedMediaItem(0, i), "D_POSITION")) end
-  end
-  local cur = reaper.GetCursorPosition()
-  reaper.Undo_BeginBlock(); reaper.PreventUIRefresh(1)
-  reaper.Main_OnCommand(s < e and 40060 or 40698, 0) -- (Item: Copy selected area of items / Edit: Copy items)
-  local idx = math.floor(reaper.GetMediaTrackInfo_Value(reaper.GetMediaItem_Track(item), "IP_TRACKNUMBER"))
-  reaper.InsertTrackAtIndex(idx, true)
-  reaper.SetOnlyTrackSelected(reaper.GetTrack(0, idx))
-  reaper.Main_OnCommand(40914, 0) -- (the new track is the last touched one, where Paste goes)
-  reaper.SetEditCurPos(pos, false, false)
-  reaper.Main_OnCommand(42398, 0) -- (Item: Paste items/tracks)
-  reaper.SetEditCurPos(cur, false, false)
-  reaper.PreventUIRefresh(-1); reaper.Undo_EndBlock("Duplicate to a new track", -1)
-end
 -- Audacity's Silence, "Delete and leave gap" and "Cut and leave gap": remove or cut the selected area of the items with ripple editing off
 -- for this one edit (REAPER's own actions: SWS's smart remove took whole items when run from a script).
-function M.run_modes(list) -- (5.37) several actions in a row: "40310,40753" (ids, or named "_..." ones). Options only, so no undo step
-  for c in tostring(list):gmatch("[^,%s]+") do
-    local id = tonumber(c) or reaper.NamedCommandLookup(c)
-    if id and id ~= 0 then reaper.Main_OnCommand(id, 0) end
-  end
-end
-function M.run_cmds(list, name) -- the same as one undo step called name
-  reaper.Undo_BeginBlock()
-  M.run_modes(list)
-  reaper.Undo_EndBlock(name or "ReaPersona", -1)
-end
-function M.duplicate_selection() -- Pro Tools' Cmd+D: the time selection's part of the items when there is one, else the items (41296 alone does nothing then)
-  local a, b = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
-  reaper.Main_OnCommand(b > a and 41296 or 41295, 0)
-end
-function M.new_track_like_this() -- Logic's "New Track With Duplicate Settings": duplicate, then empty it (items unselected first, so none elsewhere go)
-  M.run_cmds("40062,40289,40421,40006", "New track like this")
-end
-function M.without_ripple(cmd)
-  local id = tonumber(cmd) or reaper.NamedCommandLookup(cmd)
-  if id == 0 then return end
-  local per, all = reaper.GetToggleCommandState(41990) == 1, reaper.GetToggleCommandState(41991) == 1
-  reaper.Undo_BeginBlock()
-  if per or all then reaper.Main_OnCommand(40309, 0) end -- (ripple off)
-  reaper.Main_OnCommand(id, 0)
-  if all then reaper.Main_OnCommand(40311, 0) elseif per then reaper.Main_OnCommand(40310, 0) end
-  reaper.Undo_EndBlock("Delete leaving a gap", -1)
-end
 -- GarageBand: N shows the Score Editor (here: the selected MIDI item in the MIDI editor, in notation view: "Mode: Notation").
 -- shortcut: it opens and switches to notation, it doesn't hide the editor again; REAPER's Escape or the window's close does that.
-function M.notation_editor()
-  if not reaper.GetSelectedMediaItem(0, 0) then return end
-  reaper.Main_OnCommand(40153, 0) -- (Item: Open in built-in MIDI editor)
-  local me = reaper.MIDIEditor_GetActive()
-  if me then reaper.MIDIEditor_OnCommand(me, 40954) end
-end
 -- Logic and Studio One: one key turns Autopunch on and off (here: REAPER's time-selection auto-punch, else normal recording).
-function M.autopunch()
-  reaper.Main_OnCommand(reaper.GetToggleCommandState(40076) == 1 and 40252 or 40076, 0)
-end
 
 -- ---------------------------------------------------------------- extensions some styles recommend (smooth playhead, smooth scroll and zoom)
 M.EXTENSIONS = {
@@ -4337,6 +4286,21 @@ function M.mouse_catalog(styles, page, now) -- (pure but now(ctx, flag) -> REAPE
   return rows
 end
 local action_list_cache
+local find_seen = {}
+function M.find_actions(q, limit, also) -- (5.39) the first `limit` actions whose name has q (and also, when given), any case; the last answer kept:
+  -- the search boxes asked on every frame, lowering 10,000 names each time (7.85 ms a frame; efficiency review)
+  local key = q .. "\0" .. tostring(also) .. "\0" .. limit
+  if find_seen[key] then return find_seen[key] end
+  local ql, out = q:lower(), {}
+  for _, a in ipairs(M.action_list()) do
+    local nm = a[3] or tostring(a[2]):lower()
+    if nm:find(ql, 1, true) and (not also or nm:find(also, 1, true)) then out[#out + 1] = a; if #out >= limit then break end end
+  end
+  find_seen.n = (find_seen.n or 0) + 1
+  if find_seen.n > 16 then find_seen = { n = 1 } end -- (several boxes on a page each keep theirs; a long session doesn't grow it)
+  find_seen[key] = out
+  return out
+end
 function M.action_list() -- -> { {cmd, name} } every action in the Main section (for a shortcut of your own), cached
   if action_list_cache then return action_list_cache end
   local out, sec = {}, reaper.SectionFromUniqueID and reaper.SectionFromUniqueID(0)
@@ -4345,7 +4309,8 @@ function M.action_list() -- -> { {cmd, name} } every action in the Main section 
       local cmd, name = reaper.kbd_enumerateActions(sec, i)
       if not cmd or cmd == 0 then break end
       local named = reaper.ReverseNamedCommandLookup(cmd)
-      out[#out + 1] = { named and ("_" .. named) or cmd, name or tostring(cmd) }
+      local nm = name or tostring(cmd)
+      out[#out + 1] = { named and ("_" .. named) or cmd, nm, nm:lower() } -- (lowered once, for find_actions)
     end
   end
   action_list_cache = out
@@ -5126,12 +5091,15 @@ local function file_value(path, max)
   return { h = h, n = #text }, text
 end
 local function blob_dir() return M.sync_folder():gsub("[/\\]+$", "") .. "/blobs" end
+local published = {} -- (blobs seen or written in this session: a full sync looked at all 7,000 every time. Efficiency review, 5.39)
 local function publish(path, v, text) -- the file's content into the folder's blobs, once
   local b = blob_dir() .. "/" .. v.h
-  if reaper.file_exists(b) then return true end
+  if published[b] or reaper.file_exists(b) then published[b] = true; return true end
   reaper.RecursiveCreateDirectory(blob_dir(), 0)
   text = text or M.read(path)
-  return text ~= nil and M.write(b, text)
+  local ok = text ~= nil and M.write(b, text)
+  if ok then published[b] = true end
+  return ok
 end
 local function collect_files(items, kind, base_rel, keep, max)
   for rel, full in pairs(walk(res, base_rel, {}, keep)) do
@@ -5149,7 +5117,12 @@ local CODE_SKIP = { "Scripts/ReaPersona/", "Scripts/__startup.lua", "Scripts/MID
   "Scripts/Cockos/", "Scripts/reaper-daemon/", "Scripts/BandSync" } -- (ReaPersona's own; each computer's startup; StudioSync's (and its old BandSync name); REAPER's own; a tool with its data)
 M.CODE_SKIP = CODE_SKIP
 M.owned = nil -- (ReaPack's files, relative to the resource path: from setup_helper.py; nil until read)
+local pkg_seen = {} -- (the answer, kept while ReaPack's registry is unchanged: each full sync started Python. Efficiency review, 5.39)
 local function read_packages() -- -> { installed = { {remote, category, package, type, desc, author} }, owned = { path } }, or nil + why
+  local sig
+  if reaper.JS_File_Stat then local ok, size, _, mtime = reaper.JS_File_Stat(res .. "/ReaPack/registry.db"); sig = ok == 0 and (size .. "|" .. tostring(mtime)) or nil end
+  if sig and pkg_seen.sig == sig then return pkg_seen.d end
+  local d, why = (function()
   if not M.python() then return nil, "it needs Python" end
   local out = M.here .. "/_packages.json" -- (REAPER's ExecProcess stalls on a long answer: it comes back in a file)
   local code, text = sh(M.py .. ' "' .. M.here .. '/setup_helper.py" packages "' .. res .. '" "' .. out .. '"', 30000)
@@ -5159,6 +5132,9 @@ local function read_packages() -- -> { installed = { {remote, category, package,
   M.owned = {}
   for _, f in ipairs(d.owned or {}) do M.owned[f] = true end
   return d
+  end)()
+  if d then pkg_seen.sig, pkg_seen.d = sig, d end
+  return d, why
 end
 local COLLECT = {
   pref = function(items)

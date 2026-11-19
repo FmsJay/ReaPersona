@@ -1,5 +1,23 @@
 # Changelog
 
+## 5.39.0
+Faster, and the window's code split by area (from a Lua efficiency review and LuaLS, the Lua language server; timings measured in
+REAPER on the laptop).
+- **Persona keys that run ReaPersona's own scripts are about 95x quicker:** play from start, the Pro Tools edit modes and duplicate, new
+  track like this, autopunch, memory location, the gap edits and the notation editor load a 70-line module (0.34 ms) instead of the whole
+  engine (32 ms) on every press. Open ReaPersona once after updating so their actions are written again.
+- **Switching persona is about a quarter of a second quicker:** REAPER rewrites its ExtState file on every saved setting (12.9 ms each,
+  measured), and a switch saved its put-back list after each of about 20 entries. It's kept in memory and saved once.
+- **Reading ReaPersona's files is 2.5x faster** (styles.json 17 -> 7 ms, the 5.7 MB sync state 637 -> 241 ms): the JSON reader takes
+  strings in one piece instead of a character at a time (output checked identical).
+- **The window opens before the first sync** (about 1 s sooner), and a full sync no longer checks all 7,000 shared files' copies each time
+  or starts Python for ReaPack's package list unless ReaPack's list changed.
+- **Action search** (Shortcuts, Mouse & trackpad): names lowered once and answers kept, instead of 10,000 names lowered every frame while
+  you type.
+- **For developers:** ReaPersona.lua is now a short entry file; the window's code is in ui/ (base, personas, settings, theme_tools, check,
+  home, editing, shortcuts, mouse, layout, project, main), one file per area, sharing one table of names (the one file had reached Lua's
+  200 locals). Every page measured at 1-3.4 ms a frame after its first.
+
 ## 5.38.0
 - **Preview as I change:** a switch in the bar at the top while you make or edit a persona. Each change on any tab goes into REAPER a
   moment after you make it (the look, layout, mouse, colours, REAPER settings and one DAW's keys), so you see it as you go; turning it
