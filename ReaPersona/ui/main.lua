@@ -45,7 +45,8 @@ end
 GUIDE = {
   { "Getting started", {
     "1. Pick the DAW you're coming from: Personas > DAWs, or the first card on Home. REAPER takes on its look and feel straight away, and its shortcuts once they're installed (step 2). Back to My REAPER (top) puts your own setup back, exactly as it was.",
-    "2. Finish setting up: Home > Finish setting up. REAPER restarts once (about 10 seconds; it asks about anything unsaved first): your persona's shortcuts go in, and your persona comes back each time REAPER starts. After adding or changing a persona, Home > Install and restart puts its keys in.",
+    "2. Finish setting up: Home > Finish setting up. " .. (FLATPAK and "In this Flatpak REAPER you import the shortcuts in the Actions window (the button gives the steps)"
+      or "REAPER restarts once (about 10 seconds; it asks about anything unsaved first)") .. ": your persona's shortcuts go in, and your persona comes back each time REAPER starts. After adding or changing a persona, " .. INSTALL_WHERE .. " puts its keys in.",
     "3. More than one computer? Settings > Sync: save your setup to a file, or keep them the same through a shared folder." } },
   { "What each page does", {
     "Home: the first steps, what ReaPersona can use and whether it's there (one click for each), importing from another DAW on this computer, and themes by other people. Drop theme, toolbar, keymap or persona files anywhere on the window to add them.",
@@ -200,7 +201,8 @@ function top_bar(alt)
   local col = accent_of(cur)
   local wf = core.current_workflow()
   local trial = core.is_trial() -- (the persona being made, on show: Preview or Try it)
-  pill(cur.name .. (trial and (bld.preview and " (preview)" or " (trying)") or "") .. (wf and wf.id ~= cur.id and ("  +  " .. wf.name) or "") .. ((trial or in_use(cur, alt)) and "" or "  (keys off)"), solid(col))
+  local shown_name = (trial and bld.back) and (bld.name ~= "" and bld.name or bld_default_name()) or cur.name -- (a rename shows at once: round 3)
+  pill(shown_name .. (trial and (bld.preview and " (preview)" or " (trying)") or "") .. (wf and wf.id ~= cur.id and ("  +  " .. wf.name) or "") .. ((trial or in_use(cur, alt)) and "" or "  (keys off)"), solid(col))
   if trial then ImGui.SetItemTooltip(ctx, "The persona you're making, in REAPER for now. Save it, or Go back (in the bar below) to put back what you had.")
   elseif not in_use(cur, alt) then ImGui.SetItemTooltip(ctx, "Its shortcuts aren't on (REAPER restarted?): Use it again, or add the startup line on Home so it comes back each time REAPER starts.") end
   local w = ImGui.GetWindowWidth(ctx)
@@ -246,6 +248,13 @@ function frame()
   local visible, open = ImGui.Begin(ctx, "ReaPersona", true, ImGui.WindowFlags_NoDocking)
   images_left = 2
   if visible then
+    local focused = ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows)
+    if recount_keys and focused and not was_focused then -- (back from a Flatpak keymap import in the Actions window: Home counts the keys again)
+      count_installed()
+      local have, want = shortcuts_state()
+      if have >= want then recount_keys = nil end
+    end
+    was_focused = focused
     if ensure_new or core.stubs_stale then core.ensure_scripts(); ensure_new = false end
     core.apply_midi_dock() -- (a style's MIDI editor docking waits for an editor to be open)
     local ask = reaper.GetExtState(SECTION, "search") -- (a search asked for from outside: another script, or a test)
@@ -253,13 +262,10 @@ function frame()
     if first_frame then
       first_frame = false
       if reaper.GetExtState(SECTION, "page") == "" and setup_todo() then go("Setup") end
-      local note = core.read(here .. "/last_install.txt")
+      local note = install_result()
       if note then -- (what the last one-button install did, in a few words; the details stay in the backup's name)
-        os.remove(here .. "/last_install.txt")
         local n = note:match("installed (%d+) shortcut")
         say(n and ("Shortcuts installed (" .. n .. "). Your old keymap was backed up first.") or ((note:gsub("%s+$", "")):match("[^\n]*$") or ""):sub(1, 120))
-        if note:find("not installed", 1, true) then core.try("putting layer numbers back", core.cancel_layers)
-        elseif core.layers_done then core.try("the install went in", core.layers_done) end -- (an install that changed nothing: no persona points at a layer it didn't fill)
       end
     end
     local alt = core.active_alt()
@@ -394,6 +400,13 @@ function frame()
           ImGui.Unindent(ctx, IND * UI)
           card_end()
         end
+        local cur_p, wf_p = core.current(), core.current_workflow() -- (a persona or workflow with colours holds them: what you change below
+        local holder = (wf_p and wf_p.colours and wf_p) or (cur_p.colours and cur_p) -- lasts only until you switch persona. Round 3, engine 8)
+        if holder then
+          ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.YELLOW)
+          ImGui.TextWrapped(ctx, holder.name .. " sets the colours while it's in use: changes you make here last until you switch persona.")
+          ImGui.PopStyleColor(ctx)
+        end
         colours.draw(ctx, ImGui, reaper.EnumProjects(-1))
       elseif page == "Guide" then guide_page()
       elseif page == "Check" then check_page() end
@@ -501,8 +514,8 @@ function status_text()
 end
 function screen_reader_menu(once) -- -> true: open the window instead. once: opened by 'ReaPersona - screen-reader menu'
   menu_mode = true
-  local note = core.read(here .. "/last_install.txt")
-  if note then os.remove(here .. "/last_install.txt"); reaper.MB(note, "ReaPersona: the last install", 0) end
+  local note = install_result() -- (the layer numbers as the window does it: round 3)
+  if note then reaper.MB(note, "ReaPersona: the last install", 0) end
   while true do
     local cur = core.current()
     local labels, acts = {}, {}
@@ -553,7 +566,8 @@ function screen_reader_menu(once) -- -> true: open the window instead. once: ope
     sep()
     local have, want = shortcuts_state()
     local pend = core.restart_pending()
-    item(#pend > 0 and ("Restart REAPER to put in your persona shortcuts and " .. core.pending_words(pend)) or ((have < want and "Install" or "Reinstall") .. " the shortcuts (REAPER restarts)"), "install")
+    item(FLATPAK and ((have < want and "Install" or "Reinstall") .. " the shortcuts (the steps for this Flatpak REAPER)")
+      or #pend > 0 and ("Restart REAPER to put in your persona shortcuts and " .. core.pending_words(pend)) or ((have < want and "Install" or "Reinstall") .. " the shortcuts (REAPER restarts)"), "install")
     if not core.startup_on() then item("Bring your persona back when REAPER starts (adds the startup line)", function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end) end
     sep()
     if core.sync_folder() ~= "" then item("Sync with your other computers now", function() sync_step(true, true) end) -- (to the end: the menu has no frames)
@@ -623,7 +637,11 @@ reaper.atexit(function()
   end
   if trying then trying.ends = 0; trial_over() end -- (a theme on trial goes back when the window closes)
   core.try("putting colours back", colours.put_back_all) -- (and colours being tried)
-  core.try("sync at close", core.sync_tick) -- (what you changed while it was open, to your other computers; to the end, not spread)
+  -- (what you changed while it was open, to your other computers: a full sync, to the end (James). One under way collected before
+  -- your last changes, so it's finished and then one more runs; with nothing new that one is quick. Round 3)
+  local had = core.sync_job
+  core.try("sync at close", core.sync_tick)
+  if had then core.try("sync at close", core.sync_tick) end
   if cmd and cmd ~= 0 then reaper.SetToggleCommandState(0, cmd, 0); reaper.RefreshToolbar2(0, cmd) end
 end)
 core.try("updating the startup line", core.upgrade_startup) -- (now too, not only at REAPER's start: updated and removed in one session left the old block. Review, 5.9.4)

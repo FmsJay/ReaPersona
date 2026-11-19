@@ -118,7 +118,7 @@ local function run()
   change(core.new_block("theme", "B.ReaperTheme")); assert(#bld.hist == 3 and bld.pos == 3)
   bld.step(-1)
   assert(theme_of() == "A.ReaperTheme", "Undo puts the earlier draft back")
-  assert(said():find("Undone: Theme: B", 1, true), "Undo says what it undid: " .. said())
+  assert(said():find("Undone: the B theme", 1, true), "Undo says what it undid, in plain words: " .. said())
   tick(); assert(#bld.hist == 3 and bld.pos == 2, "a step isn't taken for a change")
   bld.step(1); assert(theme_of() == "B.ReaperTheme")
   bld.step(-1)
@@ -244,7 +244,81 @@ local function run()
   core.sync_tick = function() core.sync_job = nil; return nil end
   R.sync_step(true)
   assert(not R.syncing and R.sync_err and said():find("Couldn't sync", 1, true), "a sync that fails says so")
+  calls = 0 -- (a sync finished from outside the window, e.g. by taking another computer's setup: no second one starts)
+  core.sync_tick = function() calls = calls + 1; core.sync_job = {}; return nil end
+  R.sync_step(true); assert(R.syncing and calls == 1)
+  core.sync_job = nil -- (finished elsewhere)
+  R.sync_more()
+  assert(not R.syncing and calls == 1, "a sync finished outside the window doesn't start a second one")
+  assert(said():find("Synced", 1, true), "and Sync now still gets an answer: " .. said())
   core.sync_folder, core.sync_tick, R.sync_err = real_folder, real_tick, nil
+
+  -- 8b. Round 3: the close handler finishes a sync under way and runs one more (James keeps the full sync at close); an install's result
+  -- keeps or puts back the layer numbers (UP1, UP2 from code-health round 3, probe_ui_r3.lua).
+  local sync_args = {}
+  local rt = core.sync_tick
+  core.sync_tick = function(...) sync_args[#sync_args + 1] = select("#", ...) == 0 and "none" or tostring(select(2, ...)); return nil end
+  at_exit()
+  assert(sync_args[#sync_args] == "none", "UP1: closing finishes the sync, unbudgeted: " .. tostring(sync_args[#sync_args]))
+  sync_args = {}; core.sync_job = {} -- (one under way at close)
+  core.sync_tick = function(...) sync_args[#sync_args + 1] = select("#", ...); core.sync_job = nil; return nil end
+  at_exit()
+  core.sync_tick = rt
+  assert(#sync_args == 2 and sync_args[1] == 0 and sync_args[2] == 0, "a sync under way at close is finished, then one more runs: " .. #sync_args)
+  local lcalls = {}
+  local rc, rd = core.cancel_layers, core.layers_done
+  core.cancel_layers = function() lcalls[#lcalls + 1] = "cancel" end
+  core.layers_done = function() lcalls[#lcalls + 1] = "done" end
+  write(dir .. "/last_install.txt", "not installed: a file couldn't be written (your keymap was backed up first)\n")
+  R.first_frame = true; frame("Home")
+  write(dir .. "/last_install.txt", "installed 12 shortcut(s); backup: reaper-kb.ini.before-reapersona-1\n")
+  R.first_frame = true; frame("Home")
+  write(dir .. "/last_install.txt", "REAPER didn't close, so the shortcuts weren't installed.\n")
+  R.first_frame = true; frame("Home")
+  assert(table.concat(lcalls, ",") == "cancel,done,cancel" and not read(dir .. "/last_install.txt"),
+    "UP2: failed -> layers back; installed -> done; didn't close -> back: " .. table.concat(lcalls, ","))
+  lcalls = {}
+  write(dir .. "/last_install.txt", "not installed: no\n")
+  assert(R.install_result() and lcalls[1] == "cancel", "the screen-reader menu's path puts them back the same way")
+  lcalls = {}
+  local rx, rp, rs, rprep = core.relaunch_exe, core.python, core.stage_install, core.prepare_layers
+  local asked_exe = 0
+  core.relaunch_exe = function() asked_exe = asked_exe + 1; return "/opt/REAPER/reaper" end
+  core.python, core.prepare_layers = function() return nil end, function() end
+  reaper.get_ini_file = function() return tmp .. "/reaper.ini" end
+  core.stage_install = function(o) assert(o.exe == "/opt/REAPER/reaper", "the relaunch is the engine's: " .. tostring(o.exe)); return nil, "probe" end
+  R.install_shortcuts(false, nil, true)
+  core.relaunch_exe, core.python, core.stage_install, core.prepare_layers = rx, rp, rs, rprep
+  assert(asked_exe == 1 and lcalls[1] == "cancel", "an install that can't start asks core.relaunch_exe and puts the layer numbers back")
+  core.cancel_layers, core.layers_done = rc, rd
+
+  -- 8c. Round 3 (James): Save during a preview makes the saved persona the one in use, with Undo switch back to what you had.
+  R.bld_new(); mb_answer = 6; R.bld_new(); mb_answer = 1
+  core.draft_add(bld.blocks, core.new_block("theme", "Saved.ReaperTheme"))
+  bld.name = "Test saved " .. os.time()
+  bld.back, bld.preview = A.id, true; set_style("built_try"); R.last_style = nil
+  local saved = R.bld_save()
+  assert(saved and reaper.GetExtState(R.SECTION, "style") == saved.id, "the saved persona is in use")
+  assert(bld.back == nil and bld.preview == false, "the preview is over")
+  assert(R.last_style == A.id and reaper.GetExtState(R.SECTION, "last style") == A.id, "Undo switch goes back to what you had")
+  assert(bld.msg:find("is saved and in use", 1, true) and bld.msg:find("puts " .. A.name .. " back", 1, true), "and it says so: " .. bld.msg)
+  core.delete_user_style(saved.id)
+
+  -- 8d. Remove with a workflow on: the workflow is off before My REAPER goes on (engine round 3, 4); the Colours page says when a
+  -- persona holds the colours.
+  reaper.SetExtState(R.SECTION, "workflow", "voiceover", true)
+  local wf_at_use
+  core.use = function(st) wf_at_use = reaper.GetExtState(R.SECTION, "workflow"); set_style(st.id) end
+  mb_answer = 6; press["Remove ReaPersona..."] = true; frame("SetRemove"); press["Remove ReaPersona..."] = nil; mb_answer = 1
+  R.removing = nil
+  assert(wf_at_use == "", "Remove takes the workflow off before switching to My REAPER: " .. tostring(wf_at_use))
+  local holder = { id = "holds", name = "Holds colours", colours = { look = "x" } }
+  core.current = function() return holder end
+  texts = {}; frame("Colours")
+  core.current = real_current
+  local warned = false
+  for s in pairs(texts) do if s:find("sets the colours while it's in use", 1, true) then warned = true end end
+  assert(warned, "the Colours page says a persona holds the colours")
   core.use, core.busy, core.end_trial = real_use, real_busy, real_end
 
   -- 9. Opening the window on a preview left from before ends it, through core.fix_current (code health round 2, R2-1).
@@ -253,7 +327,7 @@ local function run()
   dofile = function(p, ...) -- (the second window's engine, with stand-ins that record what the window asked)
     local m = real_dofile(p, ...)
     if tostring(p):match("reapersona_core%.lua$") then
-      local real_fix = m.fix_current or function() if m.is_trial() then m.end_trial(true) end end -- (A's rule, if it isn't in yet)
+      local real_fix = m.fix_current
       m.end_trial = function(now) if not m.is_trial() then return nil end ended2[#ended2 + 1] = now; m.persist(m.SECTION, "style", A.id); return A end
       m.fix_current = function(...) fixed = fixed + 1; return real_fix(...) end
     end

@@ -12,8 +12,8 @@ res = reaper.GetResourcePath()
 
 -- Shortcut lines per style layer, and MIDI editor keys bound to ReaPersona scripts. (Not by install_shortcuts.py's tag: REAPER rewrites the
 -- file's comments when it saves it.)
-installed, midi_installed = {}, 0
-do
+function count_installed() -- (at load, and again when the window is back after a Flatpak keymap import: round 3)
+  installed, midi_installed = {}, 0
   local layers, midi_cmds = {}, {}
   for _, st in ipairs(styles) do if (st.alt or 0) > 0 then layers[st.alt] = true end end
   for _, id in pairs(core.scripts.midi) do midi_cmds[id] = true end
@@ -24,6 +24,7 @@ do
     elseif sec and layers[sec] then installed[sec] = (installed[sec] or 0) + 1 end
   end
 end
+count_installed()
 if core.scripts_missing() > 0 then core.ensure_scripts() end -- (first run, or a new style: the one-key actions and MIDI key scripts)
 
 function run_script(rel)
@@ -130,7 +131,16 @@ IS_MAC = core.IS_MAC
 -- with a restart. The shortcuts go in by import; the rest with the installer run from a terminal while REAPER is closed. (Cross-platform
 -- review 2026-11-19; the command lines are the installer's own, round 2)
 FLATPAK = not IS_MAC and not reaper.GetOS():find("^Win") and reaper.file_exists("/.flatpak-info")
-function flatpak_cmd(args) return 'python3 "' .. here .. '/install_shortcuts.py" ' .. args end
+function flatpak_cmd(args) -- the terminal command, also put on the clipboard: Linux message boxes can't be copied from (round 3)
+  local c = "python3 '" .. (here .. "/install_shortcuts.py"):gsub("'", "'\\''") .. "' " .. args -- (single quotes: a $ or ! in the path stays as it is)
+  if reaper.CF_SetClipboard then reaper.CF_SetClipboard(c) else ImGui.SetClipboardText(ctx, c) end
+  return c
+end
+-- Where a persona's shortcuts go in, and the button that puts in what waits for a restart: a Flatpak REAPER can't restart itself.
+INSTALL_WHERE = FLATPAK and "Home > Install (you import them; the steps say how)" or "Home > Install and restart"
+RESTART_BUTTON = FLATPAK and "How to put them in" or "Restart REAPER now"
+RESTART_TIP = FLATPAK and "This Flatpak REAPER can't restart itself: the steps say what to run in a terminal while REAPER is closed."
+  or "REAPER closes (asking about anything unsaved), these go in (what's replaced is backed up first), and it opens again."
 keyname = core.keyname -- (on a Mac REAPER's Ctrl is Cmd, Alt is Option and Win is Control: styles store Windows names)
 function keycap(text) -- a key, drawn like one
   text = keyname(text)
@@ -330,7 +340,7 @@ function use(st)
   local miss = {}
   for _, s in ipairs(core.starts_missing or {}) do miss[#miss + 1] = s[1] end
   say((ended and "Preview off: " or "") .. st.name .. " in use" .. (#setup > 0 and (", and this project has its " .. table.concat(setup, ", ")) or "") ..
-    ((was and was.id ~= st.id) and (". Undo switch (top) puts " .. was.name .. " back.") or ".") ..
+    ((was and was.id ~= st.id) and (". Undo switch " .. (menu_mode and "(in this menu)" or "(top)") .. " puts " .. was.name .. " back.") or ".") ..
     (#miss > 0 and (" It starts " .. table.concat(miss, ", ") .. " with REAPER, not installed here: Get it on its page.") or ""))
   for _, key in ipairs(st.recommends or {}) do -- (offered once: no is remembered)
     local x = core.EXTENSIONS[key]

@@ -238,6 +238,8 @@ fi
 if [ "$REAPER_BIN" = flatpak ] && ! grep -q 'install_shortcuts.py' "$RESULT" 2>/dev/null; then
   IS="$(find "$RES/Scripts/ReaPersona" -name install_shortcuts.py 2>/dev/null | head -1)"
   LEFT+=("This REAPER is the Flatpak one, which can't restart itself to put shortcuts in. Once ReaPersona is set up: close REAPER, run  python3 \"${IS:-$RES/Scripts/ReaPersona/Workflow/install_shortcuts.py}\" --apply-setup  in a terminal, then start REAPER again. REAPER from reaper.fm avoids this (move the Flatpak one aside and run this again: it installs that one in ~/opt/REAPER).")
+  # (ReaPack's Uninstall deletes install_shortcuts.py, the only way to take the layers and toolbars out again. Round 3, L6)
+  LEFT+=("To remove ReaPersona from this Flatpak REAPER one day: close REAPER, run the same command with --remove --apply-prefs instead of --apply-setup FIRST, and only then uninstall it in ReaPack (the command needs ReaPersona's files).")
 fi
 LEFT+=("REAPER is a 60-day evaluation: after that it still works, and reminds you to buy a licence (reaper.fm/purchase.php).")
 say "Done. What's left:"

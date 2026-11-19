@@ -143,7 +143,7 @@ core.styles[#core.styles + 1] = A
 core.styles[#core.styles + 1] = B
 assert(core.is_wheel("Ctrl+Mousewheel") and core.is_wheel("win:Alt+HorizWheel") and not core.is_wheel("Ctrl+M") and not core.is_wheel(nil))
 local mb = core.new_block("mouse", "t_b")
-assert(mb.kind == "mouse" and core.block_title(mb) == "B: Mouse")
+assert(mb.kind == "mouse" and core.block_title(mb) == "B's mouse") -- (round 3: no second colon)
 assert(core.new_block("daw", "t_a").mouse == true, "a new DAW block has its mouse")
 local function built(blocks)
   local st = assert(core.build_style(blocks, "T", "built_t"))
@@ -273,7 +273,7 @@ assert(core.sync_folder() == "" and not read(tmp .. "/sync_state.json"))
 
 -- 9. Workflows (5.11): a project block's lines, starter tracks as a template's text, and a workflow's blocks built into a persona.
 local pb = core.new_block("project")
-assert(pb.kind == "project" and core.block_title(pb) == "Project" and #core.project_entries(pb) == 0, "an empty project block sets nothing")
+assert(pb.kind == "project" and core.block_title(pb) == "its project part" and #core.project_entries(pb) == 0, "an empty project block sets nothing")
 pb.srate, pb.wset, pb.tracks, pb.tracks_name = 48000, 3, core.track_chunk('Say "hi"', true, false, 0), "VO"
 local pe = core.project_entries(pb)
 assert(#pe == 3 and pe[1].value.srate == 48000 and pe[3].value.wset == 3)
@@ -617,12 +617,14 @@ if sh_exe then
   run(step)
   assert(read(tmp .. "/pending/reaper-mouse.ini") == "[m]\nx=3\n" and read(tmp .. "/reaper-mouse.ini") == "[m]\nx=2\n", "a newer sync waits")
   os.remove(tmp .. "/pending/reaper-mouse.ini")
-  -- the quit cancelled: nothing at all
+  -- the window said "cancelled", but REAPER has gone (a slow quit): not believed, the install goes on (round 3: as install_shortcuts.py's
+  -- 15 s look; a REAPER still running would end it there, which this stand-in can't be)
   local kb_now = read(tmp .. "/reaper-kb.ini")
   step = assert(core.stage_install({ pid = "999999", stamp = "20260101-000003", remove = true }))
   write(tmp .. "/install_cancelled", "x")
   run(step)
-  assert(read(tmp .. "/reaper-kb.ini") == kb_now and not read(tmp .. "/install_cancelled") and not read(tmp .. "/install_staged/install.sh"), "cancelled")
+  assert(read(tmp .. "/reaper-kb.ini") ~= kb_now and not read(tmp .. "/install_cancelled") and not read(tmp .. "/install_staged/install.sh"), "REAPER gone: removed after all")
+  assert(read(tmp .. "/last_install.txt"):find("removed", 1, true), read(tmp .. "/last_install.txt"))
   -- the relaunch lines: a Mac opens the app through LaunchServices once it's gone from there; Linux starts the binary
   write(tmp .. "/reaper.ini", "x")
   reaper.GetOS = function() return "macOS-arm64" end
@@ -669,7 +671,7 @@ do
   local now = core.colours_now()
   assert(now["colour look"] == look and now["colour kinds"]:find("FF0000", 1, true) and now["colour folders"] == nil)
   local cb = core.new_block("colours")
-  assert(cb.kind == "colours" and core.block_title(cb) == "Colours: Gradient in Ocean")
+  assert(cb.kind == "colours" and core.block_title(cb) == "Gradient in Ocean colours")
   local built = assert(core.build_style({ core.new_block("daw", "logic"), cb }, "Coloured", "built_col"))
   assert(built.colours and built.colours["colour look"] == look, "the Builder's Colours block goes into the persona")
   local ps = core.preset_style({ id = "preset_col", name = "C", base = "pro_tools", feel = {}, colours = { ["colour look"] = look, evil = "{}" } })
@@ -1085,7 +1087,7 @@ do
   local got
   for _, f in ipairs(st.feel) do if f[1] == "radio" and f[2][1] == 41603 then got = f[3] end end
   assert(got == 41605, "the designer's transport wins")
-  assert(core.block_slot({ kind = "layout" }) == "layout" and core.block_title({ kind = "layout" }) == "Layout: your own")
+  assert(core.block_slot({ kind = "layout" }) == "layout" and core.block_title({ kind = "layout" }) == "your own layout")
 end
 do -- 27. project defaults: tempo, time signature and grid (5.33)
   local ents = core.project_entries({ kind = "project", srate = 0, tracks = "", wset = 0, bpm = 92, ts_num = 6, ts_den = 8, grid = 1 / 12 })
@@ -1129,7 +1131,7 @@ do -- 28. every other window (5.34)
   for _, f in ipairs(st.feel) do if f[1] == "windows" then got = f[2] end end
   assert(got and got.navigator.p == "right", "the windows block into the persona")
   assert(core.aspect_of({ "windows", {} }) == "windows" and core.window_words({ s = 1, p = "left" }) == "docked left")
-  assert(core.block_title({ kind = "feel", aspect = "windows", items = {} }) == "Your own: Other windows")
+  assert(core.block_title({ kind = "feel", aspect = "windows", items = {} }) == "Your other windows")
 end
 do -- 29. REAPER's preferences in a persona (5.35)
   assert(core.pref_ok("deffadelen", 0.02) and not core.pref_ok("deffadelen", 11) and not core.pref_ok("deffadelen", "x"))
@@ -1384,7 +1386,7 @@ do -- 37. Round 1 review (2026-11-19), the engine's fixes. One stand-in REAPER f
   persisted = {}
   core.use({ id = "built_six", name = "Six", feel = { { "toggle", 1157, 1, "snap" }, { "toggle", 40041, 1, "xf" }, { "midi_dock", 1, "dock" } }, colours = { ["colour look"] = look }, keys = {}, alt = 0 })
   assert(persisted["colour look"] == 1 and persisted.style == 1 and (persisted["midi dock"] or 0) <= 1, "once each")
-  assert(persisted.orig == 3, "orig: emptied, after the first entry, and at the end (" .. tostring(persisted.orig) .. ")")
+  assert(persisted.orig == 2, "orig: after the first entry and at the end; emptied session-only since round 3 (" .. tostring(persisted.orig) .. ")")
   persisted = {}
   core.use(core.by_id("my_reaper"))
   assert(persisted["colour look"] == 1 and (persisted["midi dock"] or 0) <= 1 and persisted["theme my_reaper"] == nil, "back: once each, unchanged ones not at all")
@@ -1399,7 +1401,7 @@ do -- 37. Round 1 review (2026-11-19), the engine's fixes. One stand-in REAPER f
   ext["ReaPersona/style"] = "my_reaper"; ext["ReaPersona/orig"] = ""
   persisted = {}
   core.use({ id = "built_err", name = "E", feel = { { "toggle", 1157, 1, "snap" } }, colours = setmetatable({}, { __index = function() error("boom") end }), keys = {}, alt = 0 })
-  assert(ext["ReaPersona/orig"]:find("t|1157|", 1, true) and persisted.orig >= 3 and core.batch == nil, "persisted after the error")
+  assert(ext["ReaPersona/orig"]:find("t|1157|", 1, true) and persisted.orig >= 2 and core.batch == nil, "persisted after the error")
   core.use(core.by_id("my_reaper"))
 
   -- A8: a file back at an older content after its blob went (another computer tidied it) is published again
@@ -1683,8 +1685,10 @@ do -- 38. Round 2 review (2026-11-19), the engine's fixes.
   local d1, p1 = core.closed_dock(ini, "actions")
   local d2, p2 = core.closed_dock(ini, "regmgr")
   assert(d1 == 1 and p1 == 3 and d2 == 0 and p2 == nil, "docked in docker 3; floating")
-  local sw = core.safe_windows({ actions = { s = 0, d = 1, dp = 3 }, regmgr = { s = 0, d = 0, dp = 99 } })
-  assert(sw.actions.d == 1 and sw.actions.dp == 3 and sw.regmgr.d == 0 and sw.regmgr.dp == nil, "kept, checked")
+  local sw = core.safe_windows({ actions = { s = 0, d = 1, dp = 3 }, regmgr = { s = 0, d = 0, dp = 99 } }, true)
+  assert(sw.actions.d == 1 and sw.actions.dp == 3 and sw.regmgr.d == 0 and sw.regmgr.dp == nil, "kept, checked (a put-back list)")
+  local sw2 = core.safe_windows({ actions = { s = 0, d = 1, dp = 3 } })
+  assert(sw2.actions.s == 0 and sw2.actions.d == nil and sw2.actions.dp == nil, "round 3: a look or persona's closed window carries no docking")
   local docked_now = { actions = { s = 1, p = "bottom" }, regmgr = { s = 1, p = "bottom" } }
   assert(not core.needs_undock({ actions = { s = 0, d = 1 } }, docked_now), "closed docked: closed, still docked")
   assert(core.needs_undock({ regmgr = { s = 0, d = 0 } }, docked_now), "closed floating: out of the docker")
@@ -1801,6 +1805,272 @@ do -- 38. Round 2 review (2026-11-19), the engine's fixes.
 
   reaper.GetOS, reaper.GetToggleCommandState, reaper.Main_OnCommand, reaper.EnumProjects = go, gt, mo, ep
   ext["ReaPersona/style"], ext["ReaPersona/orig"] = nil, ""
+end
+do -- 39. Round 3 review (2026-11-19). First the code health reviewer's probes (probe_r3.lua, P1-P7), then one check per engine fix.
+  write(tmp .. "/styles.json", read("ReaPersona/styles.json"))
+  write(tmp .. "/user_styles.json", '{"styles": []}')
+  local share = tmp .. "/share_r3"
+  os.execute(win and ('mkdir "' .. (share .. "/blobs"):gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. share .. "/blobs'"))
+  ext["ReaPersona/sync folder"] = share
+  os.remove(tmp .. "/sync_state.json")
+  core = load_core()
+
+  -- P1: another engine's sync under way: this one does nothing at all until it's over (not merely "not finished in 5 ms")
+  ext["ReaPersona/sync running"] = "another engine|" .. reaper.time_precise()
+  for _ = 1, 5 do assert(core.sync_tick(nil, 50) == nil and core.sync_job, "waiting") end
+  assert(not read(share .. "/" .. core.sync_file_name()), "P1: nothing written while another engine's sync runs")
+  ext["ReaPersona/sync running"] = nil
+  local rep = core.sync_tick()
+  assert(rep and not core.sync_job and ext["ReaPersona/sync running"] == nil, "P1: then done, and the mark gone")
+
+  -- P2: an error inside a spread sync: nil + why, logged, job gone, mark gone
+  local real_now = core.sync_now
+  core.sync_now = function() error("probe boom") end
+  local r, why
+  for _ = 1, 10 do r, why = core.sync_tick(nil, 5); if not core.sync_job then break end end
+  core.sync_now = real_now
+  assert(r == nil and tostring(why):find("probe boom", 1, true) and not core.sync_job, "P2: nil + why: " .. tostring(r) .. " / " .. tostring(why))
+  assert((read(tmp .. "/errors.log") or ""):find("probe boom", 1, true), "P2: in errors.log")
+  assert(ext["ReaPersona/sync running"] == nil, "P2: the mark is gone")
+  assert(tostring(why):find("traceback", 1, true), "round 3 A9: with where it happened")
+
+  -- P3: anything that syncs at once finishes a spread one first (sync_finish)
+  os.execute(win and ('mkdir "' .. (tmp .. "/ColorThemes"):gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. tmp .. "/ColorThemes'"))
+  for n = 1, 6 do write(tmp .. "/ColorThemes/R3_" .. n .. ".ReaperTheme", "theme " .. n) end
+  ext["ReaPersona/sync advanced"] = "themes"
+  assert(core.sync_tick(nil, 0.0001) == nil and core.sync_job, "P3: under way")
+  local job = core.sync_job
+  assert(core.sync_now() and core.sync_job == nil and coroutine.status(job.co) == "dead", "P3: sync_now finished the one under way")
+
+  -- P4: a big sync state (> 512 items): the json yield points inside a spread sync work (no yield across a C boundary)
+  local items = {}
+  for n = 1, 1500 do items["setting probe key " .. n] = { t = 1, v = tostring(n) } end
+  write(share .. "/BIG-1.reapersona-sync.json", core.json_encode({ reapersona_sync = 1, computer = "BIG", items = items }))
+  local calls = 0
+  repeat calls = calls + 1; r, why = core.sync_tick(nil, 0.0001) until r or not core.sync_job or calls > 100000
+  assert(r, "P4: a big sync, spread: " .. tostring(why))
+  os.remove(share .. "/BIG-1.reapersona-sync.json")
+
+  -- P5: REAPER's start: the sync runs spread through defer until it's done (restore_last's own loop)
+  local q, df, tp = {}, reaper.defer, reaper.time_precise
+  local t0 = os.clock()
+  reaper.defer = function(f) q[#q + 1] = f end
+  reaper.time_precise = function() return os.clock() - t0 + (q.skew or 0) end
+  local budgets = {}
+  write(share .. "/OTHER-1.reapersona-sync.json", core.json_encode({ reapersona_sync = 1, computer = "OTHER", items = { ["setting probe start"] = { t = os.time() + 50, v = "came in" } } }))
+  core = load_core()
+  local rt = core.sync_tick
+  core.sync_tick = function(quick, b) budgets[#budgets + 1] = b or "none"; return rt(quick, b) end
+  core.restore_last()
+  q.skew = 11 -- (the 10 seconds after the start)
+  local n = 0
+  while #q > 0 and n < 100000 do n = n + 1; local f = table.remove(q, 1); f() end
+  reaper.defer, reaper.time_precise = df, tp
+  assert(#budgets > 0 and budgets[1] ~= "none", "P5: spread at start: " .. tostring(budgets[1]))
+  assert(not core.sync_job and ext["ReaPersona/probe start"] == "came in", "P5: and finished: " .. tostring(ext["ReaPersona/probe start"]))
+  os.remove(share .. "/OTHER-1.reapersona-sync.json")
+  core.sync_tick = rt
+  core.stop_sync()
+
+  -- P6: a first install that failed (no layers.json before it), known only after the restart: no layers.json afterwards
+  os.remove(tmp .. "/layers.json")
+  core = load_core()
+  core.prepare_layers("pro_tools")
+  assert(read(tmp .. "/layers.json") and read(tmp .. "/layers.json.before-install") == "", "P6: prepared")
+  core = load_core()
+  core.cancel_layers()
+  assert(not read(tmp .. "/layers.json") and not read(tmp .. "/layers.json.before-install"), "P6: none, as before")
+
+  -- P7: ensure_scripts: one main action REAPER lost is registered again (not left to which entry next() picks)
+  local reg, regs, ids = {}, 0, 0
+  local ar, rn, nl = reaper.AddRemoveReaScript, reaper.ReverseNamedCommandLookup, reaper.NamedCommandLookup
+  reaper.AddRemoveReaScript = function(add, _, path)
+    for k, p in pairs(reg) do if p == path then reg[k] = nil end end
+    if not add then return 0 end
+    regs, ids = regs + 1, ids + 1; reg["_RS" .. (5000 + ids)] = path; return 5000 + ids
+  end
+  reaper.ReverseNamedCommandLookup = function(id) return "RS" .. id end
+  reaper.NamedCommandLookup = function(name) return reg[name] and 1 or 0 end
+  core.ensure_scripts(true)
+  local function first(t) local ks = {}; for k in pairs(t) do ks[#ks + 1] = k end table.sort(ks); return ks[1] end
+  for _, which in ipairs({ { "main", first(core.scripts.main) }, { "midi", first(core.scripts.midi) } }) do
+    if which[2] then
+      reg[core.scripts[which[1]][which[2]]] = nil; regs = 0
+      core.ensure_scripts()
+      assert(regs == 1, "P7: one lost " .. which[1] .. " action: registered again (" .. regs .. ")")
+    end
+  end
+  -- A10: scripts_missing counts ones REAPER lost (a keymap put back), so the window registers them again
+  core._lost = nil
+  assert(core.scripts_missing() == 0, "all there")
+  reg[core.scripts.main[first(core.scripts.main)]] = nil
+  core._lost = nil
+  assert(core.scripts_missing() == 1, "one lost: counted")
+  reaper.AddRemoveReaScript, reaper.ReverseNamedCommandLookup, reaper.NamedCommandLookup = ar, rn, nl
+  ext["ReaPersona/sync folder"], ext["ReaPersona/sync advanced"] = nil, nil
+  for k = 1, 6 do os.remove(tmp .. "/ColorThemes/R3_" .. k .. ".ReaperTheme") end
+  write(tmp .. "/user_styles.json", '{"styles": []}')
+  core = load_core()
+
+  local has = function(list, spec) for _, k in ipairs(list or {}) do if k[1] == spec then return k end end end
+
+  -- A1: a closed window's docking goes only into put-back lists, never into looks, presets or Layout's "take them as they are"
+  local jf, jr, jp = reaper.JS_Window_Find, reaper.JS_Window_GetRect, reaper.JS_WindowMessage_Post
+  reaper.JS_Window_Find, reaper.JS_Window_GetRect, reaper.JS_WindowMessage_Post = function() end, function() end, function() end
+  write(tmp .. "/reaper.ini", "[reaper]\nundownd_dock=1\n[regmgr]\nwnd_vis=0\ndock=1\n[REAPERdockpref]\nregmgr=0.5 3\n")
+  local wn, wp = core.windows_now(), core.windows_now(nil, true)
+  assert(wn.regmgr.s == 0 and wn.regmgr.d == nil and wp.regmgr.d == 1 and wp.regmgr.dp == 3 and wp.undo.d == 1, "only the put-back list keeps it")
+  for _, f in ipairs(core.feel_now(core.by_id("my_reaper"))) do if f[1] == "windows" then assert(f[2].regmgr.d == nil, "a look or preset: none") end end
+
+  -- A2: Undo History and the Routing Matrix keep their docked flag in REAPER's main section, the Crossfade Editor in its own [xfadeedit] (as seen in reaper.ini on the laptop)
+  local ini = "[reaper]\r\nundownd_vis=0\r\nundownd_dock=1\r\nroutingwnd_vis=0\r\nrouting_dock=0\r\n[xfadeedit]\r\nwnd_vis=0\r\ndock=1\r\n[REAPERdockpref]\r\nundo=0.50000000 2\r\n"
+  local du, pu = core.closed_dock(ini, "undo")
+  assert(du == 1 and pu == 2 and core.closed_dock(ini, "routing") == 0 and core.closed_dock(ini, "xfadeedit") == 1, "read where REAPER keeps them")
+  assert(core.closed_dock("[REAPER]\nrouting_dock=1\n", "routing") == 1, "[REAPER] as older files have it")
+  assert(core.closed_dock("[reaper_video]\ndocked=1\n", "video") == 1 and core.closed_dock("[actions]\nwnd_vis=0\n", "actions") == 0, "docked= and never docked")
+
+  -- A3: docked and closed before, floated by the persona: docked again without the window set, then closed
+  local open, docked, focused, loaded = true, false, nil, false
+  local mo2, dc, dg, du2, sf, gt2 = reaper.Main_OnCommand, reaper.DockIsChildOfDock, reaper.DockGetPosition, reaper.Dock_UpdateDockID, reaper.JS_Window_SetFocus, reaper.GetToggleCommandState
+  reaper.JS_Window_Find = function(t) return (t == "Region/Marker Manager" and open) and "rm" or nil end
+  reaper.JS_Window_GetRect = function() return true, 10, 10, 410, 310 end
+  reaper.JS_WindowMessage_Post = function(h, msg) if h == "rm" and msg == "WM_CLOSE" then open = false end end
+  reaper.DockIsChildOfDock = function(h) return (h == "rm" and docked) and 3 or -1 end
+  reaper.DockGetPosition = function(i) return i == 3 and 0 or -1 end
+  reaper.Dock_UpdateDockID = function(ident, d) focused = ident .. " " .. d end
+  reaper.JS_Window_SetFocus = function() end
+  reaper.GetToggleCommandState = function(id) if id == 40326 then return open and 1 or 0 end return 0 end
+  reaper.Main_OnCommand = function(id) if id == 41172 then docked = not docked elseif id == 40326 then open = true elseif id >= 40454 and id <= 40463 then loaded = true end end
+  core.drain()
+  core.apply_windows({ regmgr = { s = 0, d = 1, dp = 3 } }, true)
+  core.drain()
+  assert(docked and not open and not loaded and focused == "regmgr 3", "docked again and closed, no window set")
+  reaper.Main_OnCommand, reaper.DockIsChildOfDock, reaper.DockGetPosition, reaper.Dock_UpdateDockID, reaper.JS_Window_SetFocus, reaper.GetToggleCommandState = mo2, dc, dg, du2, sf, gt2
+  reaper.JS_Window_Find, reaper.JS_Window_GetRect, reaper.JS_WindowMessage_Post = jf, jr, jp
+  os.remove(tmp .. "/reaper.ini")
+
+  -- A4: a switch to a persona with a project part leaves the project follower running (it starts once "style" names it)
+  local states, beat_after = {}, nil
+  local mo3, nl3, gt3, ep3 = reaper.Main_OnCommand, reaper.NamedCommandLookup, reaper.GetToggleCommandState, reaper.EnumProjects
+  reaper.EnumProjects = function(i) if i == -1 then return "proj0", "" end end
+  reaper.GetToggleCommandState = function(id) return states[id] or 0 end
+  reaper.NamedCommandLookup = function(name) return name == "_RSfollow" and 77 or 0 end
+  reaper.Main_OnCommand = function(id) if id == 77 then core.follow_projects() else states[id] = (states[id] == 1) and 0 or 1 end end
+  core.scripts.main["follow projects"] = "_RSfollow"
+  local wf = { id = "built_wf", name = "WF", kind = "built", user = true, feel = {}, keys = {}, alt = 0, project = { srate = 48000, tracks = "", wset = 0 } }
+  core.styles[#core.styles + 1] = wf
+  ext["ReaPersona/style"], ext["ReaPersona/follow beat"], ext["ReaPersona/orig"] = "my_reaper", nil, ""
+  core.use(wf)
+  beat_after = ext["ReaPersona/follow beat"]
+  table.remove(core.styles)
+  reaper.Main_OnCommand, reaper.NamedCommandLookup, reaper.GetToggleCommandState, reaper.EnumProjects = mo3, nl3, gt3, ep3
+  assert(beat_after, "the follower's first step saw the new persona and kept going")
+  ext["ReaPersona/follow beat"], ext["ReaPersona/style"] = nil, "my_reaper"
+
+  -- A5: a key moved in a one-DAW persona gives it a layer of its own, so the move isn't lost to the DAW's layer
+  local moved = assert(core.build_style({ { kind = "daw", id = "pro_tools", keys = true, rebind = { ["Ctrl+S"] = "Ctrl+Alt+Shift+F12" } } }, "Moved", "built_moved"))
+  assert(not moved.keys_from and has(moved.keys, "Ctrl+Alt+Shift+F12") and has(moved.keys, "Ctrl+Alt+Shift+F12")[2] == 40026 and not has(moved.keys, "Ctrl+S"), "kept")
+
+  -- A6: a full sync keeps only the file signatures it looked up (a theme folder's are gone)
+  local share6 = tmp .. "/share_r3b"
+  os.execute(win and ('mkdir "' .. share6:gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. share6 .. "'"))
+  write(tmp .. "/ColorThemes/R3s.ReaperTheme", "t")
+  write(tmp .. "/sync_state.json", core.json_encode({ items = {}, sigs = { [tmp .. "/ColorThemes/Folder/old.png"] = { sig = "1|2", h = "0123456789abcdef", n = 1 } } }))
+  ext["ReaPersona/sync folder"], ext["ReaPersona/sync advanced"] = share6, "themes"
+  core = load_core()
+  assert(core.sync_tick())
+  assert(not read(tmp .. "/sync_state.json"):find("Folder/old.png", 1, true), "the theme folder's signature went")
+  -- A9: a spread sync whose folder changed meanwhile (another engine's start_sync, say) writes nothing
+  write(tmp .. "/ColorThemes/R3t.ReaperTheme", "u")
+  assert(core.sync_tick(nil, 0.0001) == nil and core.sync_job, "under way")
+  local before6 = read(share6 .. "/" .. core.sync_file_name())
+  ext["ReaPersona/sync folder"] = share6 .. "/elsewhere"
+  local fr, fwhy = core.sync_tick()
+  assert(fr == nil and tostring(fwhy):find("folder changed", 1, true) and read(share6 .. "/" .. core.sync_file_name()) == before6, tostring(fwhy))
+  os.remove(tmp .. "/ColorThemes/R3t.ReaperTheme")
+  ext["ReaPersona/sync folder"] = share6
+  core.stop_sync()
+  ext["ReaPersona/sync advanced"] = nil
+  os.remove(tmp .. "/ColorThemes/R3s.ReaperTheme")
+
+  -- A8: the other computers' entries are encoded once (kept on the entry), not at every sync
+  local theirs = { { items = { ["setting x"] = { t = 5, v = "a" } } } }
+  core.sync_merge({}, {}, {}, theirs, 9, 9)
+  assert(theirs[1].items["setting x"]._h == '"a"', "kept on it")
+
+  -- A10: one relaunch rule
+  local go = reaper.GetOS
+  reaper.GetOS = function() return "Win64" end
+  assert(core.relaunch_exe("C:\\Program Files\\REAPER (x64)\\", function() end) == "C:/Program Files/REAPER (x64)/reaper.exe")
+  reaper.GetOS = function() return "linux-x86_64" end
+  local function env(t) return function(k) return t[k] end end
+  assert(core.relaunch_exe("/opt/REAPER", env({})) == "/opt/REAPER/reaper", "Linux: the binary")
+  assert(core.relaunch_exe("/tmp/.mount_ab/usr", env({ APPIMAGE = "/home/j/REAPER.AppImage", APPDIR = "/tmp/.mount_ab" })) == "/home/j/REAPER.AppImage", "this REAPER's AppImage")
+  assert(core.relaunch_exe("/tmp/.mount_ab/usr", env({ APPIMAGE = "/home/j/Launcher.AppImage", APPDIR = "/tmp/.mount_a" })) == "/tmp/.mount_ab/usr/reaper", "another AppImage's: not it (/ boundary)")
+  assert(core.relaunch_exe("/opt/REAPER", env({ APPIMAGE = "", APPDIR = "/opt/REAPER" })) == "/opt/REAPER/reaper", "an empty APPIMAGE: the binary")
+  reaper.GetOS = go
+  -- .DS_Store and friends never sync
+  assert(core.os_junk(".DS_Store") and core.os_junk("._tool.lua") and core.os_junk("Thumbs.db") and core.os_junk("desktop.ini") and not core.os_junk("tool.lua"))
+  assert(not core.item_allowed("code Scripts/Mine/.DS_Store", { h = "0123456789abcdef" }) and not core.item_allowed("tpl FXChains/._Lead.RfxChain", { h = "0123456789abcdef" }))
+  assert(#core.sync_merge({}, {}, {}, { { items = { ["code Scripts/Mine/.DS_Store"] = { t = 5, v = { h = "0123456789abcdef", n = 1 } } } } }, 9, 9) == 0, "not taken from elsewhere")
+  -- personas 5.40 migrated (both_os = true, a stray plain key kept on a Mac) are built once more, and its stray goes
+  write(tmp .. "/user_styles.json", core.json_encode({ styles = { { id = "built_40", name = "Forty", kind = "built", alt = 16, both_os = true,
+    blocks = { core.keys_block("pro_tools") }, keys = { { "win:Ctrl+Tab", 40318, "x" }, { "mac:Alt+Tab", 40318, "x" }, { "Ctrl+Tab", 40318, "stray" }, { "Ctrl+Shift+J", 40001, "by hand" } } } } }))
+  core = load_core()
+  local f40 = core.load_json(tmp .. "/user_styles.json").styles[1]
+  assert(f40.both_os == 2 and not has(f40.keys, "Ctrl+Tab") and has(f40.keys, "win:Ctrl+Tab") and has(f40.keys, "mac:Alt+Tab") and has(f40.keys, "Ctrl+Shift+J"), "rebuilt once more")
+  write(tmp .. "/user_styles.json", '{"styles": []}')
+  core = load_core()
+  -- the self-updater: a file cut short isn't swapped in
+  local stage = tmp .. "/_upd"
+  os.execute(win and ('mkdir "' .. stage:gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. stage .. "'"))
+  write(stage .. ".done", "<index></index>")
+  write(stage .. "/ReaPersona.lua", "-- @version 9.9\n")
+  write(stage .. "/reapersona_core.lua", "local x = (")
+  local core_before = read(tmp .. "/reapersona_core.lua")
+  local done, uwhy = core.update_poll({ stage = stage, until_t = math.huge, info = { version = "9.9", files = { { "ReaPersona.lua", "u" }, { "reapersona_core.lua", "u" } } } })
+  assert(done == false and tostring(uwhy):find("incomplete", 1, true) and read(tmp .. "/reapersona_core.lua") == core_before, tostring(uwhy))
+  os.remove(stage .. "/ReaPersona.lua"); os.remove(stage .. "/reapersona_core.lua")
+  -- a synced colour held for the persona isn't written back over by the switch's own queued step
+  local hex = function(s) return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end)) end
+  reaper.JS_Window_Find, reaper.JS_Window_GetRect, reaper.JS_WindowMessage_Post = function() end, function() end, function() end
+  ext["ReaPersona/style"], ext["ReaPersona/orig"], ext["ReaPersona/colour look"] = "my_reaper", "", '{"mine":1}'
+  core.drain()
+  core.use({ id = "built_cw", name = "CW", feel = { { "windows", { actions = { s = 0 } }, "w" } }, colours = { ["colour look"] = '{"persona":1}' }, keys = {}, alt = 0 })
+  assert(core.hold_colour("colour look", '{"mine":2}'))
+  core.drain() -- (the windows entry's queued step saves the list)
+  assert(ext["ReaPersona/orig"]:find("x|colour look|" .. hex('{"mine":2}'), 1, true), "still the new one: " .. ext["ReaPersona/orig"])
+  core.use(core.by_id("my_reaper"))
+  core.drain()
+  assert(ext["ReaPersona/colour look"] == '{"mine":2}')
+  ext["ReaPersona/colour look"], ext["ReaPersona/orig"] = nil, ""
+  reaper.JS_Window_Find, reaper.JS_Window_GetRect, reaper.JS_WindowMessage_Post = jf, jr, jp
+  -- a settings block 5.40 saved with gaps (its keys as text) is read as numbers
+  local sb = assert(core.build_style({ { kind = "settings", group = "editing", values = setmetatable({ ["3"] = 1 }, core.OBJECT) } }, "S", "built_s"))
+  local xf = false
+  for _, f in ipairs(sb.feel) do if f[1] == "toggle" and f[2] == 40041 and f[3] == 1 then xf = true end end
+  assert(xf, "auto-crossfade on")
+  -- a key moved takes its other-system twin along: the new key on both systems; a key a lower block replaces keeps its twin
+  local mv = { { kind = "daw", id = "pro_tools", keys = true, feel = false, theme = false, mouse = false, rebind = { ["Ctrl+Tab"] = "F5" } } }
+  local w1 = assert(core.build_style(mv, "M", "built_mv")).keys
+  core.IS_MAC = true
+  local m1 = assert(core.build_style(mv, "M", "built_mv")).keys
+  core.IS_MAC = false
+  assert(core.json_encode(w1) == core.json_encode(m1), "the same on either system")
+  assert(has(w1, "F5") and has(w1, "F5")[2] == 40318 and not has(w1, "mac:Alt+Tab") and not has(w1, "win:Ctrl+Tab") and not has(w1, "win:F5"), "F5 on both, the twin gone")
+  local mine = core.keys_block("my_reaper"); mine.extra = { { "Ctrl+Tab", 40001, "mine" } }
+  local w2 = assert(core.build_style({ core.keys_block("pro_tools"), mine }, "R", "built_rp")).keys
+  assert(has(w2, "Ctrl+Tab") and has(w2, "Ctrl+Tab")[2] == 40001 and has(w2, "mac:Alt+Tab"), "replaced on Windows only: the Mac keeps Pro Tools' key")
+  -- descriptions: no colour hex, no second colons
+  local ds = assert(core.build_style({ core.keys_block("logic"), { kind = "colour", hex = "#3A86FF" }, core.new_block("mouse", "logic") }, "Mix", "built_ds"))
+  assert(not ds.description:find("#3A86FF", 1, true) and ds.description == "Mix: Logic Pro's shortcuts, Logic Pro's mouse.", ds.description)
+  -- the no-Python install believes a cancel only after REAPER stays open (both step kinds say so)
+  reaper.GetOS = function() return "Win64" end
+  local cmd_text = read(assert(core.stage_install({ pid = "999999", stamp = "20260101-000009", remove = true })))
+  assert(cmd_text:find(":cancelgone", 1, true) and cmd_text:find("if %g% geq 15 goto cancelkept", 1, true), "cmd: 15 s look")
+  reaper.GetOS = go
+  write(tmp .. "/install_cancelled", "x") -- (the staged step from above is dropped by the next stage_install; this file isn't read here)
+  os.remove(tmp .. "/install_cancelled")
 end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))

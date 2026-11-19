@@ -121,7 +121,7 @@ function M.json_decode(s) -- objects, arrays, strings, numbers, booleans, null (
         if obj then
           ws(); local k = str(); ws(); i = i + 1; t[k] = val()
           n = n + 1
-          if n % 512 == 0 and M.sync_job then M.sync_due() end -- (a big sync file: a spread sync gives the frame back)
+          if n % 64 == 0 and M.sync_job then M.sync_due() end -- (a big sync file: a spread sync gives the frame back; every 64 keeps a slice near its budget. Round 3)
         else local v = val(); if v ~= nil then n = n + 1; t[n] = v end end -- (a null in a list is left out, not a hole that cuts it short)
         ws(); local d = s:sub(i, i); i = i + 1
         if d ~= "," then
@@ -170,7 +170,7 @@ function M.json_encode(v, ind) -- for scripts.json and shared styles (pure)
       table.sort(keys)
       for _, k in ipairs(keys) do
         parts[#parts + 1] = M.json_encode(k) .. ": " .. M.json_encode(v[k], inner)
-        if M.sync_job and #parts % 512 == 0 then M.sync_due() end -- (the sync state's 10,000 items: a spread sync gives the frame back)
+        if M.sync_job and #parts % 64 == 0 then M.sync_due() end -- (the sync state's 10,000 items: a spread sync gives the frame back)
       end
     else
       -- ("#int": its whole-number keys are numbers, so json_decode gives back [2], not ["2"]. Round 2 code health review)
@@ -319,6 +319,9 @@ function M.end_trial(now) -- the persona it was tried over back in use (My REAPE
   if not M.is_trial() then return nil end
   local back = M.by_id(reaper.GetExtState(M.SECTION, "trial back"))
   if not back or back.id == "built_try" then back = M.by_id("my_reaper") or M.styles[1] end
+  -- (now: the preview's own moves first, so its put-back list is complete (a windows entry is filled by a queued step) before it's read.
+  -- Round 3 engine review)
+  if now then M.drain() end
   M.use(back)
   if now then M.drain() end
   return back
@@ -474,10 +477,12 @@ M.WINDOW_PLACES = { "float", "bottom", "left", "top", "right" }
 local PLACE_OK = { float = true, bottom = true, left = true, top = true, right = true }
 local SIDE_NAME = { [0] = "bottom", [1] = "left", [2] = "top", [3] = "right" }
 local function tool_hwnd(w) return w[2] and reaper.JS_Window_Find and reaper.JS_Window_Find(w[2], true) or nil end
-function M.windows_now(fast) -- -> every window above as it is now (nil without js_ReaScriptAPI: it couldn't see them)
+function M.windows_now(fast, putback) -- -> every window above as it is now (nil without js_ReaScriptAPI: it couldn't see them)
   -- (fast: for showing them, the Layout tab twice a second. A window whose show action says it's closed isn't looked for: finding one that
   -- isn't there walks every window REAPER has (performance review 2026-11-19). shortcut: one docked behind another tab says closed too, so
   -- it shows as closed; a switch's put-back list always looks, so nothing of yours is closed by it)
+  -- (putback: a put-back list, which also keeps whether each closed window was docked, and its docker. Only there: in a look or a persona it
+  -- became a wish, which undocked your windows and moved them to another computer's docker. Round 3 changes review)
   if not (reaper.JS_Window_Find and reaper.JS_Window_GetRect) then return nil end
   local out, ini = {}, nil
   for _, w in ipairs(M.TOOL_WINDOWS) do
@@ -490,21 +495,35 @@ function M.windows_now(fast) -- -> every window above as it is now (nil without 
         e = { s = 1, p = "float", r = ok and { l, top, r - l, math.abs(b - top) } or nil } -- (a Mac's rect counts from the bottom: review 2026-11-18)
       end
     elseif w[2] then
-      ini = ini or M.read(res .. "/reaper.ini") or ""
       e = { s = 0 }
-      e.d, e.dp = M.closed_dock(ini, w[1]) -- (docked or floating when it was closed, and its docker: put back that way. James, round 2)
+      if putback then
+        ini = ini or M.read(res .. "/reaper.ini") or ""
+        e.d, e.dp = M.closed_dock(ini, w[1]) -- (docked or floating when it was closed, and its docker: put back that way. James, round 2)
+      end
     else e = { s = reaper.GetToggleCommandState(w[3]) == 1 and 1 or 0 } end
     out[w[1]] = e
   end
   return out
 end
+-- Where reaper.ini keeps a window's docked flag when it isn't dock= in [<ident>]: Undo History and the Routing Matrix in REAPER's main
+-- section, the Crossfade Editor in [fadeedit] (as BuyOne's "Save-Load window set" reads them; the drive's own reaper.ini has undownd_* and
+-- routingwnd_vis in [reaper]. Round 3 engine review)
+M.DOCK_KEYS = { undo = { "reaper", "undownd_dock" }, routing = { "reaper", "routing_dock" } } -- (seen in reaper.ini on the laptop; the Crossfade Editor has its own [xfadeedit] section)
 function M.closed_dock(ini, ident) -- (pure) a closed window as reaper.ini last saved it: 1 docked / 0 floating, and the docker it docks into (or nil)
   -- (its own section's dock=, as REAPER writes it for toolbars and the MIDI editor; none: never docked. shortcut: reaper.ini as REAPER last
   -- wrote it, which can be older than a change made this session; check live)
-  local sec = M.ini_section(ini or "", ident) or M.ini_section(ini or "", "reaper_" .. ident) or ""
-  local d = (sec:match("\ndock=(%d)") or sec:match("\ndocked=(%d)")) == "1" and 1 or 0
-  local dp = tonumber((M.ini_section(ini or "", "REAPERdockpref") or ""):match("\n" .. ident:gsub("%p", "%%%0") .. "=%S+ (%d+)") or "")
-  return d, dp
+  ini = ini or ""
+  local at = M.DOCK_KEYS[ident]
+  local d
+  if at then
+    local sec = M.ini_section(ini, at[1]) or M.ini_section(ini, at[1]:upper()) or "" -- (REAPER's main section: [reaper] here, [REAPER] in older files)
+    d = sec:match("\n" .. at[2] .. "=(%d)")
+  else
+    local sec = M.ini_section(ini, ident) or M.ini_section(ini, "reaper_" .. ident) or ""
+    d = sec:match("\ndock=(%d)") or sec:match("\ndocked=(%d)")
+  end
+  local dp = tonumber((M.ini_section(ini, "REAPERdockpref") or ""):match("\n" .. ident:gsub("%p", "%%%0") .. "=%S+ (%d+)") or "")
+  return d == "1" and 1 or 0, dp
 end
 function M.needs_undock(want, now) -- (pure) whether putting `want` back needs ReaPersona's window set, which takes windows out of dockers
   for _, w in ipairs(M.TOOL_WINDOWS) do
@@ -517,7 +536,9 @@ function M.needs_undock(want, now) -- (pure) whether putting `want` back needs R
   end
   return false
 end
-function M.safe_windows(t) -- (pure) only the windows above, open/closed, a known place and a sane rect; nil when there's none
+function M.safe_windows(t, putback) -- (pure) only the windows above, open/closed, a known place and a sane rect; nil when there's none
+  -- (putback: a put-back list, the only kind that keeps a closed window's docked flag and docker: round 3. Looks and personas saved by 5.41
+  -- carry them too, and they're dropped here)
   if type(t) ~= "table" then return nil end
   local out, any = {}, false
   for _, w in ipairs(M.TOOL_WINDOWS) do
@@ -526,7 +547,7 @@ function M.safe_windows(t) -- (pure) only the windows above, open/closed, a know
     if s == 0 or s == 1 then
       local e = { s = s }
       if s == 1 and w[2] and PLACE_OK[x.p] then e.p = x.p end -- (one without a title opens and closes only)
-      if s == 0 and w[2] and (x.d == 0 or x.d == 1) then -- (closed: docked or floating then, and its docker)
+      if putback and s == 0 and w[2] and (x.d == 0 or x.d == 1) then -- (closed: docked or floating then, and its docker)
         e.d = x.d
         local dp = math.tointeger(tonumber(x.dp))
         if dp and dp >= 0 and dp <= 15 then e.dp = dp end
@@ -685,13 +706,19 @@ local function keep_back(k)
   end
   window_back(k.explorer)
 end
-function M.apply_windows(want) -- the windows as `want` has them (the ones it doesn't mention stay as they are), queued behind other window moves
-  want = M.safe_windows(want)
+function M.apply_windows(want, putback) -- the windows as `want` has them (the ones it doesn't mention stay as they are), queued behind other window moves
+  -- (putback: a put-back list, whose closed windows say whether they were docked: M.windows_now)
+  want = M.safe_windows(want, putback)
   if not (want and reaper.JS_Window_Find and reaper.JS_WindowMessage_Post) then return end
   local target = {}
   later(function() -- (once the moves queued before are done: what's open now, and whether one must come out of a docker)
-    local now = M.windows_now() or {}
-    for _, w in ipairs(M.TOOL_WINDOWS) do target[w[1]] = want[w[1]] end
+    local now = M.windows_now(nil, true) or {}
+    for _, w in ipairs(M.TOOL_WINDOWS) do
+      local x, n = want[w[1]], now[w[1]]
+      -- (docked and closed before, open floating now (the persona floated it): docked again, which needs no window set, then closed. Round 3)
+      if x and x.s ~= 1 and x.d == 1 and n and n.s == 1 and n.p == "float" then x = { s = 0, d = 1, dp = x.dp, redock = true } end
+      target[w[1]] = x
+    end
     local slot = M.needs_undock(want, now) and M.undock_slot()
     if slot then -- (the set closes every one of them and takes them out of their dockers: the ones not mentioned go back as they were)
       for _, w in ipairs(M.TOOL_WINDOWS) do
@@ -801,7 +828,7 @@ local function restore_feel(windows_left) -- (windows_left: a window's original 
       hold_pref(a, false)
       if tonumber(b) then want_pref(a, tonumber(b)) end -- (this setting's part, the other bits as REAPER has them: review 2026-11-18)
     elseif kind == "w" and a ~= "" then -- (every other window, as it was before the persona: 5.34)
-      M.apply_windows(M.json_decode(unhexs(a)))
+      M.apply_windows(M.json_decode(unhexs(a)), true)
     elseif (kind == "t" or kind == "s" or kind == "c" or (kind == "r" and a ~= "none")) and not M.feel_ok()[a] then
       M.log("put back: not one of ReaPersona's settings, left: " .. list[n]) -- (review 2: whatever reached this list can't run other actions)
     elseif kind == "t" then
@@ -829,7 +856,9 @@ local function restore_feel(windows_left) -- (windows_left: a window's original 
     end)
     if not ok then M.log("put back " .. list[n] .. ": " .. tostring(err)) end
   end
-  reaper.SetExtState(M.SECTION, "orig", "", true)
+  -- (session-only: what's on disk stays the old list until apply_feel persists the new one after its first entry, as the batched keys (style,
+  -- colours, held prefs) do. A crash between them left the old persona in "style" with nothing to put back. Round 3 engine review)
+  reaper.SetExtState(M.SECTION, "orig", "", false)
 end
 -- Which parts of a persona's feel you let personas change (Settings). All on by default, so each persona does what its DAW does
 -- (Pro Tools, FL Studio and Cubase keep the mixer in its own window); switch one off to keep your own way.
@@ -867,7 +896,7 @@ local function apply_feel(st, windows_left, as_base) -- (as_base: your own look 
   local list = {}
   windows_left = windows_left or {}
   local token = not as_base and (tostring(reaper.time_precise()) .. ":" .. math.random(1, 1e9)) or nil
-  if token then reaper.SetExtState(M.SECTION, "orig token", token, false) end
+  if token then reaper.SetExtState(M.SECTION, "orig token", token, false); M.live_orig = { token = token, list = list } end -- (M.hold_colour edits it too)
   -- (after every entry: a switch cut short can still be put back. A step queued behind window moves writes only while this switch is still
   -- the latest: an older one's would overwrite a newer switch's list. Review 2026-11-18)
   -- (persist only at the end and in queued steps: REAPER rewrites reaper-extstate.ini on each persisted set, 12.9 ms measured on the laptop,
@@ -943,7 +972,7 @@ local function apply_feel(st, windows_left, as_base) -- (as_base: your own look 
         local idx = #list + 1
         list[idx] = "w||"
         later(function()
-          list[idx] = "w|" .. hexs(M.json_encode(M.windows_now() or {})) .. "|"
+          list[idx] = "w|" .. hexs(M.json_encode(M.windows_now(nil, true) or {})) .. "|" -- (a put-back list: closed windows' docking kept)
           save(true)
         end)
       end
@@ -1143,6 +1172,11 @@ function M.hold_colour(k, v) -- your colour key k changed elsewhere while a pers
   local list, held = orig_list(), false
   for n, l in ipairs(list) do if l:match("^x|([^|]+)|") == k then list[n] = "x|" .. k .. "|" .. hexs(v); held = true end end
   if held then reaper.SetExtState(M.SECTION, "orig", table.concat(list, ";;"), true) end
+  -- (and the switch's own list, while its queued steps can still save it: they wrote the old original back. Round 3 engine review)
+  local live = M.live_orig
+  if held and live and live.token == reaper.GetExtState(M.SECTION, "orig token") then
+    for n, l in ipairs(live.list) do if l:match("^x|([^|]+)|") == k then live.list[n] = "x|" .. k .. "|" .. hexs(v) end end
+  end
   return held
 end
 function M.colours_now() -- -> the colour set in use here, or nil when no look has been picked yet
@@ -1749,7 +1783,6 @@ function M.use(st)
   if st.project and #M.last_project_setup == 0 and (tonumber(st.project.srate) or 0) + #(st.project.tracks or "") + #(st.project.template or "") > 0 and not M.fresh_project(0) then
     M.last_project_setup[#M.last_project_setup + 1] = "not its project setup (this project already has work in it: New project with it opens one)"
   end
-  if st.project then M.try("start following", M.start_following) end -- (watches for new projects to set up)
   reaper.SetExtState(M.SECTION, "orig project", tostring(reaper.EnumProjects(-1)), false)
   local th = M.theme_for(st)
   if not th and not (st.themes and st.themes[1]) then th = M.theme_for(M.by_id("my_reaper") or M.styles[1]) end -- (no theme of its own: yours)
@@ -1762,6 +1795,9 @@ function M.use(st)
   end
   M.themeset_apply(st) -- (5.35)
   M.set_ext("style", st.id)
+  -- (watches for new projects to set up: started once "style" names this persona, or its first step read the old one, found no project
+  -- part and stopped. Round 3 engine review)
+  if st.project then M.try("start following", M.start_following) end
   M.write_midi_map(st)
   set_toggles(st.base or st.id)
   end)
@@ -1816,11 +1852,12 @@ function M.restore_last()
   if M.watch_on() then M.start_following() end -- (a persona per project, or a workflow's new projects: the action that follows project tabs)
   M.try("restore: startup block", M.upgrade_startup)
   -- (what your other computers changed while this one was off: 10 seconds after the start, so REAPER isn't held up opening)
-  -- (spread over REAPER's frames, about 8 ms of it each: James, round 2, "no freeze")
+  -- (spread over REAPER's frames, about 12 ms of it each: James, round 2, "no freeze"; 12, not 8, round 3's default: frames stay well under
+  -- 33 ms and it takes about 2.3x its own time, not 3.5x)
   local at = reaper.time_precise() + 10
   local function later()
     if reaper.time_precise() < at then return reaper.defer(later) end
-    M.sync_tick(nil, 8)
+    M.sync_tick(nil, 12)
     if M.sync_job then reaper.defer(later) end
   end
   reaper.defer(later)
@@ -1976,7 +2013,16 @@ function M.scripts_missing()
     if not M.scripts.main["use " .. st.id] and M.all_actions() then n = n + 1 end -- (out of the Actions list unless asked for: M.ensure_scripts)
     for _, k in ipairs(st.midi_keys or {}) do if not M.scripts.midi[k[1]] then n = n + 1 end end
   end
-  return n
+  -- (and ones REAPER lost: a keymap put back from a backup, or imported with "replace", drops their registrations while scripts.json keeps
+  -- the ids. Looked at most every 2 seconds: Check asks every frame. Round 3 install review)
+  if not M._lost or reaper.time_precise() - M._lost.at > 2 then
+    local lost = 0
+    for _, part in ipairs({ M.scripts.main, M.scripts.midi }) do
+      for _, id in pairs(part) do if type(id) == "string" and reaper.NamedCommandLookup(id) == 0 then lost = lost + 1 end end
+    end
+    M._lost = { at = reaper.time_precise(), n = lost }
+  end
+  return n + M._lost.n
 end
 -- The Actions list for someone who isn't making shortcuts (James, 5.9.0: it listed 20 of ours): what the persona keys run (play from start,
 -- memory location) and following projects stay; switching persona ("use <DAW>", next, restore last) is there when a key, a toolbar, a
@@ -2470,18 +2516,24 @@ end
 function M.block_title(b)
   local st = b.id and M.by_id(b.id)
   local name = st and st.name or tostring(b.id)
+  -- (said the way the shortcuts already are, "Logic Pro's mouse", not "Logic Pro: Mouse": in "Undone:", the draft bar and descriptions a
+  -- second colon read badly, and OSARA read it out. Round 3 UX review)
+  local function low(s) s = tostring(s); return (s:match("^%u%u") or s:match("^Media ")) and s or (s:sub(1, 1):lower() .. s:sub(2)) end
   if b.kind == "daw" then
     if M.block_slot(b) == "keys" then return b.id == "my_reaper" and "Your own shortcuts" or (name .. "'s shortcuts") end
     return name
-  elseif b.kind == "mouse" then return name .. ": Mouse"
-  elseif b.kind == "feel" then return (b.id and name or "Your own") .. ": " .. M.aspect_name(b.aspect) -- (5.34: windows set on Layout have no persona)
+  elseif b.kind == "mouse" then return name .. "'s mouse"
+  elseif b.kind == "feel" then return (b.id and (name .. "'s ") or "Your ") .. low(M.aspect_name(b.aspect)) -- (5.34: windows set on Layout have no persona)
   elseif b.kind == "settings" then return (group_by_id(b.group) or { name = tostring(b.group) }).name
-  elseif b.kind == "theme" then return "Theme: " .. tostring(b.file):gsub("%.ReaperTheme%a*$", "")
-  elseif b.kind == "colour" then return "Colour " .. tostring(b.hex)
-  elseif b.kind == "colours" then return M.colours_label(b.set)
-  elseif b.kind == "project" then return "Project" .. ((b.name or "") ~= "" and (": " .. b.name) or "")
-  elseif b.kind == "layout" then return "Layout: your own"
-  elseif b.kind == "themeset" then return "Theme settings: " .. (M.safe_themeset(b.set) and M.themeset_words(M.safe_themeset(b.set)) or "none") end
+  elseif b.kind == "theme" then return "the " .. tostring(b.file):gsub("%.ReaperTheme%a*$", "") .. " theme"
+  elseif b.kind == "colour" then return "its colour"
+  elseif b.kind == "colours" then local l = M.colours_label(b.set):gsub("^Colours: ", ""); return l == "Colours" and "colours" or (l .. " colours")
+  elseif b.kind == "project" then return (b.name or "") ~= "" and (b.name .. " project") or "its project part"
+  elseif b.kind == "layout" then return "your own layout"
+  elseif b.kind == "themeset" then
+    local x = M.safe_themeset(b.set)
+    return "the theme's settings" .. (x and (" (" .. M.themeset_words(x):gsub("^[^:]*: ", "") .. ")") or " (none)")
+  end
   return "?"
 end
 function M.feel_ok() -- the commands a persona's feel may run: ReaPersona's own personas' and settings' (cached)
@@ -2611,7 +2663,8 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
     for _, f in ipairs(st.feel or {}) do if M.aspect_of(f) == b.aspect then feel(f) end end
   elseif b.kind == "settings" then
     for i, item in ipairs((group_by_id(b.group) or {}).items or {}) do
-      local v = tonumber((b.values or {})[i]) or -1
+      local vals = type(b.values) == "table" and b.values or {}
+      local v = tonumber(vals[i] or vals[tostring(i)]) or -1 -- (["3"]: a block 5.40 saved with gaps, its keys as text. Round 3 install review L9)
       if type(item[1]) == "table" and item[1][v] then feel({ "choice", item[1], item[1][v], item[2] .. ": " .. item[3][v] })
       elseif type(item[1]) ~= "table" and v >= 0 then feel({ "toggle", item[1], v, item[2] .. ": " .. (v == 1 and "on" or "off") }) end
     end
@@ -2663,25 +2716,33 @@ function M.built_keys(blocks, per)
   local A, B, out, all = wins(per), wins(there), {}, {}
   -- (a marked key left out on its own system: its twin for the other one (same block, same action) goes too, both ways, so the list is the
   -- same whichever system builds it. Round 2 engine review: only this system's were looked at)
-  local function gone(list, tag, other)
+  -- (round 3: only one left out by you counts, not one a lower block's key replaced: that's this system's physical key doing something else,
+  -- a different key on the other system (engine review 6). And a marked key you moved moves for both systems: the new key, unmarked, and
+  -- its twin goes (default for engine review 6))
+  local function gone(list, tag, other, won)
     for i, l in ipairs(list or {}) do
-      for _, e in ipairs(l) do if (e.kind == "key" or e.kind == "midi") and mark(e) == tag and (e.off or e.lost_to) then out[other .. twin(i, e)] = true end end
+      for _, e in ipairs(l) do
+        if (e.kind == "key" or e.kind == "midi") and mark(e) == tag and (e.off or (e.moved_from and won[id(i, e)] == e)) then out[other .. twin(i, e)] = true end
+      end
     end
   end
-  gone(per, tag_here, tag_there)
-  gone(there, tag_there, tag_here)
+  gone(per, tag_here, tag_there, A)
+  gone(there, tag_there, tag_here, B)
   local function add(i, e, tag) local c = copy(e.entry); c[1] = (tag or "") .. c[1]; all[#all + 1] = { i = i, kind = e.kind, ord = e.ord, entry = c } end
+  local function marked(i, e) -- a marked winner: moved (both systems), its twin left out (none), or this system's
+    if e.moved_from and there then add(i, e) elseif not out[mark(e) .. twin(i, e)] then add(i, e, mark(e)) end
+  end
   for i, l in ipairs(per) do
     for _, e in ipairs(l) do
-      if A[id(i, e)] == e and not (mark(e) and out[mark(e) .. twin(i, e)]) then
-        if mark(e) or not there then add(i, e, mark(e)) elseif B[id(i, e)] then add(i, e) else add(i, e, tag_here) end
+      if A[id(i, e)] == e then
+        if mark(e) then marked(i, e) elseif not there then add(i, e) elseif B[id(i, e)] then add(i, e) else add(i, e, tag_here) end
       end
     end
   end
   for i, l in ipairs(there or {}) do
     for _, e in ipairs(l) do
       if B[id(i, e)] == e then
-        if mark(e) then if not out[mark(e) .. twin(i, e)] then add(i, e, mark(e)) end
+        if mark(e) then marked(i, e)
         elseif not A[id(i, e)] then add(i, e, tag_there) end
       end
     end
@@ -2691,10 +2752,13 @@ function M.built_keys(blocks, per)
   for _, x in ipairs(all) do local t = x.kind == "key" and keys or midi; t[#t + 1] = x.entry end
   return keys, midi
 end
+-- (both_os is the version of the rule a persona's keys were built by: true was 5.40/5.41's, whose migration on a Mac kept the other system's
+-- keys plain and whose twin rule differed; 2 is round 3's. One built by an older rule is built again, once. Round 3 install review L1)
+M.BOTH_OS = 2
 function M.both_systems() -- personas you built before both systems' keys were kept: built again from their blocks, once (James, 2026-11-19: silently)
   local changed, todo = {}, {}
   for _, st in ipairs(M.styles) do
-    if st.user and st.kind == "built" and not st.both_os and not st.keys_from and type(st.blocks) == "table" then todo[#todo + 1] = { st = st, old = st.keys or {} } end
+    if st.user and st.kind == "built" and st.both_os ~= M.BOTH_OS and not st.keys_from and type(st.blocks) == "table" then todo[#todo + 1] = { st = st, old = st.keys or {} } end
   end
   if #todo == 0 then return end
   local function rebuild(t)
@@ -2705,8 +2769,11 @@ function M.both_systems() -- personas you built before both systems' keys were k
     -- Round 2 reviews: only this system's were looked at, and a Mac-built persona migrated on Windows kept its Mac keys plain)
     local have = {}
     for _, k in ipairs(keys) do have[M.canon((tostring(k[1]):gsub("^%a%a%a:", "")))] = true end
-    for _, k in ipairs(t.old) do if type(k) == "table" and not have[M.canon((tostring(k[1]):gsub("^%a%a%a:", "")))] then keys[#keys + 1] = k end end
-    st.keys, st.midi_keys, st.midi_all, st.both_os = keys, midi, nil, true
+    -- (a marked old key came from a build, never from your hand: an older rule's, not kept)
+    for _, k in ipairs(t.old) do
+      if type(k) == "table" and not tostring(k[1]):match("^%a%a%a:") and not have[M.canon(tostring(k[1]))] then keys[#keys + 1] = k end
+    end
+    st.keys, st.midi_keys, st.midi_all, st.both_os = keys, midi, nil, M.BOTH_OS
     M.midi_here(st)
     changed[st.id] = st
   end
@@ -2722,7 +2789,7 @@ function M.both_systems() -- personas you built before both systems' keys were k
   if next(changed) == nil then return end
   local users = load(USERS)
   if bad[USERS] then return end
-  for _, u in ipairs(users) do local st = changed[u.id]; if st then u.keys, u.midi_keys, u.both_os = st.keys, st.midi_all, true end end
+  for _, u in ipairs(users) do local st = changed[u.id]; if st then u.keys, u.midi_keys, u.both_os = st.keys, st.midi_all, M.BOTH_OS end end
   M.save_json(USERS, { styles = users })
 end
 function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true when its shortcuts need installing; or nil + why
@@ -2733,7 +2800,7 @@ function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true
   for i, b in ipairs(blocks) do
     local src = b.id and M.by_id(b.id)
     if b.kind == "daw" and b.keys and src then daws[#daws + 1] = b.id end
-    names[#names + 1] = M.block_title(b)
+    if b.kind ~= "colour" then names[#names + 1] = M.block_title(b) end -- (its colour isn't news in words: the dot shows it)
     for _, e in ipairs(per[i]) do
       if not e.lost_to and not e.off then
         if e.kind == "feel" then st.feel[#st.feel + 1] = copy(e.entry) -- (the keys and MIDI keys: M.built_keys, below)
@@ -2759,7 +2826,7 @@ function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true
   st.themes = { st.theme }
   st.keys, st.midi_keys = M.built_keys(blocks, per) -- (both systems': the MIDI ones for this system in midi_keys, as written in midi_all)
   M.midi_here(st)
-  st.both_os = true
+  st.both_os = M.BOTH_OS
   local install = false
   local layer, _, own = M.keys_layer(blocks, st.id)
   if layer == "borrow" then st.keys_from = daws[1]; M.resolve_keys(st) -- (one DAW's keys, all of them: its shortcut layer, nothing to install)
@@ -2769,7 +2836,8 @@ function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true
       "Use one persona's shortcuts with its own mouse, or your own shortcuts, or delete a persona of yours you don't use" end
     install = true
   else st.alt = 0 end -- (no shortcuts block: your own keys)
-  st.description = name .. ": " .. table.concat(names, ", ") .. "." .. (#names > 1 and " Where two parts set the same thing, the later one counts." or "") -- (plain words: UX review 2026-11-19)
+  -- (plain words: UX review 2026-11-19; no colour hex and no order you never see: round 3)
+  st.description = name .. ": " .. table.concat(names, ", ") .. "."
   return st, install
 end
 -- ---------------------------------------------------------------- workflows: what a new project gets
@@ -3252,7 +3320,12 @@ function M.keys_layer(blocks, id)
   -- (a key left out on either system means not all of them: Ctrl+Tab unticked on Windows isn't a key on a Mac, so the Mac counted them all
   -- and borrowed the whole layer, Ctrl+Tab and its twin included. Round 2)
   local left_out = false
-  for _, b in ipairs(blocks) do for slot, on in pairs(type(b.off) == "table" and b.off or {}) do if on and (tostring(slot):match("^key ") or tostring(slot):match("^midi ")) then left_out = true end end end
+  for _, b in ipairs(blocks) do
+    for slot, on in pairs(type(b.off) == "table" and b.off or {}) do if on and (tostring(slot):match("^key ") or tostring(slot):match("^midi ")) then left_out = true end end
+    -- (a key moved, or one added: not the DAW's own keys either. A key moved to a free key kept the count, the persona borrowed the DAW's
+    -- layer and the move was lost. Round 3 cross-platform review)
+    if (type(b.rebind) == "table" and next(b.rebind)) or (type(b.extra) == "table" and next(b.extra)) then left_out = true end
+  end
   if #daws == 1 and not own and not left_out and count[daws[1]] == #M.keys_here(st.keys) + #(st.midi_keys or {}) then return "borrow", daws end
   return "own", daws, own
 end
@@ -3786,6 +3859,25 @@ function M.reaper_pid()
   local title = reaper.JS_Window_GetTitle and reaper.JS_Window_GetTitle(reaper.GetMainHwnd()) or nil
   return M.pid_from_tasklist(reaper.ExecProcess('tasklist /V /FO CSV /NH /FI "IMAGENAME eq reaper.exe"', 15000), title)
 end
+-- What starts REAPER again after an install: one rule for the window, the setup script and the install without Python (round 3: it was in
+-- three places and had drifted). d: REAPER's folder (GetExePath), env: os.getenv (both for tests). -> the program or app to start
+function M.relaunch_exe(d, env)
+  env = env or os.getenv
+  d = (d or reaper.GetExePath()):gsub("\\", "/"):gsub("/+$", "")
+  local os_name = reaper.GetOS()
+  local win, mac = os_name:find("^Win") ~= nil, M.IS_MAC
+  if mac then -- (GetExePath is the folder holding REAPER.app, "/Applications", not a path inside it: install_shortcuts.py opens the .app)
+    local exe = d:match("^(.-%.app)") or d .. "/REAPER.app"
+    for _, a in ipairs({ d .. "/REAPER.app", d .. "/REAPER64.app" }) do if not d:match("%.app") and reaper.file_exists(a .. "/Contents/Info.plist") then exe = a; break end end
+    return exe
+  end
+  local exe = d .. (win and "/reaper.exe" or "/reaper") -- (Linux: the reaper binary beside it)
+  -- (an AppImage: GetExePath is its temporary mount, gone once REAPER quits, and $APPIMAGE is the file itself; only when this REAPER runs from
+  -- that mount ($APPDIR, on a / boundary): a REAPER started from another AppImage'd launcher inherits its APPIMAGE too. Rounds 1-2)
+  local ai, appdir = env("APPIMAGE"), (env("APPDIR") or ""):gsub("/+$", "")
+  if not win and ai and ai ~= "" and appdir ~= "" and (d == appdir or d:sub(1, #appdir + 1) == appdir .. "/") then exe = ai end
+  return exe
+end
 
 -- The swap step, from the same plan, as Windows' cmd or a Mac's and Linux's /bin/sh (5.16). p: { checks = { {"same", live, seen} |
 -- {"absent", live} }, swaps = { {"copy", from, to} | {"move", from, to} | {"del", path} }, pend = { {was, path} }, pid, exe, args,
@@ -3797,8 +3889,11 @@ local function cmd_step(dir, p) -- (cmd, not PowerShell: PowerShell hangs at sta
     "rem REAPER to close, swaps the staged files in if nothing changed the originals since they were read, and starts REAPER again.", "set n=0", ":wait" }
   b[#b + 1] = "if exist " .. w(p.cancel) .. " goto cancelled"
   local sys = '"%SystemRoot%\\System32\\' -- (Windows' own tools by full path: Git's find on the PATH is another program)
-  if p.pid then b[#b + 1] = sys .. 'tasklist.exe" /FI "PID eq ' .. p.pid .. '" /NH 2>nul | ' .. sys .. 'find.exe" " ' .. p.pid .. ' " >nul || goto closed'
-  else b[#b + 1] = sys .. 'tasklist.exe" /FI "IMAGENAME eq reaper.exe" /NH 2>nul | ' .. sys .. 'find.exe" /i "reaper.exe" >nul || goto closed' end -- shortcut: any REAPER counts when this one's id wasn't found
+  local function running_or(label) -- (REAPER still there, or on to label)
+    if p.pid then return sys .. 'tasklist.exe" /FI "PID eq ' .. p.pid .. '" /NH 2>nul | ' .. sys .. 'find.exe" " ' .. p.pid .. ' " >nul || goto ' .. label end
+    return sys .. 'tasklist.exe" /FI "IMAGENAME eq reaper.exe" /NH 2>nul | ' .. sys .. 'find.exe" /i "reaper.exe" >nul || goto ' .. label -- shortcut: any REAPER counts when this one's id wasn't found
+  end
+  b[#b + 1] = running_or("closed")
   for _, l in ipairs({ "set /a n+=1", "if %n% geq 180 goto notclosed", sys .. 'ping.exe" -n 2 127.0.0.1 >nul', "goto wait", ":closed" }) do b[#b + 1] = l end -- (180 x 1 s: REAPER may be asking whether to save)
   for _, c in ipairs(p.checks) do
     if c[1] == "same" then b[#b + 1] = sys .. 'fc.exe" /b ' .. w(c[2]) .. " " .. w(c[3]) .. " >nul 2>&1 || goto changed"
@@ -3813,7 +3908,11 @@ local function cmd_step(dir, p) -- (cmd, not PowerShell: PowerShell hangs at sta
     ":changed", "copy /y " .. w(dir .. "/changed.txt") .. " " .. w(p.status) .. " >nul", "goto relaunch",
     ":failed", "copy /y " .. w(dir .. "/failed.txt") .. " " .. w(p.status) .. " >nul", "goto relaunch",
     ":notclosed", "copy /y " .. w(dir .. "/notclosed.txt") .. " " .. w(p.status) .. " >nul", "goto done",
-    ":cancelled", "del " .. w(p.cancel) .. " 2>nul", "goto done", ":relaunch" }) do b[#b + 1] = l end
+    -- (the window says "cancelled" when REAPER still runs 4 s after File: Quit; one slow to shut down looks the same, so it's believed only
+    -- if REAPER is still there 15 s later, as install_shortcuts.py does. Gone by then: the install goes on. Round 3 install review L5)
+    ":cancelled", "set g=0", ":grace", running_or("cancelgone"), "set /a g+=1", "if %g% geq 15 goto cancelkept", sys .. 'ping.exe" -n 2 127.0.0.1 >nul', "goto grace",
+    ":cancelgone", "del " .. w(p.cancel) .. " 2>nul", "goto closed",
+    ":cancelkept", "del " .. w(p.cancel) .. " 2>nul", "goto done", ":relaunch" }) do b[#b + 1] = l end
   if p.exe then
     local args = ""
     for _, a in ipairs(p.args) do args = args .. " " .. w(a) end
@@ -3858,7 +3957,10 @@ local function sh_step(dir, p) -- (POSIX sh and the tools every Mac and Linux ha
   end
   for _, l in ipairs({ "  finish", "}",
     'outcome() { cp -f "$dir/$1.txt" "$st"; [ "$1" = notclosed ] && finish; relaunch; }',
-    "n=0", "while :; do", '  if [ -e "$cancel" ]; then rm -f "$cancel"; finish; fi', "  running || break",
+    -- (a cancel is believed only if REAPER is still there 15 s later, as install_shortcuts.py does; gone by then, the install goes on. Round 3)
+    "n=0", "while :; do",
+    '  if [ -e "$cancel" ]; then g=0; while running && [ $g -lt 15 ]; do g=$((g + 1)); sleep 1; done; rm -f "$cancel"; running && finish; break; fi',
+    "  running || break",
     "  n=$((n + 1)); [ $n -ge 180 ] && outcome notclosed", "  sleep 1", "done" }) do b[#b + 1] = l end -- (180 x 1 s: REAPER may be asking whether to save)
   for _, c in ipairs(p.checks) do
     if c[1] == "same" then b[#b + 1] = "cmp -s " .. q(c[2]) .. " " .. q(c[3]) .. " || outcome changed"
@@ -3980,8 +4082,7 @@ function M.stage_install(o)
   end
   local os_name = reaper.GetOS()
   local mac = os_name:find("^OSX") ~= nil or os_name:find("^macOS") ~= nil
-  -- (an AppImage REAPER: GetExePath is its mount, gone once it quits, so the AppImage itself starts again. Cross-platform review 2026-11-19)
-  local exe = (not windows and not mac and o.exe and os.getenv("APPIMAGE")) or o.exe
+  local exe = o.exe -- (as the caller worked it out with M.relaunch_exe: an inherited $APPIMAGE here overrode its $APPDIR check. Round 3)
   local text, file = (windows and cmd_step or sh_step)(dir, { checks = checks, swaps = swaps, pend = pend_dels, pid = o.pid, exe = exe,
     args = (o.cfg and reaper.file_exists(o.cfg)) and { "-cfgfile", o.cfg } or {}, projects = o.projects or {},
     cancel = M.here .. "/install_cancelled", status = st_file, mac = mac })
@@ -4258,7 +4359,7 @@ function M.uninstall() -- -> lines saying what was done
     end
   end
   local ok, why = M.remove_startup()
-  done[#done + 1] = ok and "The startup block is out of __startup.lua." or ("The startup block is still in __startup.lua: " .. tostring(why))
+  done[#done + 1] = ok and "The startup line is out of REAPER's startup script." or ("The startup line is still in REAPER's startup script: " .. tostring(why)) -- (plain words: round 3)
   local list = {}
   for _, sub in ipairs({ { "actions", 0 }, { "midi_keys", MIDI_SEC } }) do
     local d = M.here .. "/" .. sub[1]
@@ -4278,7 +4379,7 @@ function M.uninstall() -- -> lines saying what was done
   for _, sec in ipairs({ M.SECTION, "DAWStyles" }) do -- (DAWStyles: what the old name kept)
     for _, k in ipairs(M.extstate_keys(ini, sec)) do reaper.DeleteExtState(sec, k, true) end
   end
-  done[#done + 1] = "ReaPersona's settings are out of REAPER's ExtState."
+  done[#done + 1] = "ReaPersona's settings are gone from REAPER."
   M.forget()
   return done
 end
@@ -5035,7 +5136,8 @@ function M.import(path) -- -> the style, or nil + why. Shortcuts need install_sh
   return save_user_style(st)
 end
 function M.keyname(s) -- styles store Windows key names; on a Mac REAPER's Ctrl is Cmd, Alt is Option and Win is Control
-  if M.IS_MAC then s = s:gsub("Ctrl", "Cmd"):gsub("Alt", "Option"):gsub("Win", "Control") end -- ("Option", as the Mouse tab's checkboxes say)
+  if M.IS_MAC then s = s:gsub("Ctrl", "Cmd"):gsub("Alt", "Option"):gsub("Win", "Control") -- ("Option", as the Mouse tab's checkboxes say)
+  elseif M.IS_LINUX then s = s:gsub("Win%+", "Super+") end -- (Linux calls that key Super, as the Mouse tab now does: round 3)
   return s
 end
 local function esc(s) return (tostring(s):gsub("[&<>]", { ["&"] = "&amp;", ["<"] = "&lt;", [">"] = "&gt;" })) end
@@ -5108,7 +5210,7 @@ local TEXT_KINDS = { setting = true, ext = true, pref = true, xstate = true, rep
 local GONE_KINDS = { persona = true, preset = true, recipe = true } -- (deleting one of these deletes it on your other computers too)
 function M.setup_items() -- -> everything of yours as items; the kinds whose file doesn't parse (left alone: nothing deleted or written)
   local items, skip = {}, {}
-  M.sync_bad = {}
+  M.sync_bad, M.collect_failed = {}, nil
   local function add(kind, list, field, path)
     if not list then skip[kind] = true; M.sync_bad[#M.sync_bad + 1] = ({ persona = "user_styles.json", preset = "presets.json", recipe = "user_themes.json" })[kind]; return end
     for k, v in pairs(list) do
@@ -5140,7 +5242,8 @@ function M.setup_items() -- -> everything of yours as items; the kinds whose fil
   for _, a in ipairs(M.ADVANCED) do -- (advanced: only the parts switched on; the rest are left alone both ways)
     if M.advanced_on(a.id) and not M.quick and (mine_now or (a.id ~= "prefs" and a.id ~= "keys")) and (M.sync_folder() ~= "" or not M.FILE_PARTS[a.id]) then
       local ok, err = pcall(a.collect, items, ini)
-      if not ok then M.log("sync " .. a.id .. ": " .. tostring(err)); for _, k in ipairs(a.kinds) do skip[k] = true end end
+      if not ok then M.log("sync " .. a.id .. ": " .. tostring(err)); M.collect_failed = true; for _, k in ipairs(a.kinds) do skip[k] = true end end
+      M.sync_due() -- (a spread sync: the frame back between parts; the keys part alone is 23 ms. Round 3)
     else for _, k in ipairs(a.kinds) do skip[k] = true end end
   end
   return items, skip
@@ -5173,6 +5276,7 @@ function M.sync_merge(state, mine, skip, theirs, now, seed) -- (pure; seed: a ti
       local k = type(item) == "string" and kind(item)
       local good = type(r) == "table" and tonumber(r.t) and k and SYNC_KINDS[k] and not skip[k] and not (k == "code" and M.code_skipped(item:sub(6)))
         and not (k == "theme" and not M.theme_top(item:sub(7))) -- (a file inside a theme folder, from a computer on 5.40: stays there)
+        and not ((k == "tpl" or k == "code" or k == "theme") and M.os_junk(item:match("[^/]+$"))) -- (a .DS_Store and the like, from a computer on 5.41)
       looked = looked + 1
       if looked % 256 == 0 then M.sync_due() end
       if good and not r.del then
@@ -5180,7 +5284,10 @@ function M.sync_merge(state, mine, skip, theirs, now, seed) -- (pure; seed: a ti
       end
       local t = good and math.min(tonumber(r.t), now + 86400)
       if good then
-        local h = r.del and "" or M.json_encode(r.v)
+        -- (kept on the entry: the other computers' files are decoded once per change (mem.others), so each is encoded once, not at every
+        -- sync. Round 3 performance review)
+        local h = r.del and "" or r._h or M.json_encode(r.v)
+        if not r.del then r._h = h end
         local b = best[item]
         if not b or t > b.t or (t == b.t and h > b.h) then best[item] = { t = t, h = h, v = r.v, del = r.del and true or nil } end -- (ties: the larger hash, everywhere)
       end
@@ -5230,6 +5337,7 @@ function M.item_allowed(item, v)
       ok = ok and M.code_file(rest)
     end
     if k == "theme" then ok = ok and M.theme_top(rest) end -- (top-level theme files only: James, round 2)
+    ok = ok and not M.os_junk(rest:match("[^/]+$")) -- (.DS_Store, ._ copies, Thumbs.db, desktop.ini: round 3)
     return ok and (v == nil or (type(v) == "table" and tostring(v.h):match("^%x+$") ~= nil and #tostring(v.h) == 16))
   end
   if k == "ini" then return ({ ["reaper-kb.ini"] = 1, ["reaper-mouse.ini"] = 1, ["reaper-menu.ini"] = 1 })[rest] ~= nil and (v == nil or (type(v) == "table" and tostring(v.h):match("^%x+$") ~= nil)) end
@@ -5258,6 +5366,9 @@ local function apply_items(list)
       local ok, res = pcall(M.ADVANCED_APPLY[k], rest, a.v, rep)
       if ok and res ~= false then rep.advanced = (rep.advanced or 0) + 1 else rep.failed[#rep.failed + 1] = a; if not ok then M.log("sync apply " .. a.item .. ": " .. tostring(res)) end end
     end
+    -- (a spread sync: the frame back between items, each a 12.6 ms persisted write when it differs; 20 of them were a quarter-second freeze.
+    -- Each item checks the put-back list itself (hold_colour), so a switch in between loses nothing. Round 3 performance review)
+    M.sync_due()
   end
   local function files(kind, path, wrap, count)
     if #by[kind] == 0 then return end
@@ -5402,7 +5513,10 @@ end
 -- A content hash (64-bit FNV-1a over 8-byte words, then the length), enough to tell files apart for syncing. Pure.
 function M.content_hash(s)
   local h, prime, n, i = -3750763034362895579, 1099511628211, #s, 1
-  while i + 7 <= n do h = (h ~ string.unpack("<i8", s, i)) * prime; i = i + 8 end
+  while i + 7 <= n do
+    h = (h ~ string.unpack("<i8", s, i)) * prime; i = i + 8
+    if i % 1048576 == 1 and M.sync_job then M.sync_due() end -- (a big file in a spread sync: the frame back every MB, 10 ms of hashing. Round 3)
+  end
   for j = i, n do h = (h ~ s:byte(j)) * prime end
   return string.format("%016x", h ~ n)
 end
@@ -5460,6 +5574,9 @@ function M.code_file(rel) -- one of your scripts' files worth carrying? (pure)
   return not (e and CODE_NOT[e:lower()])
 end
 local CODE_MAX = 4 * 1024 * 1024
+-- (files the system makes beside yours: Finder's .DS_Store and ._ copies, Windows' Thumbs.db and desktop.ini. Never synced: a .DS_Store
+-- changes with every Finder view and landed as junk on Windows. Round 3 cross-platform review) (pure)
+function M.os_junk(name) local l = tostring(name):lower(); return l == ".ds_store" or l:sub(1, 2) == "._" or l == "thumbs.db" or l == "desktop.ini" end
 -- Files: walk a folder of the resource path. -> { [relative path] = full path }
 local function walk(base, rel, out, keep)
   local dir = base .. (rel ~= "" and ("/" .. rel) or "")
@@ -5468,7 +5585,7 @@ local function walk(base, rel, out, keep)
     local f = reaper.EnumerateFiles(dir, i)
     if not f then break end
     local r = (rel ~= "" and (rel .. "/") or "") .. f
-    if not f:match("%.bak$") and not f:match("%.tmp$") and not f:match("~$") and not f:match("%.bad%-") and (not keep or keep(r)) then out[r] = dir .. "/" .. f end
+    if not f:match("%.bak$") and not f:match("%.tmp$") and not f:match("~$") and not f:match("%.bad%-") and not M.os_junk(f) and (not keep or keep(r)) then out[r] = dir .. "/" .. f end
     if i % 64 == 63 then M.sync_due() end -- (a spread sync: the frame back now and then)
   end
   reaper.EnumerateSubdirectories(dir, -1)
@@ -5488,6 +5605,7 @@ local sig_cache -- (path -> { sig = "size|mtime", h = hash }: hashed again only 
 local function file_value(path, max)
   local sig
   max = max or MAX_FILE
+  if M.sig_seen then M.sig_seen[path] = true end -- (a full sync keeps only the signatures it looked up: sync_now)
   if reaper.JS_File_Stat then
     local ok, size, _, mtime = reaper.JS_File_Stat(path)
     if ok == 0 then if size > max then return nil end sig = size .. "|" .. tostring(mtime) end
@@ -5647,7 +5765,9 @@ local function put_file(rel, v)
   if rel:find("%.%.") or rel:match("^[/\\]") or rel:match("^%a:") then return false end -- (only inside the resource path)
   local text = from_blob(v)
   if not text or M.content_hash(text) ~= v.h then return false end
-  local mine = M.here:sub(1, #res) == res and M.here:sub(#res + 2):lower() .. "/" or nil
+  -- (paths compared with / and in any case: GetResourcePath keeps Windows' backslashes and M.here doesn't, so this never matched there. Round 3)
+  local r = res:gsub("\\", "/"):gsub("/+$", "")
+  local mine = M.here:lower():sub(1, #r + 1) == r:lower() .. "/" and M.here:sub(#r + 2):lower() .. "/" or nil
   if (mine and rel:lower():sub(1, #mine) == mine) or (M.owned and M.owned[rel]) then return false end -- (ReaPersona's own files, and ReaPack's: review 2)
   if rel:match("^ProjectTemplates/") then text = text:gsub("[^\n]*S&M_PROJACTION[^\n]*\n?", "") end -- (no action run as a project opens)
   local full = res .. "/" .. rel
@@ -5900,7 +6020,13 @@ function M.sync_now(start)
   local others = M.sync_others(dir)
   local theirs = {}
   for _, o in ipairs(others) do if o.d then theirs[#theirs + 1] = o.d end end
+  M.sig_seen = not M.quick and {} or nil
   local mine, skip = M.setup_items()
+  if M.sig_seen and not M.collect_failed then -- (a full sync that read everything keeps only the signatures it looked up: 12,544 of the
+    -- desktop's 14,078 were files inside theme folders, no longer synced, 60% of sync_state.json. Round 3 performance review)
+    for p in pairs(sig_cache) do if not M.sig_seen[p] then sig_cache[p] = nil end end
+  end
+  M.sig_seen = nil
   local seed = (first and start == "theirs") and 0 or now
   if type(state.seed0) == "table" and next(state.seed0) then -- (advanced parts just switched on with "take theirs")
     seed = { }
@@ -5909,6 +6035,9 @@ function M.sync_now(start)
   local todo, changes = M.sync_merge(state.items, mine, skip, theirs, now, seed)
   changes = changes + purged
   if type(state.seed0) == "table" then for k in pairs(state.seed0) do if not skip[k] then state.seed0[k] = nil; changes = changes + 1 end end end
+  -- (a spread sync takes a second or two: a folder changed or stopped meanwhile, in this engine or another, isn't written into. Round 3)
+  local function moved() return M.sync_folder():gsub("[/\\]+$", "") ~= dir end
+  if moved() then return nil, "the sync folder changed while it was syncing: nothing was taken in or written" end
   local rep = apply_items(todo)
   for _, a in ipairs(rep.failed) do state.items[a.item] = a.was end
   rep.others, rep.changed = others, #todo > #rep.failed
@@ -5929,11 +6058,16 @@ function M.sync_now(start)
   local text = M.json_encode({ reapersona_sync = 1, computer = M.computer(), items = items }) .. "\n"
   local keep = setmetatable({}, M.OBJECT) -- (kept before the folder is written: what came in is never sent back as a change of this computer's)
   for item, st in pairs(state.items) do keep[item] = st end
+  if moved() then return nil, "the sync folder changed while it was syncing: this computer's file wasn't written" end
+  -- (each write in a frame of its own in a spread sync: together they were 60-75 ms. Round 3 performance review)
   M.save_json(SYNC_STATE, { items = keep, sigs = setmetatable(sig_cache or {}, M.OBJECT), seed0 = state.seed0 })
   mem.state, mem.state_sig = state, file_sig(SYNC_STATE)
+  M.sync_due()
   if M.read(path) ~= text and not M.write(path, text) then return nil, "couldn't write in " .. dir .. " (is the folder there, and its drive connected?)" end
   mem.own_sig = file_sig(path)
+  M.sync_due()
   reaper.SetExtState(M.SECTION, "sync last", os.time() .. "|" .. M.setup_summary(rep) .. (#bad > 0 and ("|skipped " .. table.concat(bad, ", ")) or ""), true)
+  M.sync_due()
   if not M.quick then M.try("tidying the sync folder", M.tidy_blobs, dir, state.items, others) end
   return rep
 end
@@ -5955,6 +6089,7 @@ function M.tidy_blobs(dir, mine, others)
       local y, mo, d, h, mi, se = tostring(mtime or ""):match("(%d+)%.(%d+)%.(%d+) (%d+):(%d+):(%d+)")
       local t = y and os.time({ year = tonumber(y), month = tonumber(mo), day = tonumber(d), hour = tonumber(h), min = tonumber(mi), sec = tonumber(se) })
       if ok == 0 and t and os.time() - t > 86400 and os.remove(b .. "/" .. f) then gone = gone + 1 end
+      M.sync_due() -- (a spread sync: 1,500 blobs going at once would be one long frame. Round 3)
     end
   end
   return gone
@@ -6020,7 +6155,10 @@ function M.sync_tick(quick, budget_ms)
     job = { quick = quick }
     job.co = coroutine.create(function()
       while job.until_t and sync_lock() do coroutine.yield() end -- (another engine's: after it, unless this one must finish now)
-      return M.sync_now()
+      -- (an error keeps where it happened in errors.log, not only its message. Round 3 code health review)
+      local r = table.pack(xpcall(M.sync_now, debug.traceback))
+      if not r[1] then return nil, tostring(r[2]) end
+      return table.unpack(r, 2, r.n)
     end)
     M.sync_job = job
   end
@@ -6156,6 +6294,11 @@ function M.update_poll(job) -- -> nil while it's downloading; then how many file
   for _, f in ipairs(info.files) do
     got[f[1]] = M.read(stage .. "/" .. f[1])
     if not got[f[1]] or #got[f[1]] == 0 then M.remove_tree(stage); return false, "not every file came (" .. f[1] .. "): nothing was changed" end
+    -- (a download cut short leaves part of a file: each script must compile and each .json parse, or nothing goes in. Round 3 install review L3)
+    local whole = true
+    if f[1]:match("%.lua$") then whole = _G.load(got[f[1]], "=" .. f[1]) ~= nil -- (Lua's load: this file's own `load` reads user_styles.json)
+    elseif f[1]:match("%.json$") then whole = pcall(M.json_decode, got[f[1]]) end
+    if not whole then M.remove_tree(stage); return false, f[1] .. " came incomplete (the connection dropped?): nothing was changed. Update again" end
   end
   if (got["ReaPersona.lua"] or ""):match("@version%s+(%S+)") ~= info.version then M.remove_tree(stage); return false, "the download isn't version " .. info.version .. ": nothing was changed" end
   -- (every file written beside its old one first, then each put in place, ReaPersona.lua last: it opens the window and says the version, so

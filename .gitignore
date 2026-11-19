@@ -47,3 +47,8 @@ ReaPersona/backups/
 *.before-*
 *.new
 ReaPersona/layers.json.before-install
+# (review round 3) editor and merge leftovers: make_index refuses them too
+*.orig
+*.rej
+*.bak
+*~

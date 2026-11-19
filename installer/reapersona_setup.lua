@@ -191,7 +191,10 @@ local function apply(path)
       or ("no keymap file: " .. tostring(not ok and path or (skipped and skipped[1]) or "unknown")))
     out.note = "REAPER now looks and clicks like " .. st.name .. ". This Flatpak REAPER can't restart itself to load shortcuts, so: close REAPER, " ..
       "run  python3 '" .. core.here .. "/install_shortcuts.py' --apply-setup  in a terminal, then start REAPER again." ..
-      (made and (" (No python3? In REAPER: Actions > Show action list > Key Map... > Import..., pick " .. path .. " and choose to merge; toolbars aren't included.)") or "")
+      (made and (" (No python3? In REAPER: Actions > Show action list > Key Map... > Import..., pick " .. path .. " and choose to merge; toolbars aren't included.)") or "") ..
+      -- (ReaPack's Uninstall deletes install_shortcuts.py, and with it the only way to take the layers and toolbars out again. Round 3, L6)
+      " To remove ReaPersona one day: close REAPER, run  python3 '" .. core.here .. "/install_shortcuts.py' --remove --apply-prefs  first, and " ..
+      "only then uninstall it in ReaPack (that command needs ReaPersona's files)."
     return finish()
   end
   local start, how

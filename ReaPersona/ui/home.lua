@@ -40,7 +40,7 @@ function trying_bar() -- (under the top bar while a theme is on trial; goes back
   ImGui.SetCursorPosX(ctx, 16)
   ImGui.TextColored(ctx, C.YELLOW, "Trying " .. trying.name:gsub("%.ReaperTheme.*$", "") .. string.format(" (back in %d s)", math.ceil(left)))
   ImGui.SameLine(ctx)
-  if ImGui.SmallButton(ctx, "Keep it##try") then say(trying.name .. " kept."); trying = nil; return end
+  if ImGui.SmallButton(ctx, "Keep it##try") then say((trying.name:gsub("%.ReaperTheme%a*$", "")) .. " kept."); trying = nil; return end
   ImGui.SameLine(ctx)
   if ImGui.SmallButton(ctx, "Go back##try") then trying.ends = 0 end
 end
@@ -59,17 +59,36 @@ end
 -- Python the same install is planned here and a swap step puts it in: a batch file on Windows (5.14), a /bin/sh script on a Mac or
 -- Linux (5.16; until then a Mac without Python got a keymap to import by hand, and no toolbars). core.stage_install.
 -- A Flatpak REAPER (FLATPAK, base.lua): the shortcuts go in by import, the rest with the installer from a terminal.
-local FLATPAK_REMOVE = "close REAPER, run this in a terminal (it takes the shortcut layers and toolbars out of your keymap, backed up first, and puts your own preferences and windows back), then start REAPER again:\n\n"
+-- (Round 3: the command first, and on the clipboard, since a Linux message box can't be copied from; Remove's before ReaPack's uninstall,
+-- which takes install_shortcuts.py with it.)
+local CLIPBOARD = "\n\n(It's on the clipboard: paste it into a terminal.)"
+local function flatpak_remove_text()
+  return "Close REAPER, run this in a terminal, then start REAPER again:\n\n" .. flatpak_cmd("--remove --apply-prefs") .. CLIPBOARD ..
+    "\n\nIt takes the shortcut layers and toolbars out of your keymap (backed up first) and puts your own preferences and windows back. " ..
+    "Run it before you uninstall ReaPersona in ReaPack: it needs ReaPersona's files."
+end
 local function flatpak_install(remove)
-  if remove then return reaper.MB("This REAPER runs as a Flatpak, so ReaPersona can't finish with a restart. To finish, " .. FLATPAK_REMOVE .. flatpak_cmd("--remove --apply-prefs"), "ReaPersona: remove", 0) end
+  if remove then return reaper.MB("This REAPER runs as a Flatpak, so ReaPersona can't finish with a restart.\n\n" .. flatpak_remove_text(), "ReaPersona: remove", 0) end
   local path, n, skipped = core.make_keymap()
   if not path then core.cancel_layers(); return reaper.MB("No keymap made: " .. tostring(skipped[1]), "ReaPersona", 0) end
-  reaper.MB("This REAPER runs as a Flatpak, which closes anything waiting for REAPER to quit, so the shortcuts go in without a restart:\n\n" ..
-    "1. In the Actions window (opening now), choose Key Map > Import... and pick\n" .. path .. "\n2. Choose to merge, not replace.\n\n" ..
-    "That's " .. n .. " shortcuts." .. (#skipped > 0 and (" Skipped (no action here yet): " .. table.concat(skipped, ", ") .. ".") or "") ..
-    "\n\nOr everything at once (the shortcuts, toolbars, and whatever is waiting for a restart): close REAPER, run this in a terminal, then start REAPER again:\n\n" ..
-    flatpak_cmd("--apply-setup"), "ReaPersona: install the shortcuts", 0)
+  reaper.MB("This REAPER runs as a Flatpak, which closes anything waiting for REAPER to quit, so ReaPersona can't install with a restart.\n\n" ..
+    "Everything at once (the shortcuts, toolbars, and whatever is waiting for a restart): close REAPER, run this in a terminal, then start REAPER again:\n\n" ..
+    flatpak_cmd("--apply-setup") .. CLIPBOARD ..
+    "\n\nOr just the shortcuts, without closing REAPER: in the Actions window (opening now), choose Key Map > Import..., pick\n" .. path ..
+    "\nand choose to merge, not replace. That's " .. n .. " shortcuts." .. (#skipped > 0 and (" Skipped (no action here yet): " .. table.concat(skipped, ", ") .. ".") or ""),
+    "ReaPersona: install the shortcuts", 0)
+  core.layers_done() -- (the layer numbers as the file holds them: nothing comes back to say it went in)
+  recount_keys = true -- (Home counts them again when the window is back from the Actions window)
   reaper.Main_OnCommand(40605, 0) -- (Show action list)
+end
+function install_result() -- the last install's note (last_install.txt, then gone), with the layer numbers kept or put back. -> the note, or nil
+  local note = core.read(here .. "/last_install.txt")
+  if not note then return end
+  os.remove(here .. "/last_install.txt")
+  -- (only "installed N shortcut(s)" keeps the new numbers; "not installed", "didn't close ... weren't installed" and the rest put them back.
+  -- The window and the screen-reader menu both come here. Round 3)
+  if note:match("installed %d+ shortcut") then core.try("the install went in", core.layers_done) else core.try("putting layer numbers back", core.cancel_layers) end
+  return note
 end
 function install_shortcuts(remove, extra, asked) -- (remove: Remove ReaPersona, which has asked already: the lines come out instead. extra: a persona that
   -- needs its layer now; asked: the question was already put)
@@ -82,17 +101,7 @@ function install_shortcuts(remove, extra, asked) -- (remove: Remove ReaPersona, 
     if not reaper.file_exists(here .. "/midi_defaults.json") then core.midi_defaults() end
   end
   if FLATPAK then return flatpak_install(remove) end
-  -- (on a Mac GetExePath is the folder holding REAPER.app, e.g. /Applications, not the app: matching ".app" in it found nothing and REAPER never came back)
-  local d = reaper.GetExePath():gsub("\\", "/"):gsub("/+$", "")
-  local exe = d .. (reaper.GetOS():find("^Win") and "/reaper.exe" or "/reaper") -- (Linux: the reaper binary beside it)
-  local ai, appdir = os.getenv("APPIMAGE") or "", (os.getenv("APPDIR") or ""):gsub("/+$", "")
-  if not IS_MAC and not reaper.GetOS():find("^Win") and ai ~= "" and appdir ~= "" and d:sub(1, #appdir) == appdir then -- (an AppImage REAPER: its own file, not the
-    exe = ai -- mount that goes away; only when this REAPER runs from that mount, not any program started from another AppImage. Cross-platform review round 2)
-  end
-  if IS_MAC then
-    exe = d:match("^(.-%.app)") or d .. "/REAPER.app"
-    for _, a in ipairs({ d .. "/REAPER.app", d .. "/REAPER64.app" }) do if not d:match("%.app") and reaper.file_exists(a .. "/Contents/Info.plist") then exe = a; break end end
-  end
+  local exe = core.relaunch_exe() -- (what starts this REAPER again: the .app on a Mac, an AppImage's own file. One rule in the engine: round 3)
   local projects, open = {}, {} -- (the projects open now, reopened with REAPER)
   for i = 0, 50 do
     local p, fn = reaper.EnumProjects(i)
@@ -119,9 +128,10 @@ function install_shortcuts(remove, extra, asked) -- (remove: Remove ReaPersona, 
 end
 remove_finish = function() -- (Remove ReaPersona, once My REAPER is back) -> false: the window closes
   local done = core.uninstall()
-  reaper.MB(table.concat(done, "\n") .. (FLATPAK and ("\n\nNext, as this REAPER runs as a Flatpak: " .. FLATPAK_REMOVE .. flatpak_cmd("--remove --apply-prefs"))
-      or "\n\nNext: REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap, and REAPER opens again.") ..
-    "\n\nLast: Extensions > ReaPack > Browse packages, right-click ReaPersona > Uninstall.", "ReaPersona: removed", 0)
+  reaper.MB(table.concat(done, "\n") .. (FLATPAK and ("\n\nNext, as this REAPER runs as a Flatpak: " .. flatpak_remove_text() ..
+      "\n\nLast, once that's done: Extensions > ReaPack > Browse packages, right-click ReaPersona > Uninstall.")
+      or ("\n\nNext: REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap, and REAPER opens again." ..
+        "\n\nLast: Extensions > ReaPack > Browse packages, right-click ReaPersona > Uninstall.")), "ReaPersona: removed", 0)
   if not FLATPAK then install_shortcuts(true) end -- (Flatpak: the message above is the rest)
   return false
 end
@@ -147,7 +157,7 @@ function setup_all()
       end }
     end
   end
-  steps[#steps + 1] = { "Installing the shortcuts (REAPER restarts)", function(done)
+  steps[#steps + 1] = { FLATPAK and "The steps to install the shortcuts" or "Installing the shortcuts (REAPER restarts)", function(done)
     reaper.MB((#done > 0 and (table.concat(done, "\n") .. "\n\n") or "") .. "Last step: the shortcuts.", "ReaPersona: set up", 0)
     install_shortcuts()
   end }
@@ -390,7 +400,7 @@ function browse_load()
 end
 function browse_page()
   if card("br top") then
-    heading("Browse")
+    heading("Get more themes")
     muted("The REAPER Stash, where most themes, key maps and custom actions are shared. Add downloads one and takes it in like a dropped file; anything that needs a sign-in opens its page instead.")
     for i, c in ipairs(core.STASH_CATS) do
       if i > 1 then ImGui.SameLine(ctx) end

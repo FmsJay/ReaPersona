@@ -1,5 +1,23 @@
 # Changelog
 
+## 5.42.0
+Fixes from review round 3 (fresh reviewers on 5.41.0; install and update came back solid; reports in reapersona-round3/), and three from James.
+- **Mouse & trackpad** shows both ways to add your own at once (a wheel or trackpad move, and a drag or click), each with its own Ctrl/Alt/
+  Shift/Win boxes: no radio buttons to switch between them.
+- **Shortcuts:** "Your own shortcuts" says what they are (your REAPER keymap) instead of showing an empty list after switching back to them.
+- **Undo and Redo with Preview on** update REAPER straight away.
+- **Saving during a preview** makes the saved persona the one in use and says so; Undo switch takes you back to what you had (James's call).
+- **Windows:** Undo History and the Routing Matrix are put back docked when you had them docked and closed (their dock state lives in REAPER's
+  main settings); a docked-and-closed window a persona opened floating comes back docked; the docked state of closed windows stays out of
+  saved looks and personas.
+- **Personas built from one DAW** keep a key you moved; moving a key moves its other-system twin too; personas 5.40 rebuilt are rebuilt once more.
+- **Sync** stays inside its time per frame (more pauses, also in reading and writing files), forgets the 12,500 old theme-folder entries
+  (the state file shrinks from 4.2 to 1.5 MB), tidies and hashes big files a bit at a time, and never syncs .DS_Store, Thumbs.db or desktop.ini.
+  The full sync at close stays (James's call).
+- **Smaller:** the project follower starts with the new persona; Remove with a workflow on puts the workflow's settings back; Flatpak commands
+  go on the clipboard (run Remove's before uninstalling); a self-update won't swap in a file that doesn't load; the installer waits while a
+  save prompt is open instead of giving up after 3 minutes; the Colours page says when a persona holds the colours; plain words in more places.
+
 ## 5.41.0
 Fixes from review round 2 (the same seven reviewers on 5.40.0; performance came back solid; reports in reapersona-round2/).
 - **No more sync freeze:** a full sync now runs a little at a time across frames (James's call), so REAPER keeps responding; Settings > Sync

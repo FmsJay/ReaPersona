@@ -260,6 +260,42 @@ def check_python_alone(work):
     open(cancel, "w").write("x")
     code, started, text = after(load_py(here))
     assert code == 0 and started == ["REAPER-EXE"] and re.search(r"installed \d+ shortcut", text) and not os.path.exists(cancel), text
+
+    def running_for(n):  # (a REAPER that answers "running" n more times, then is gone: as one finishing its quit)
+        left = [n]
+
+        def running():
+            left[0] -= 1
+            return left[0] >= 0
+        return running
+    # ... the same through the grace loop itself (round 3, code-health 8): still running at the first two looks, then gone
+    open(cancel, "w").write("x")
+    mod = load_py(here)
+    mod.reaper_running = running_for(2)
+    code, started, text = after(mod)
+    assert code == 0 and started == ["REAPER-EXE"] and re.search(r"installed \d+ shortcut", text), text
+    # a save prompt left open (round 3, L5): waited for while REAPER is there, then installed and started again; only a long limit ends it
+    mod = load_py(here)
+    assert mod.WAIT_LIMIT >= 30 * 60
+    mod.reaper_running = running_for(4)
+    code, started, text = after(mod)
+    assert code == 0 and started == ["REAPER-EXE"] and re.search(r"installed \d+ shortcut", text), text
+    mod = load_py(here)
+    mod.reaper_running, mod.WAIT_LIMIT = (lambda: True), 0.6
+    code, started, text = after(mod)
+    assert code == 1 and started == [] and text.startswith("REAPER didn't close"), text  # (REAPER is still open: nothing to start)
+    # the terminal route refuses while REAPER runs, before anything waiting is merged in (round 3, code-health 8)
+    os.makedirs(os.path.join(here, "pending"), exist_ok=True)
+    open(os.path.join(here, "pending", "prefs.json"), "w").write('{"undomaxmem": "512"}')
+    ini_before = read(os.path.join(res, "reaper.ini"))
+    mod = load_py(here)
+    mod.reaper_running = lambda: True
+    try:
+        mod.install_now(["install_shortcuts.py", "--apply-setup"])
+        assert False, "install_now ran with REAPER open"
+    except SystemExit as e:
+        assert "Close REAPER first" in str(e), e
+    assert read(os.path.join(res, "reaper.ini")) == ini_before and os.path.exists(os.path.join(here, "pending", "prefs.json")), "nothing merged"
     # the terminal route (a Flatpak REAPER, round 2 B1): --apply-setup puts in what waits, then installs
     os.makedirs(os.path.join(here, "pending"), exist_ok=True)
     open(os.path.join(here, "pending", "prefs.json"), "w").write('{"undomaxmem": "512"}')
@@ -296,7 +332,8 @@ def main():
         try:
             check_python_alone(work)
             print("ok    install_shortcuts.py: --self-test, the post-quit install writes its result and restarts REAPER whatever fails,"
-                  " a 'cancelled' quit that did close, the terminal route (--apply-setup, --remove --apply-prefs)")
+                  " a 'cancelled' quit that did close, a long save prompt, the terminal route (--apply-setup, --remove --apply-prefs,"
+                  " refused while REAPER runs)")
         except AssertionError as e:
             failed += 1
             print("FAIL  install_shortcuts.py on its own: %s" % e)

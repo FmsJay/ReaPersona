@@ -626,12 +626,17 @@ def self_test():
 
 
 CANCEL_GRACE = 15  # (seconds REAPER gets to finish quitting after the window said the quit was cancelled)
+# (how long the post-quit install waits for REAPER to close. A save prompt can stay open a long time, and the window reports a real
+# cancel with install_cancelled, so this is only the last resort: it used to be 3 minutes, and REAPER then quit later and stayed closed. Round 3, L5)
+WAIT_LIMIT = 30 * 60
 
 
 def install_now(argv):
     """REAPER is closed: what waits (--apply-setup: everything in pending/ from your other computers, preferences included; or with
     --remove --apply-prefs: only your own preferences back), ReaPersona's window set out on --remove, then the shortcuts in or out.
     Prints what it did. Shared by the post-quit install and a run from a terminal (a Flatpak REAPER can't restart itself: round 2, B1)."""
+    if reaper_running():  # (before anything waiting is merged in: REAPER would write over reaper.ini and the rest as it quits. Round 3: testable here)
+        sys.exit("Close REAPER first: it reads its keymap and settings only when it starts.")
     if "--apply-setup" in argv:  # (your setup from your other computers, waiting for REAPER to close: 5.11)
         for line in apply_setup():
             print(line)
@@ -660,7 +665,7 @@ def after_reaper_quits(argv):
     import contextlib, io as _io
     out = _io.StringIO()
     try:
-        give_up = time.time() + 180  # (3 minutes: REAPER may be asking whether to save)
+        give_up = time.time() + WAIT_LIMIT  # (REAPER may be asking whether to save: it's waited for as long as it's still there)
         while reaper_running() and time.time() < give_up and not os.path.exists(cancelled):
             time.sleep(0.5)
         if os.path.exists(cancelled):
@@ -762,6 +767,4 @@ if __name__ == "__main__":
         sys.exit(0)
     if "--after-reaper-quits" in sys.argv:
         sys.exit(after_reaper_quits(sys.argv))
-    if reaper_running():  # (checked before anything waiting is merged in: REAPER would write over it as it quits)
-        sys.exit("Close REAPER first: it reads its keymap and settings only when it starts.")
-    install_now(sys.argv)
+    install_now(sys.argv)  # (it refuses while REAPER runs)

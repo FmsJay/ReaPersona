@@ -67,7 +67,7 @@ function style_card(st, w, sel, alt)
   local x, y = ImGui.GetCursorScreenPos(ctx)
   local iw = w - 16
   local ih = math.floor(iw * 0.56)
-  local h = 8 + ih + 52
+  local h = 8 + ih + 52 * UI -- (the name and its line grow with Settings > text size: round 3)
   local mx, my = ImGui.GetMousePos(ctx)
   local on_star = mx >= x + 10 and mx <= x + 38 and my >= y + 10 and my <= y + 38
   local fav = core.is_favourite(st.id)
@@ -89,12 +89,12 @@ function style_card(st, w, sel, alt)
   else
     ImGui.DrawList_AddRectFilled(dl, x + 8, y + 8, x + 8 + iw, y + 8 + ih, solid(mix(P.card, col, 0.35)), 6)
   end
-  ImGui.DrawList_AddCircleFilled(dl, x + 16, y + 8 + ih + 17, 4.5, solid(col))
-  ImGui.DrawList_AddTextEx(dl, bold, 15, x + 26, y + 8 + ih + 8, C.TEXT, st.short or st.name)
+  ImGui.DrawList_AddCircleFilled(dl, x + 16, y + 8 + ih + 17 * UI, 4.5 * UI, solid(col))
+  ImGui.DrawList_AddTextEx(dl, bold, 15 * UI, x + 26, y + 8 + ih + 8 * UI, C.TEXT, st.short or st.name)
   local sub = st.preset and ("yours, on " .. (core.by_id(st.base) or { name = "" }).name) or st.kind == "theme" and "theme, with your keys"
     or st.id == "my_reaper" and "your own setup" or st.id == "base_reaper" and "REAPER as it ships" or st.kind == "built" and "built by you" or st.user and "yours"
     or "keys, theme and layout"
-  ImGui.DrawList_AddTextEx(dl, font, 13, x + 26, y + 8 + ih + 27, C.MUTED, sub)
+  ImGui.DrawList_AddTextEx(dl, font, 13 * UI, x + 26, y + 8 + ih + 27 * UI, C.MUTED, sub)
   if fav or hov then
     ImGui.DrawList_AddCircleFilled(dl, x + 24, y + 24, 13, 0x000000A0)
     draw_star(dl, x + 24, y + 24.5, 9, fav, fav and 0xFFC83CFF or (on_star and 0xFFFFFFFF or 0xFFFFFFB0))
@@ -221,11 +221,11 @@ function detail(sel, alt)
     end
     if core.needs_layer(sel) then
       ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.YELLOW)
-      ImGui.TextWrapped(ctx, "Its shortcuts get a shortcut layer the first time you use it here (REAPER restarts once). REAPER has 16 layers, so ReaPersona gives them only to the personas you use: your favourites, the one in use and your own.")
+      ImGui.TextWrapped(ctx, "Its shortcuts get a shortcut layer the first time you use it here (" .. (FLATPAK and "you import them; the steps say how" or "REAPER restarts once") .. "). REAPER has 16 layers, so ReaPersona gives them only to the personas you use: your favourites, the one in use and your own.")
       ImGui.PopStyleColor(ctx)
     elseif (sel.alt or 0) > 0 and not installed[sel.alt] then
       ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.YELLOW)
-      ImGui.TextWrapped(ctx, "Its shortcuts aren't installed yet: Home > Shortcut layers > Install and restart.")
+      ImGui.TextWrapped(ctx, "Its shortcuts aren't installed yet: " .. INSTALL_WHERE .. ".")
       ImGui.PopStyleColor(ctx)
     end
     for i, s in ipairs(on and core.starts_missing or {}) do -- (scripts it starts with REAPER that aren't installed here, 5.24)
@@ -349,7 +349,8 @@ function detail(sel, alt)
     ImGui.SetItemTooltip(ctx, fav and "Click to take it off Personas > Favourites." or "Puts it on Personas > Favourites (or click the star on its card).")
     ImGui.SameLine(ctx)
     if ImGui.Button(ctx, "Edit##editp") then bld_load(sel) end
-    ImGui.SetItemTooltip(ctx, sel.blocks and "Change any part of it on the Shortcuts, Mouse, Layout, Themes, Colours, Project and REAPER tabs, then Save changes in the bar at the top."
+    ImGui.SetItemTooltip(ctx, sel.id == "my_reaper" and "Change your own layout, mouse, theme and colours on the tabs, then Save changes: it becomes your look on every computer that syncs (Earlier versions, on this page, puts the old one back)."
+      or sel.blocks and "Change any part of it on the Shortcuts, Mouse, Layout, Themes, Colours, Project and REAPER tabs, then Save changes in the bar at the top."
       or "Start from " .. sel.name .. " and change any part on the tabs. It's saved as a persona of yours: " .. sel.name .. " stays as it is.")
     local vid = (sel.id == "my_reaper" or (sel.user and sel.kind == "built")) and sel.id
     local vers = vid and core.versions(vid) or {}
@@ -512,7 +513,7 @@ function daws_page(sel, alt)
     local ok, p = reaper.GetUserFileNameForRead("", "Import a ReaPersona persona", "*.json")
     if ok then
       local st, why = core.import(p)
-      reaper.MB(st and (st.name .. " is imported.\n\nReopen ReaPersona to see it; its shortcuts need installing (Home > Install and restart).") or ("Not imported: " .. why), "ReaPersona", 0)
+      reaper.MB(st and (st.name .. " is imported: it's in Personas > Your personas. Its shortcuts need installing (" .. INSTALL_WHERE .. ").") or ("Not imported: " .. why), "ReaPersona", 0)
     end
   end
 end

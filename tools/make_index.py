@@ -8,7 +8,7 @@ writes the index anyway (round 2: a release used to run none of them).
 ReaPack installs the package into <REAPER resource path>/Scripts/ReaPersona/Workflow/ and registers ReaPersona.lua as an action;
 the other files come with it. Run it after committing the files, then commit index.xml (its URLs point at that earlier commit).
 """
-import os, subprocess, sys, time, urllib.parse
+import os, re, subprocess, sys, time, urllib.parse
 from xml.sax.saxutils import escape
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,14 +39,29 @@ def per_computer(rel):
             or name.endswith((".ReaperTheme", ".ReaperThemeZip", ".tmp", ".new")) or ".bad-" in name or ".before-" in name)
 
 
+def leftover(rel):
+    """An editor's or a merge tool's leftover (ui/main.lua.orig, x.rej, x.bak, x~): never meant to ship. Pure."""
+    return rel.endswith((".orig", ".rej", ".bak", "~"))
+
+
 def files(sha):
     out = tracked(sha, "ReaPersona")
     bad = [f for f in out if per_computer(f)]
     if bad:
         sys.exit("not indexed: commit %s holds each computer's own files (remove them with git rm --cached): %s" % (sha[:8], ", ".join(bad)))
+    bad = [f for f in out if leftover(f)]
+    if bad:
+        sys.exit("not indexed: commit %s holds editor or merge leftovers (git rm them): %s" % (sha[:8], ", ".join(bad)))
     if "ReaPersona.lua" not in out:
         sys.exit("not indexed: commit %s has no ReaPersona/ReaPersona.lua" % sha[:8])
     return sorted(out, key=lambda f: (f != "ReaPersona.lua", f))
+
+
+def version_at(sha):
+    """ReaPersona.lua's '-- @version X' at that commit, or None. The window, the self-updater and ReaPack all go by it."""
+    out = subprocess.run(["git", "-C", HERE, "show", sha + ":ReaPersona/ReaPersona.lua"], capture_output=True)
+    m = re.search(r"^--\s*@version\s+(\S+)", out.stdout.decode("utf-8", "replace"), re.M) if out.returncode == 0 else None
+    return m.group(1) if m else None
 
 
 def main():
@@ -58,6 +73,10 @@ def main():
     if full.returncode != 0:
         sys.exit("not a commit here: " + sha)
     sha = full.stdout.strip()
+    # (a typo here was published as is: self-updating copies then offered "9.9.9 is ready" forever and refused the download. Round 3, L8)
+    have = version_at(sha)
+    if have != version:
+        sys.exit("not indexed: you gave version %s, but ReaPersona.lua at %s says %s" % (version, sha[:8], have or "no @version"))
     if not skip:  # (the commit being published, checked in a temp copy: tests, parity, lint)
         if subprocess.run([sys.executable, os.path.join(HERE, "tools", "check.py"), "--commit", sha]).returncode != 0:
             sys.exit("not indexed: tools/check.py failed for %s (fix it, or --skip-checks to write the index anyway)" % sha[:8])

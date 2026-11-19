@@ -70,11 +70,12 @@ local function action_search(id, filter_words) -- -> cmd, name once one is picke
     end
   end
 end
-local function mods_boxes(id) -- Ctrl / Alt / Shift / Win ticks -> mq.mods (REAPER's mouse flags: Shift 1, Ctrl 2, Alt 4, Win 8)
-  for _, x in ipairs({ { 2, MOD }, { 4, IS_MAC and "Option" or "Alt" }, { 1, "Shift" }, { 8, IS_MAC and "Control" or "Win" } }) do
+local function mods_boxes(id, field) -- Ctrl / Alt / Shift / Win ticks -> mq[field] (REAPER's mouse flags: Shift 1, Ctrl 2, Alt 4, Win 8)
+  field = field or "mods"
+  for _, x in ipairs({ { 2, MOD }, { 4, IS_MAC and "Option" or "Alt" }, { 1, "Shift" }, { 8, IS_MAC and "Control" or (reaper.GetOS():find("^Win") and "Win" or "Super") } }) do
     ImGui.SameLine(ctx)
-    local ch, v = ImGui.Checkbox(ctx, x[2] .. "##mb" .. id .. x[1], mq.mods & x[1] ~= 0)
-    if ch then mq.mods = v and (mq.mods | x[1]) or (mq.mods & ~x[1]) end
+    local ch, v = ImGui.Checkbox(ctx, x[2] .. "##mb" .. id .. x[1], (mq[field] or 0) & x[1] ~= 0)
+    if ch then mq[field] = v and ((mq[field] or 0) | x[1]) or ((mq[field] or 0) & ~x[1]) end
   end
 end
 local function wheel_spec(mods, wheel) local m = core.mouse_mods(mods):gsub("Shift%+Ctrl", "Ctrl+Shift"); return (m ~= "" and (m .. "+") or "") .. wheel end
@@ -96,7 +97,7 @@ end
 local function persona_mouse_card()
   if not card("pmouse") then return end
   heading("Your persona's mouse and trackpad", 16)
-  muted("Load a persona's mouse, then leave any line out, change what it does, or add your own (below, or from Every mouse action). A trackpad's two-finger scroll and pinch arrive as the wheel and Ctrl+wheel, its sideways swipe as the horizontal wheel.")
+  muted("Load a persona's mouse, then leave any line out, change what it does, or add your own (below, or from Every mouse action). A trackpad's two-finger scroll and pinch arrive as the wheel and Ctrl+wheel (Cmd on a Mac), its sideways swipe as the horizontal wheel.")
   ImGui.Indent(ctx, IND * UI)
   local b = core.draft_get(bld.blocks, "mouse")
   local from = b and core.by_id(b.id)
@@ -168,21 +169,23 @@ local function persona_mouse_card()
   end
   -- your own: a wheel or swipe binding, or a drag or click
   ImGui.Dummy(ctx, 0, 4)
-  ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Add your own:")
-  ImGui.SameLine(ctx); if ImGui.RadioButton(ctx, "Drag or click##mk", mq.kind == "drag") then mq.kind = "drag" end
-  ImGui.SameLine(ctx); if ImGui.RadioButton(ctx, "Wheel or trackpad##mk", mq.kind == "wheel") then mq.kind = "wheel" end
-  if mq.kind == "wheel" then
+  -- (both ways to add one are shown at once: there were two radio buttons to switch between them. James, 2026-11-19)
+  ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Add a wheel or trackpad move:"); ImGui.SameLine(ctx)
+  do
     ImGui.SetNextItemWidth(ctx, 200 * UI)
     if ImGui.BeginCombo(ctx, "##wh", mq.wheel == "HorizWheel" and "Sideways (trackpad swipe)" or "Wheel (or two-finger scroll)") then
       if ImGui.Selectable(ctx, "Wheel (or two-finger scroll)", mq.wheel == "Mousewheel") then mq.wheel = "Mousewheel" end
       if ImGui.Selectable(ctx, "Sideways (trackpad swipe)", mq.wheel == "HorizWheel") then mq.wheel = "HorizWheel" end
       ImGui.EndCombo(ctx)
     end
-    mods_boxes("w")
+    mods_boxes("w", "wmods")
     local cmd, name = action_search("wadd", nil)
-    if cmd then add_wheel(wheel_spec(mq.mods, mq.wheel), cmd, name) end
-    muted("Pick the action to add " .. keyname(wheel_spec(mq.mods, mq.wheel)) .. " (the View: Scroll and Zoom actions marked mousewheel are the usual ones).")
-  else
+    if cmd then add_wheel(wheel_spec(mq.wmods or 0, mq.wheel), cmd, name) end
+    muted("Pick the action to add " .. keyname(wheel_spec(mq.wmods or 0, mq.wheel)) .. " (the View: Scroll and Zoom actions marked mousewheel are the usual ones).")
+  end
+  ImGui.Dummy(ctx, 0, 4)
+  ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Add a drag or click:"); ImGui.SameLine(ctx)
+  do
     ImGui.SetNextItemWidth(ctx, 280 * UI)
     if ImGui.BeginCombo(ctx, "##mctx", core.CTX_NAME[mq.ctx] or mq.ctx) then
       for _, c in ipairs(core.MOUSE_CONTEXTS) do if ImGui.Selectable(ctx, c[2] .. "##mc" .. c[1], c[1] == mq.ctx) then mq.ctx, mq.value = c[1], nil end end

@@ -132,7 +132,7 @@ function merge_page(sel)
   merge.list = merge.list or theme_files()
   if merge.colours == "" then merge.colours = core.theme_for(sel) or "" end
   if card("merge") then
-    heading("Merge themes")
+    heading("Build a theme from others")
     muted("Build a theme from the best parts of others. The layout theme gives the layout and every image (pick one with its own settings, like Default 7 or CSIX, and Adjust keeps working on the result); the colours theme gives the colours; graphics can swap in another theme's faders, knobs, meters or buttons where the layout theme has the same images. The result is a new theme of your own in ColorThemes, kept on this computer.")
     ImGui.Dummy(ctx, 0, 2)
     theme_combo("Layout and images from##mb", "base")

@@ -23,12 +23,12 @@ end
 function check_page()
   if card("check installed") then
     heading("Installed")
-    muted("Shortcut layers go into REAPER's keymap with REAPER closed (it reads its keymap at start): Home > Install and restart, after changing styles.json or importing a persona.")
+    muted("Shortcut layers go into REAPER's keymap with REAPER closed (it reads its keymap at start): " .. INSTALL_WHERE .. ", after adding or changing a persona.")
     for _, st in ipairs(styles) do
       if (st.alt or 0) > 0 then
         local n = installed[st.alt] or 0
         local want = #core.keys_here(st.keys) -- (a key for the other system isn't installed here)
-        status_line(n >= want, string.format("%s  (alt-%d): %d of %d keys", st.name, st.alt, n, want))
+        status_line(n >= want, string.format("%s: %d of %d keys", st.name, n, want))
       end
     end
     local specs = {}
@@ -42,7 +42,7 @@ function check_page()
   if card("check install") then
     heading("Install the shortcuts")
     muted("REAPER reads its keymap when it starts, so the shortcut layers go in once, after adding or changing a persona. Two ways:")
-    ImGui.Bullet(ctx); ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, "In one step: Home > Install and restart (Windows, Mac or Linux; no Python needed). REAPER closes, the layers and the personas' toolbars go in, your keymap is backed up first, and REAPER opens again. By hand: close REAPER, run install_shortcuts.py in this folder, start REAPER.")
+    ImGui.Bullet(ctx); ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, "In one step: " .. INSTALL_WHERE .. " (Windows, Mac or Linux; no Python needed). REAPER closes, the layers and the personas' toolbars go in, your keymap is backed up first, and REAPER opens again. By hand: close REAPER, run install_shortcuts.py in this folder, start REAPER.")
     if ImGui.SmallButton(ctx, "Show the folder") then core.open_url(core.here) end
     ImGui.Bullet(ctx); ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, "Without restarting: make a keymap file, then in REAPER's Actions window open Key Map > Import... and pick it (choose to merge, not replace). Toolbars aren't included: personas keep your own toolbar.")
     if ImGui.SmallButton(ctx, "Make the keymap file") then
@@ -86,7 +86,7 @@ function check_page()
   end
   if card("check anywhere") then
     heading("Switch from anywhere")
-    muted("Actions list: 'ReaPersona - next style' cycles through the styles; 'ReaPersona - use <style>' picks one (toolbar buttons light up for the style in use). REAPER forgets the shortcut layer when it restarts; __startup.lua runs 'ReaPersona - restore last style' to put it back.")
+    muted("Actions list (a style there is a persona): 'ReaPersona - next style' cycles through the personas; 'ReaPersona - use <style>' picks one (toolbar buttons light up for the persona in use). REAPER forgets a persona's shortcuts when it restarts; the startup line runs 'ReaPersona - restore last style' to put them back.")
     card_end()
   end
 end

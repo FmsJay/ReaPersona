@@ -97,8 +97,13 @@ function persona_keys_card()
     ImGui.EndCombo(ctx)
   end
   ImGui.SetItemTooltip(ctx, "Loads that persona's or DAW's keys. Keys you added stay. Choosing here starts a new persona if you're not making one.")
+  local lines, count, listed = b and core.build_preview({ b })[1] or {}, {}, 0
+  for _, e in ipairs(lines) do if e.kind == "key" or e.kind == "midi" then listed = listed + 1 end end
+  if b and listed == 0 then -- (your own shortcuts are REAPER's keymap as it is: nothing to list here, and an empty box looked broken. James, 2026-11-19)
+    muted("Your own shortcuts are your REAPER keymap, used as they are. Load a persona's or DAW's keys above to change them key by key, or add keys of your own below.")
+    b = nil
+  end
   if b then
-    local lines, count = core.build_preview({ b })[1], {}
     for _, e in ipairs(lines) do if e.kind == "key" and not e.off then count[core.canon(e.key)] = (count[core.canon(e.key)] or 0) + 1 end end
     ImGui.SetNextItemWidth(ctx, 240 * UI)
     local _, f = ImGui.InputTextWithHint(ctx, "##pkf", "search its keys or actions", kq.pfilter or ""); kq.pfilter = f

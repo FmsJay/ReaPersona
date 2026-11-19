@@ -26,7 +26,7 @@ end
 -- Your other computers (5.10): the folder you pick, the first sync (whose setup wins), and a look every 20 s while the window is open.
 sync_next, sync_err, sync_seen, sync_full = reaper.time_precise() + 2, nil, "", reaper.time_precise() + 10 -- (the window draws before the first sync, about 1 s of loading: 5.39; and opens without waiting for REAPER's own parts)
 -- (Round 2, James: a sync is spread across frames so the window never freezes. While one is under way (syncing), the loop calls
--- sync_more() each frame, which lets the engine work about 8 ms; Settings > Sync says "Syncing...".)
+-- sync_more() each frame, which lets the engine work about 12 ms (SYNC_MS); Settings > Sync says "Syncing...".)
 syncing = nil -- { now = the result is to be said, quick = not REAPER's own parts } while a sync is under way
 local function sync_done(rep, why) -- the sync ended: rep is its report, or nil when it couldn't
   local now = syncing and syncing.now
@@ -41,8 +41,16 @@ local function sync_done(rep, why) -- the sync ended: rep is its report, or nil 
       ((rep.ext or 0) > 0 and (" " .. core.SETUP_RESTART) or "") .. (rep.install and " New shortcuts need installing (Home)." or ""))
   end
 end
+SYNC_MS = 12 -- (the engine's share of each frame while a sync is under way: round 3)
 function sync_more() -- (each frame while a sync is under way: a little of it, then the report once it's done)
-  local rep, why = core.sync_tick(syncing.quick, 8)
+  if syncing.started and not core.sync_job then -- (finished from outside, by something that needed it done first: its report went there,
+    local now = syncing.now -- so no second sync starts here. Round 3)
+    syncing, sync_next, sync_err = nil, reaper.time_precise() + 20, nil
+    if now then say("Synced with your other computers.") end
+    return
+  end
+  syncing.started = true
+  local rep, why = core.sync_tick(syncing.quick, SYNC_MS)
   if rep or not core.sync_job then sync_done(rep, why) end
 end
 function sync_step(now, wait) -- a sync starts (now: Sync now pressed, so the result is said; wait: to the end here, for the screen-reader menu)
@@ -132,7 +140,7 @@ function settings_page(sec) -- (5.33: in sub-tabs; sec = which)
     local pend = core.restart_pending() -- (shown whether or not the advanced parts are unfolded)
     if #pend > 0 then
       ImGui.TextColored(ctx, C.YELLOW, "Waiting for REAPER to restart: " .. core.pending_words(pend))
-      if primary((FLATPAK and "How to put them in" or "Restart REAPER now") .. "##applysetup") then install_shortcuts() end
+      if primary(RESTART_BUTTON .. "##applysetup") then install_shortcuts() end
       ImGui.SetItemTooltip(ctx, FLATPAK and "This Flatpak REAPER can't restart itself: the steps say what to run in a terminal while REAPER is closed."
         or "REAPER closes (asking about anything unsaved), these go in (what's replaced is backed up first), and it opens again.")
     end
@@ -317,6 +325,7 @@ function settings_page(sec) -- (5.33: in sub-tabs; sec = which)
           or "- REAPER closes (it asks first if anything is unsaved), the shortcut layers and toolbars come out of your keymap (backed up first), and REAPER opens again\n") ..
         "\nYour personas, presets and themes stay in their files. Last, uninstall ReaPersona in Extensions > ReaPack > Browse packages.", "ReaPersona: remove", 4) == 6 then
       reaper.SetExtState(SECTION, "follow projects", "0", true) -- (the project-following script stops)
+      reaper.SetExtState(SECTION, "workflow", "", true) -- (no workflow over My REAPER, so its settings are put back too, not applied again: round 3)
       use(core.by_id("my_reaper") or styles[1])
       removing = true -- (the rest once My REAPER's windows are back: loop)
     end

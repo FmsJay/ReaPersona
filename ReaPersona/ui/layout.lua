@@ -198,8 +198,8 @@ do
       elseif waiting and next(waiting) then
         ImGui.TextColored(ctx, C.YELLOW, "Waiting for REAPER to restart: " .. #(function() local n = {}; for k in pairs(waiting) do n[#n + 1] = k end return n end)() .. " preference(s).")
         ImGui.SameLine(ctx)
-        if ImGui.SmallButton(ctx, "Restart REAPER now##pfrestart") then install_shortcuts() end
-        ImGui.SetItemTooltip(ctx, "REAPER closes (asking about anything unsaved), the preferences go in, and REAPER opens again.")
+        if ImGui.SmallButton(ctx, RESTART_BUTTON .. "##pfrestart") then install_shortcuts() end
+        ImGui.SetItemTooltip(ctx, FLATPAK and RESTART_TIP or "REAPER closes (asking about anything unsaved), the preferences go in, and REAPER opens again.")
       end
       ImGui.Unindent(ctx, IND * UI)
       card_end()
@@ -299,8 +299,8 @@ do
     end
     if undock_note == "waiting" then
       ImGui.TextColored(ctx, C.YELLOW, "Taking a window out of a docker needs ReaPersona's window set, which goes in when REAPER next restarts.")
-      if ImGui.SmallButton(ctx, "Restart REAPER now##wrestart") then install_shortcuts() end
-      ImGui.SetItemTooltip(ctx, "REAPER closes (asking about anything unsaved), ReaPersona's window set and your persona shortcuts go in, and REAPER opens again.")
+      if ImGui.SmallButton(ctx, RESTART_BUTTON .. "##wrestart") then install_shortcuts() end
+      ImGui.SetItemTooltip(ctx, FLATPAK and RESTART_TIP or "REAPER closes (asking about anything unsaved), ReaPersona's window set and your persona shortcuts go in, and REAPER opens again.")
     elseif undock_note == "none" then
       muted("Taking a window out of a docker needs a window set of ReaPersona's: it's added (in a free set, View > Screensets) the first time a persona docks one.")
     end
