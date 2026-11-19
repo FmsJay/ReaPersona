@@ -455,9 +455,12 @@ set_ext("ReaPersona", "sync folder", "")
 
 -- Preferences never go into REAPER's memory (5.11.2: a type guessed from SWS's getters corrupted int variables and crashed REAPER):
 -- they wait in pending/prefs.json for the restart.
+local py_was = core._py; core._py = "Python 3.12" -- (only the Python installer puts them in: none queued without it, review 2)
 core.ADVANCED_APPLY.pref("autosaveint", "7")
 assert(core.json_decode(read(tmp .. "/pending/prefs.json")).autosaveint == "7", "a preference waits for the restart")
 os.remove(tmp .. "/pending/prefs.json")
+core._py = false; assert(core.ADVANCED_APPLY.pref("autosaveint", "7") and not read(tmp .. "/pending/prefs.json"), "without Python: not queued")
+core._py = py_was
 -- 5.12.1: a persona saved with "make it a workflow too" carries the project's rate and tracks, and uses them like a Project block.
 local wfp = core.preset_style({ id = "preset_vo", name = "VO", base = "pro_tools", feel = {}, project = { srate = 48000, tracks = "<TRACK\n  NAME VO\n>\n", tracks_name = "1 track from x" } })
 assert(wfp.project and wfp.project.srate == 48000 and wfp.project.tracks:find("NAME VO", 1, true) and wfp.description:find("48 kHz", 1, true))
@@ -764,6 +767,8 @@ do
   reaper.NamedCommandLookup = function(c) return reg[c] or 0 end
   reaper.GetToggleCommandState = function(id) return states[id] or -1 end
   reaper.Main_OnCommand = function(id) ran[#ran + 1] = id; if states[id] == 0 then states[id] = 1 end end
+  local mb, n_asked, answer = reaper.MB, 0, 6 -- (review 2: a start script new here is asked about once)
+  reaper.MB = function() n_asked = n_asked + 1; return answer end
   local added, started = core.ensure_starts({ { "Chordbox", "_RSfe34" }, { "New one", "_RSnew1" }, { "Stopped", "_RSoff" }, { "Not here", "_RSmissing" } })
   assert(#added == 2 and added[1] == "New one" and added[2] == "Stopped", "start lines added for registered scripts not in the file yet")
   assert(#started == 1 and started[1] == "Stopped" and #ran == 1 and ran[1] == 104, "only a stopped one is started: running one again would stop it")
@@ -771,6 +776,12 @@ do
   assert(text:sub(1, #ftc) == ftc and #core.starts_in(text) == 5 and read(sp .. ".before-reapersona-starts") == ftc, "your lines kept, a backup made")
   local again = core.ensure_starts({ { "New one", "_RSnew1" } })
   assert(#again == 0 and read(sp) == text, "nothing added twice")
+  assert(n_asked == 1, "one question for the new ones")
+  reg._RSdecl = 105; states[105] = 0; answer = 7
+  local no = core.ensure_starts({ { "Declined", "_RSdecl" } })
+  assert(#no == 0 and n_asked == 2 and states[105] == 0 and not read(sp):find("_RSdecl", 1, true), "No: not added, not started")
+  core.ensure_starts({ { "Declined", "_RSdecl" } })
+  assert(n_asked == 2, "and not asked again")
   -- your look and the personas you save keep them; using one makes sure they run
   ext["ReaPersona/style"] = "my_reaper"
   local look = assert(core.save_my_look())
@@ -785,6 +796,7 @@ do
   core.forget_my_look(); ext["ReaPersona/my look"] = nil
   reaper.NamedCommandLookup, reaper.GetToggleCommandState, reaper.Main_OnCommand = nl, gt, mo
   ext["ReaPersona/style"], ext["ReaPersona/orig"] = nil, nil
+  reaper.MB = mb
 end
 -- 17. Updates (5.23): versions compared, test versions before their release, and only ReaPersona's own files read from an index.
 do
@@ -1199,6 +1211,35 @@ do -- 33. the 2026-11-18 review's fixes
   write(tmp .. "/pending/prefs.json", '{"deffadelen": 0.03}')
   assert(core.pref_effective("deffadelen") == 0.03, "the queued one")
   os.remove(tmp .. "/pending/prefs.json")
+end
+do -- 34. MIDI editor keys for one system (5.37.1): FL's Ctrl+Q is Cmd+Q (Quit) on a Mac
+  local list = { { "win:Ctrl+Q", "q", "a" }, { "mac:Ctrl+Alt+Q", "q", "b" }, { "E", "e", "c" } }
+  local w, m = core.midi_keys_here(list, false), core.midi_keys_here(list, true)
+  assert(#w == 2 and w[1][1] == "Ctrl+Q" and w[1][3] == "a" and w[2][1] == "E", "Windows: its own and the plain one")
+  assert(#m == 2 and m[1][1] == "Ctrl+Alt+Q" and m[1][3] == "b", "Mac: its own")
+  assert(list[1][1] == "win:Ctrl+Q", "the list itself unchanged")
+end
+do -- 35. Second review (5.37.1): what comes from elsewhere
+  local LS, NEL = "\226\128\168", "\194\133" -- (U+2028, U+0085: Python splits lines on them)
+  assert(core.has_break("a" .. LS .. "b") and core.has_break("a" .. NEL) and core.has_break("a\nb") and not core.has_break("Ctrl+Alt+Q"), "every kind of line break")
+  assert(not core.one_line("x" .. LS .. "y"):find(LS, 1, true))
+  local k = core.safe_keys({ { "Num.", "script:memory location", "a" }, { "F1", "script:pt shuffle", "b" }, { "X", "rm -rf", "c" }, { "Y", "40001", "d" .. LS .. "SCR" } })
+  assert(#k == 3 and k[1][2] == "script:memory location" and k[2][2] == "script:pt shuffle" and not k[3][3]:find(LS, 1, true), "ReaPersona's own scripts kept; spaces otherwise not; labels one line")
+  for _, p in ipairs({ "Scripts/./ReaPersona/Workflow/reapersona_core.lua", "Scripts//ReaPersona/x.lua", "Scripts/ReaPersona./x.lua", "Scripts/ReaPersona /x.lua", "Scripts/a" .. LS .. "/x.lua" }) do
+    assert(not core.item_allowed("code " .. p, { h = "0123456789abcdef" }), "not allowed: " .. p)
+  end
+  assert(core.item_allowed("code Scripts/Mine/tool.lua", { h = "0123456789abcdef" }), "a plain one still is")
+  for _, s in ipairs({ "ORIG", "Orig", "Sync folder", "SYNC ADVANCED", "Theme path my_reaper", "orig token", "advanced", "a\norig" }) do
+    assert(not core.item_allowed("setting " .. s, "x"), "not synced: " .. s)
+  end
+  assert(not core.item_allowed("setting zzz", "x\norig=s|40001|") and not core.item_allowed("xstate REAPERSONA|orig", "x") and not core.item_allowed("ext smoothwheelscroll|POS", "1"), "no line breaks, any case")
+  assert(not core.pref_synced("zzz", "1" .. LS .. "pythonlibdll64=x") and core.pref_synced("deffadelen", "0.01"))
+  local f = core.safe_feel({ { "mouse", "MM_CTX_TRACK_CLK", 0, "40005" }, { "mouse", "MM_CTX_ITEM", "4\n", "Move item" }, { "mouse", "MM_CTX_ITEM", 1, "13 m", "drag" } })
+  assert(#f == 2 and f[1][3] == 4 and math.type(f[1][3]) == "integer" and f[2][4] == "13 m", "no action numbers on a click; the flag a plain number")
+  local st = core.safe_toolbar({ toolbar = { { 40001, "a\nb" }, { "rm -rf", "x" }, -1 }, toolbar_file = "../../x.ReaperMenu", toolbar_slot = "3\n[Main]" })
+  assert(#st.toolbar == 2 and st.toolbar[1][2] == "a b" and st.toolbar[2] == -1 and st.toolbar_file == "x.ReaperMenu" and st.toolbar_slot == nil, "toolbars: one line, a file name, a slot number")
+  local t = core.template_from_rpp("<REAPER_PROJECT 0.1\n  S&M_PROJACTION _RSevil\n  TEMPO 120 4 4\n>\n")
+  assert(not t:find("PROJACTION", 1, true) and t:find("TEMPO", 1, true), "no SWS project action in a template")
 end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))

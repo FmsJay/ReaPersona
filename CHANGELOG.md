@@ -1,5 +1,27 @@
 # Changelog
 
+## 5.37.1
+Fixes from a second round of reviews of 5.36.1 and 5.37.0 (code, DAW personas, UI and UX, security; reports reapersona-review2-*.md).
+- **Safety:** what comes from a file or another computer is checked more closely. Start scripts that come with a look, preset or setup
+  are asked about once before they run or go into __startup.lua. The put-back list only ever runs ReaPersona's own settings. Synced
+  scripts can't land on ReaPersona's own files or ReaPack's (paths like Scripts/./ReaPersona are refused). Synced settings can't hold
+  line breaks of any kind (U+2028 too, which Python splits on), and ReaPersona's own settings can't be reached in another case. Shared
+  toolbars are checked, project templates lose SWS's project startup action, ReaPack repositories from elsewhere need https and can't
+  re-point one you have, a persona replaced by sync is kept under Earlier versions, and reaper.ini and reaper-screensets.ini are backed
+  up before they're changed.
+- **Fixed:** synced and imported personas kept ReaPersona's own script keys (Recall memory location, play from start, the Pro Tools edit
+  modes...): they were dropped. Upgrades register the new scripts. "New track like this" unselects items first. The edit-mode keys make
+  no undo step. Show everything and the switch token stay on each computer. Without Python, preferences no longer wait for a restart
+  that can't put them in. Python is looked for once a session. Updates says the new version after updating. The REAPER tab only puts the
+  setting you change in your persona.
+- **DAW personas:** Cubase and Nuendo I toggles punch in, Alt+W writes like Cubase (Touch), and Nuendo has Cubase's new keys (and Cubase
+  Nuendo's nudges). Ableton's M shows the virtual keyboard again. FL Studio's piano-roll quick quantize is Option+Cmd+Q on a Mac (MIDI
+  editor keys can now be for one system). Logic's Undo History key is the Mac's only; Windows keeps Ctrl+Alt+Z. GarageBand's E and P close
+  the editor. Labels and tips fixed (Ableton's slide modifier, Pro Tools' Playlists and edit modes, FL's patterns, Reason's Join, Audition).
+- **The window:** while you make or edit a persona every tab shows, so no part is out of reach. Home lists what waits for a restart. Finish
+  setting up restarts only when the shortcuts need it. Stop asks only when something changed, and leaves a trial. The restart question
+  says what goes in. Help, the welcome and the screen-reader menu describe the one-step setup. Narrow windows wrap the draft bar.
+
 ## 5.37.0
 - **The DAW personas checked against each DAW's own documentation** (Avid's Pro Tools Shortcuts Guide, Apple's Logic Pro 13 and GarageBand
   guides, Ableton's Live 12 manual, Bitwig's guide, Image-Line's FL Studio manual, Reason 13's key commands, Steinberg's Cubase 14 and Nuendo

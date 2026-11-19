@@ -85,6 +85,19 @@ def encode(spec):
 
 
 MAC = sys.platform == "darwin"
+BREAKS = re.compile("[\x00-\x1f\x7f\x85\u2028\u2029]")  # (every kind of line break: Python's splitlines() splits on U+2028 and friends too. Review 2)
+
+
+def lines_of(text):
+    """text's lines on \n only, like splitlines() without its Unicode line breaks (review 2: a U+2028 in a value became a line of its own)."""
+    out = text.replace("\r\n", "\n").split("\n")
+    if out and out[-1] == "":
+        out.pop()
+    return out
+
+
+def one_line(s):
+    return BREAKS.sub(" ", str(s))
 
 
 def for_os(spec):
@@ -108,6 +121,9 @@ def main_command(lines, spec, fallback):
 
 def load_styles():
     styles = json.load(open(os.path.join(HERE, "styles.json"), encoding="utf-8"))["styles"]
+    for st in styles:  # (MIDI keys for one system, "mac:..." / "win:...", resolved here as the Lua side does at load. 5.37.1)
+        if st.get("midi_keys"):
+            st["midi_keys"] = [[for_os(k[0])] + list(k[1:]) for k in st["midi_keys"] if isinstance(k[0], str) and for_os(k[0])]
     lm = os.path.join(HERE, "layers.json")  # (5.29: this computer's layers, which ReaPersona writes before an install; none yet: the numbers they ship with)
     if os.path.exists(lm):
         layer = json.load(open(lm, encoding="utf-8")).get("map", {})
@@ -148,7 +164,7 @@ def toolbar_lines(st, file_key="toolbar_file", list_key="toolbar", label=""):
     """A toolbar section's body for a style: from a .ReaperMenu in toolbars/ (its first section) or the style's own list."""
     if st.get(file_key):
         body, on = [], False
-        for l in open(os.path.join(HERE, "toolbars", st[file_key]), encoding="utf-8", errors="surrogateescape").read().splitlines():
+        for l in lines_of(open(os.path.join(HERE, "toolbars", os.path.basename(st[file_key])), encoding="utf-8", errors="surrogateescape").read()):
             if l.startswith("["):
                 if on:
                     break
@@ -161,9 +177,9 @@ def toolbar_lines(st, file_key="toolbar_file", list_key="toolbar", label=""):
             if it == -1:
                 body.append("item_%d=-1" % i)
                 continue
-            if len(it) > 2:
-                body.append("icon_%d=%s" % (i, it[2]))
-            body.append("item_%d=%s %s" % (i, it[0], it[1]))
+            if len(it) > 2 and it[2]:
+                body.append(one_line("icon_%d=%s" % (i, it[2])))
+            body.append(one_line("item_%d=%s %s" % (i, it[0], it[1])))
     return body + ["title=ReaPersona: " + st["name"] + label, ""]
 
 
@@ -181,11 +197,14 @@ def install_toolbars(styles, remove, warnings):
     for st in [] if remove else styles:
         for slot_key, file_key, list_key, head, label in (("toolbar_slot", "toolbar_file", "toolbar", "[Floating toolbar %d]", ""),
                                                           ("midi_toolbar_slot", "midi_toolbar_file", "midi_toolbar", "[Floating MIDI toolbar %d]", " piano roll")):
-            slot = st.get(slot_key)
+            try:
+                slot = int(st.get(slot_key) or 0)
+            except (TypeError, ValueError):
+                slot = 0
             if not slot or not (st.get(file_key) or st.get(list_key)):
                 continue
             h = head % slot
-            if st.get(file_key) and not os.path.exists(os.path.join(HERE, "toolbars", st[file_key])):
+            if st.get(file_key) and not os.path.exists(os.path.join(HERE, "toolbars", os.path.basename(st[file_key]))):
                 warnings.append("%s: toolbars/%s isn't here (from its theme pack), so it keeps your toolbar" % (st["name"], st[file_key])); continue
             if any(s[0] == h and any(l.startswith("item_") for l in s[1]) for s in secs):
                 warnings.append("%s already holds one of your toolbars: %s's not written" % (h, st["name"])); continue
@@ -296,10 +315,10 @@ def kb_takeable(line, mine_scripts):
 
 def merge_kb(mine, theirs):
     """This computer's keymap with the other computer's lines taken in. Pure."""
-    mine_scripts = {l.split()[3] for l in mine.splitlines() if l.startswith("SCR ") and len(l.split()) > 3}
-    take = [l for l in theirs.splitlines() if kb_slot(l) and not l.startswith("SCR ") and kb_takeable(l, mine_scripts)]
+    mine_scripts = {l.split()[3] for l in lines_of(mine) if l.startswith("SCR ") and len(l.split()) > 3}
+    take = [l for l in lines_of(theirs) if kb_slot(l) and not l.startswith("SCR ") and kb_takeable(l, mine_scripts)]
     slots = {kb_slot(l) for l in take}
-    keep = [l for l in mine.splitlines() if not (kb_slot(l) and kb_slot(l) in slots)]
+    keep = [l for l in lines_of(mine) if not (kb_slot(l) and kb_slot(l) in slots)]
     while keep and keep[-1].strip() == "":
         keep.pop()
     return "\n".join(keep + take) + "\n"
@@ -307,7 +326,7 @@ def merge_kb(mine, theirs):
 
 def ini_sections(text):
     order, secs, cur = [], {}, None
-    for line in text.splitlines():
+    for line in lines_of(text):
         m = re.match(r"^\[(.+)\]\s*$", line)
         if m:
             cur = m.group(1)
@@ -332,13 +351,13 @@ def merge_ini(mine, theirs):
 
 def set_prefs(text, prefs):
     """reaper.ini with these [REAPER] keys set (the section header in any case). Pure."""
-    lines = text.splitlines()
+    lines = lines_of(text)
     start = next((i for i, l in enumerate(lines) if l.strip().lower() == "[reaper]"), None)
     if start is None:
         lines = ["[REAPER]"] + lines
         start = 0
     end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("[")), len(lines))
-    left = {k: v for k, v in prefs.items() if not re.search(r"[\x00-\x1f=\[\]]", str(k)) and not re.search(r"[\x00-\x1f]", str(v))}  # (one plain line each: review 2026-11-18)
+    left = {k: v for k, v in prefs.items() if not re.search(r"[=\[\]]", str(k)) and not BREAKS.search(str(k)) and not BREAKS.search(str(v))}  # (one plain line each: review 2026-11-18, review 2)
     for i in range(start + 1, end):
         k = lines[i].split("=", 1)[0]
         if "=" in lines[i] and k in left:
@@ -377,7 +396,7 @@ UNDOCK_SET = "ReaPersona: windows"
 def without_window_set(text):
     """reaper-screensets.ini without ReaPersona's own window set (Remove ReaPersona, review 2026-11-18). Pure."""
     out, keep = [], True
-    for line in text.splitlines():
+    for line in lines_of(text):
         if line.startswith("["):
             keep = True
         out.append(line)
@@ -402,8 +421,9 @@ def remove_window_set():
     if new == text.replace("\r\n", "\n"):
         return []
     eol = "\r\n" if "\r\n" in text else "\n"
+    backup_of(path)
     write_atomic(path, new.replace("\n", eol).encode("utf-8", errors="surrogateescape"))
-    return ["took ReaPersona's window set out of reaper-screensets.ini"]
+    return ["took ReaPersona's window set out of reaper-screensets.ini (yours backed up first)"]
 
 
 def apply_prefs():
@@ -415,9 +435,11 @@ def apply_prefs():
         ini = os.path.join(RES, "reaper.ini")
         text = open(ini, encoding="utf-8", errors="surrogateescape").read() if os.path.exists(ini) else ""
         eol = "\r\n" if "\r\n" in text else "\n"
+        if os.path.exists(ini):
+            backup_of(ini)
         write_atomic(ini, set_prefs(text, {str(k): str(v) for k, v in prefs.items()}).replace("\n", eol).encode("utf-8", errors="surrogateescape"))
         os.remove(pf)
-        done.append("set %d of REAPER's preferences from your other computers" % len(prefs))
+        done.append("set %d of REAPER's preferences that waited for the restart (reaper.ini backed up first)" % len(prefs))
     return done
 
 
@@ -448,7 +470,7 @@ def run(remove=False, no_midi=False):
                 elif not (isinstance(cmd, int) or (isinstance(cmd, str) and cmd and not any(c.isspace() for c in cmd))):
                     raise ValueError("bad command %r" % (cmd,))
                 f, k = encode(spec)
-                plan.append((f, k, cmd, alt, re.sub(r"[\x00-\x1f\x7f]", " ", "%s : %s : %s : %s" % (TAG, st["name"], spec, what))))  # (no line breaks into reaper-kb.ini: review 2026-11-18)
+                plan.append((f, k, cmd, alt, one_line("%s : %s : %s : %s" % (TAG, st["name"], spec, what))))  # (no line breaks into reaper-kb.ini: review 2026-11-18)
             except (ValueError, KeyError, TypeError) as e:
                 warnings.append("%s: skipped key %r (%s)" % (st.get("name"), entry, e))
         for mk in st.get("midi_keys", []):
@@ -569,6 +591,11 @@ if __name__ == "__main__":
     assert without_window_set("[screensets]\nnb=10\n[sset8]\nname=Mine\n[sset9]\nname=ReaPersona: windows\nmask=-3618\nposlist0_id=x\n[other]\na=1\n") == "[screensets]\nnb=10\n[sset8]\nname=Mine\n[other]\na=1\n"
     assert set_prefs("[REAPER]\na=1\n", {"b": "2", "c": "3\n[Python]\npath=x", "d\n": "1"}) == "[REAPER]\na=1\nb=2\n"
     assert set_prefs("[reaper]\nfoo=1\nbar=2\n[x]\nq=1", {"bar": "5", "new": "7"}) == "[reaper]\nfoo=1\nbar=5\nnew=7\n[x]\nq=1\n"
+    # (review 2: U+2028 and friends are line breaks to splitlines(): never a value's, and never split on)
+    assert set_prefs("[REAPER]\na=1\n", {"z": "1\u2028pythonlibdll64=x", "y": "2\x85[Python]"}) == "[REAPER]\na=1\n"
+    assert lines_of("a\u2028b\r\nc\n") == ["a\u2028b", "c"] and lines_of("") == [] and lines_of("x") == ["x"]
+    assert toolbar_lines({"name": "N", "toolbar": [[40001, "a\nb"], -1, [40002, "c", "i\u2028x.png"]]}) == \
+        ["item_0=40001 a b", "item_1=-1", "icon_2=i x.png", "item_2=40002 c", "title=ReaPersona: N", ""]
     if "--help" in sys.argv or "-h" in sys.argv:
         sys.exit(__doc__)
     if "--after-reaper-quits" in sys.argv:
@@ -594,11 +621,17 @@ if __name__ == "__main__":
                     for line in apply_setup():
                         print(line)
                 elif "--apply-prefs" in sys.argv:  # (Remove ReaPersona: your own preferences back, nothing else from pending/. Review 2026-11-18)
-                    for line in apply_prefs():
-                        print(line)
+                    try:
+                        for line in apply_prefs():
+                            print(line)
+                    except Exception as e:  # (review 2: the removal goes on)
+                        print("REAPER's preferences weren't put back: %s" % e)
                 if "--remove" in sys.argv:
-                    for line in remove_window_set():
-                        print(line)
+                    try:
+                        for line in remove_window_set():
+                            print(line)
+                    except Exception as e:
+                        print("ReaPersona's window set wasn't taken out: %s" % e)
                 run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)  # (--remove: Settings > Remove ReaPersona, review 5.9.4)
         except BaseException as e:  # (SystemExit included: whatever happened is written down for the picker)
             out.write("not installed: %s\n" % e)

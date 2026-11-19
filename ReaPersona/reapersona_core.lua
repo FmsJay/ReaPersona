@@ -149,6 +149,18 @@ local USERS = M.here .. "/user_styles.json"
 local function load(p) local d = M.load_json(p); return d and d.styles or {} end
 M.styles_json = M.load_json(M.here .. "/styles.json") or {} -- (parsed once: the styles, the theme catalog and the theme recipes)
 M.styles = M.styles_json.styles or {}
+function M.midi_keys_here(list, mac) -- MIDI keys for one system ("mac:Ctrl+Alt+Q" / "win:Ctrl+Q", 5.37.1), resolved at load so later steps see plain keys
+  local out = {}
+  for _, k in ipairs(list or {}) do
+    local os_, rest
+    if type(k) == "table" and type(k[1]) == "string" then os_, rest = k[1]:match("^(%a%a%a):(.+)$") end
+    if os_ ~= "mac" and os_ ~= "win" then out[#out + 1] = k
+    elseif (os_ == "mac") == mac then local c = { table.unpack(k) }; c[1] = rest; out[#out + 1] = c end
+  end
+  return out
+end
+do local os_ = tostring(reaper.GetOS()); local mac = os_:find("^OSX") ~= nil or os_:find("^macOS") ~= nil
+  for _, st in ipairs(M.styles) do if st.midi_keys then st.midi_keys = M.midi_keys_here(st.midi_keys, mac) end end end
 -- Shortcut layers (5.29; James: "Why is that limited and can we have reapersona disable it"). REAPER has exactly 16 alternate shortcut
 -- sections (Main alt-1 to alt-16) and nothing can add more. Every DAW persona used to keep the layer styles.json gives it, 15 of the 16, so
 -- personas of your own had almost none. Now each computer gives layers only to the personas it uses (favourites, the one in use, the last
@@ -570,7 +582,7 @@ local function unhexs(s) return (s:gsub("%x%x", function(h) return string.char(t
 -- this one is; the others are kept as REAPER has them). Meanings from Mespotine's config-variable reference (checked 2026-11-18).
 M.PREFS = { -- { name, what, kind ("num" min max | "shape" | "choice" labels | "db" amplitude | "db10" | "bool"), group, mask }
   { "deffadelen", "Default fade length (seconds)", "num", 0, 10, group = "Fades" },
-  { "deffadeshape", "Default fade shape", "shape", group = "Fades" },
+  { "deffadeshape", "Default fade shape", "shape", group = "Fades", max = 6 },
   { "defsplitxfadelen", "Crossfade length (seconds)", "num", 0, 10, group = "Fades" },
   { "defxfadeshape", "Crossfade shape", "shape", group = "Fades" },
   { "zoommode", "Zoom in and out around", "choice", { "the edit or play cursor", "the edit cursor", "the centre of the view", "the mouse" }, group = "Zoom" },
@@ -588,7 +600,7 @@ function M.pref_ok(k, v) -- (pure) a known preference and a value it can take
   local x, n = PREF[k], tonumber(v)
   if not (x and n) or n ~= n then return false end
   if x[3] == "num" then return n >= x[4] and n <= x[5]
-  elseif x[3] == "shape" then return n == math.floor(n) and n >= 0 and n <= 7 -- (0-7: REAPER 7.86 holds 7 for its crossfade shape here, though the reference says 0-6)
+  elseif x[3] == "shape" then return n == math.floor(n) and n >= 0 and n <= (x.max or 7) -- (0-7: REAPER 7.86 holds 7 for its crossfade shape here, though the reference says 0-6)
   elseif x[3] == "choice" then return n == math.floor(n) and n >= 0 and n < #x[4]
   elseif x[3] == "db" then return n >= 0 and n <= 4
   elseif x[3] == "db10" then return n == math.floor(n) and n >= -600 and n <= -10
@@ -650,6 +662,8 @@ local function restore_feel(windows_left) -- (windows_left: a window's original 
       if tonumber(b) then want_pref(a, tonumber(b)) end -- (this setting's part, the other bits as REAPER has them: review 2026-11-18)
     elseif kind == "w" and a ~= "" then -- (every other window, as it was before the persona: 5.34)
       M.apply_windows(M.json_decode(unhexs(a)))
+    elseif (kind == "t" or kind == "s" or kind == "c" or (kind == "r" and a ~= "none")) and not M.feel_ok()[a] then
+      M.log("put back: not one of ReaPersona's settings, left: " .. list[n]) -- (review 2: whatever reached this list can't run other actions)
     elseif kind == "t" then
       local id = cmd_id(tonumber(a) or a)
       if id ~= 0 and reaper.GetToggleCommandState(id) ~= tonumber(b) then reaper.Main_OnCommand(id, 0) end
@@ -1008,14 +1022,45 @@ function M.colours() -- the colour module (colours.lua), loaded once
   if not colours_mod then colours_mod = assert(loadfile(M.here .. "/colours.lua"))(M) end
   return colours_mod
 end
+function M.has_break(s) -- (pure) a line break of any kind: control characters, DEL, and UTF-8's U+0085, U+2028, U+2029 (Python splits on those). Review 2
+  s = tostring(s)
+  return s:find("[%c\127]") ~= nil or s:find("\226\128[\168\169]") ~= nil or s:find("\194\133") ~= nil
+end
+function M.one_line(s) -- (pure) the same, as spaces
+  return (tostring(s):gsub("[%c\127]", " "):gsub("\226\128[\168\169]", " "):gsub("\194\133", " "))
+end
 function M.safe_keys(list) -- (pure) a file's keys: { key, command, what } with no line breaks (they become reaper-kb.ini lines). Review 2026-11-18
   local out = {}
   for _, k in ipairs(type(list) == "table" and list or {}) do
-    if type(k) == "table" and type(k[1]) == "string" and not k[1]:find("%c") and (type(k[2]) == "number" or (type(k[2]) == "string" and not k[2]:find("[%c%s]"))) then
-      out[#out + 1] = { k[1], k[2], (tostring(k[3] or ""):gsub("%c", " ")) }
+    if type(k) == "table" and type(k[1]) == "string" and not M.has_break(k[1]) and (type(k[2]) == "number" or (type(k[2]) == "string" and not M.has_break(k[2])
+        and (k[2]:match("^script:[%w _%-]+$") or not k[2]:find("%s")))) then -- (ReaPersona's own scripts have spaces in their names: review 2)
+      out[#out + 1] = { k[1], k[2], M.one_line(k[3] or "") }
     end
   end
   return out
+end
+function M.safe_toolbar(st) -- (pure) a file's toolbars: items { command, label, icon } in one line each, a file name in toolbars/, a slot number. Review 2
+  for _, k in ipairs({ "toolbar", "midi_toolbar" }) do
+    if st[k] ~= nil then
+      local out = {}
+      for _, it in ipairs(type(st[k]) == "table" and st[k] or {}) do
+        if it == -1 then out[#out + 1] = -1
+        elseif type(it) == "table" and (math.tointeger(it[1]) or (type(it[1]) == "string" and it[1]:match("^_?[%w_]+$"))) and #out < 64 then
+          local icon = type(it[3]) == "string" and it[3]:match("^[%w _%-%.]+$") and not it[3]:find("..", 1, true) and it[3] or nil
+          out[#out + 1] = { it[1], M.one_line(it[2] or ""), icon }
+        end
+      end
+      st[k] = out
+    end
+  end
+  for _, k in ipairs({ "toolbar_file", "midi_toolbar_file" }) do
+    if st[k] ~= nil then st[k] = type(st[k]) == "string" and not M.has_break(st[k]) and st[k]:match("[^/\\]+$") or nil end
+    if st[k] and (st[k]:find("..", 1, true) or not st[k]:match("%.ReaperMenu$")) then st[k] = nil end
+  end
+  for _, k in ipairs({ "toolbar_slot", "midi_toolbar_slot" }) do
+    if st[k] ~= nil then local n = math.tointeger(tonumber(st[k])); st[k] = n and n >= 1 and n <= 32 and n or nil end
+  end
+  return st
 end
 function M.safe_starts(list) -- (pure) -> { {name, command} } with only named commands
   local out = {}
@@ -1395,8 +1440,24 @@ function M.ensure_starts(list) -- -> names added to __startup.lua, names started
   local text = M.read(path) or ""
   local have = {}
   for _, s in ipairs(M.starts_in(text)) do have[s[2]] = true end
+  -- (review 2: one this computer doesn't start yet came with a look, preset or setup from a file or your other computers: asked once)
+  local asked, new = {}, {}
+  for id, yes in reaper.GetExtState(M.SECTION, "starts asked"):gmatch("([^|=]+)=([01])") do asked[id] = yes end
   for _, s in ipairs(M.safe_starts(list)) do
-    local id = reaper.NamedCommandLookup(s[2])
+    if not have[s[2]] and not asked[s[2]] and reaper.NamedCommandLookup(s[2]) ~= 0 then new[#new + 1] = s end
+  end
+  if #new > 0 then
+    local names = {}
+    for _, s in ipairs(new) do names[#names + 1] = "  " .. s[1] .. " (" .. s[2] .. ")" end
+    local yes = reaper.MB("Start these scripts now and each time REAPER starts?\n\n" .. table.concat(names, "\n") ..
+      "\n\nThey came with a persona, look or setup from a file or another computer. No: they're left out, and not asked about again.", "ReaPersona: start scripts", 4) == 6
+    for _, s in ipairs(new) do asked[s[2]] = yes and "1" or "0" end
+    local t = {}
+    for id, v in pairs(asked) do t[#t + 1] = id .. "=" .. v end
+    reaper.SetExtState(M.SECTION, "starts asked", table.concat(t, "|"), true)
+  end
+  for _, s in ipairs(M.safe_starts(list)) do
+    local id = asked[s[2]] == "0" and not have[s[2]] and 0 or reaper.NamedCommandLookup(s[2])
     if id ~= 0 then -- (registered here; one that isn't comes with ReaPack's packages or your scripts, and is added next time)
       if not have[s[2]] then
         have[s[2]] = true
@@ -1435,7 +1496,7 @@ function M.import_preset(d)
   if p.theme ~= nil then p.theme = type(p.theme) == "string" and p.theme:match("[^/\\]+$") or nil end -- (a file name in ColorThemes, nothing more)
   p.feel = p.feel and M.safe_feel(p.feel)
   p.colours = M.safe_colours(p.colours)
-  p.starts = nil -- (review 2026-11-18: a shared preset can't add scripts that start with REAPER, or a whole project)
+  p.starts, p.blocks = nil, nil -- (review 2026-11-18: a shared preset can't add scripts that start with REAPER, or a whole project; nor through its blocks, review 2)
   if type(p.project) == "table" then p.project.template, p.project.template_name = nil, nil end
   local list = load_presets()
   p.id = M.new_id(p.feel_from and "mix_" or "preset_")
@@ -1666,7 +1727,7 @@ end
 
 -- ---------------------------------------------------------------- helper scripts (written and registered once, by the picker)
 local function safe(spec) return (spec:gsub("[^%w]", function(c) return string.format("_%02X", c:byte()) end)) end
-local STUBS = 7 -- (bump when the stubs below change, so they're written again. 4: the Actions list sorted once, M.ensure_scripts. 5: duplicate, gap, autopunch. 6: screen-reader menu. 7: notation editor)
+local STUBS = 8 -- (bump when the stubs below change, so they're written again. 4: the Actions list sorted once, M.ensure_scripts. 5: duplicate, gap, autopunch. 6: screen-reader menu. 7: notation editor. 8: pt modes, new track like this, pt duplicate)
 local HEAD = '-- @noindex\n-- (made by ReaPersona)\nlocal p = debug.getinfo(1, "S").source:match("^@?(.*)[/\\\\]")\n'
 local function stub(path, fn, arg) -- a one-line action: core.<fn>(arg), arg written as a Lua string literal
   return M.write(path, HEAD .. 'dofile(p .. "/../reapersona_core.lua").' .. fn .. "(" .. (arg and string.format("%q", arg) or "") .. ")\n")
@@ -1719,8 +1780,8 @@ function M.ensure_scripts()
                  ["screen-reader menu"] = { "screen_reader_menu" }, ["notation editor"] = { "notation_editor" },
                  -- (5.37, checked against each DAW's own docs: Pro Tools' edit modes are one exclusive group, so each is ripple and snap
                  -- set together; Logic's and GarageBand's Cmd+D is a new track with the same settings, without its content)
-                 ["pt shuffle"] = { "run_cmds", "40310,40753" }, ["pt slip"] = { "run_cmds", "40309,40753" }, ["pt grid"] = { "run_cmds", "40309,40754" },
-                 ["new track like this"] = { "run_cmds", "40062,40421,40006" } }
+                 ["pt shuffle"] = { "run_modes", "40310,40753" }, ["pt slip"] = { "run_modes", "40309,40753" }, ["pt grid"] = { "run_modes", "40309,40754" },
+                 ["new track like this"] = { "new_track_like_this" }, ["pt duplicate"] = { "duplicate_selection" } }
   local names = {}
   for _, st in ipairs(M.styles) do main["use " .. st.id] = { "use_id", st.id }; local l = (st.short or st.name):lower(); names[l] = (names[l] or 0) + 1 end
   local todo, off, all, used = {}, {}, M.all_actions(), used_ids()
@@ -1799,13 +1860,23 @@ function M.duplicate_to_new_track()
 end
 -- Audacity's Silence, "Delete and leave gap" and "Cut and leave gap": remove or cut the selected area of the items with ripple editing off
 -- for this one edit (REAPER's own actions: SWS's smart remove took whole items when run from a script).
-function M.run_cmds(list) -- (5.37) several actions as one undo step: "40310,40753" (ids, or named "_..." ones)
-  reaper.Undo_BeginBlock()
+function M.run_modes(list) -- (5.37) several actions in a row: "40310,40753" (ids, or named "_..." ones). Options only, so no undo step
   for c in tostring(list):gmatch("[^,%s]+") do
     local id = tonumber(c) or reaper.NamedCommandLookup(c)
     if id and id ~= 0 then reaper.Main_OnCommand(id, 0) end
   end
-  reaper.Undo_EndBlock("ReaPersona", -1)
+end
+function M.run_cmds(list, name) -- the same as one undo step called name
+  reaper.Undo_BeginBlock()
+  M.run_modes(list)
+  reaper.Undo_EndBlock(name or "ReaPersona", -1)
+end
+function M.duplicate_selection() -- Pro Tools' Cmd+D: the time selection's part of the items when there is one, else the items (41296 alone does nothing then)
+  local a, b = reaper.GetSet_LoopTimeRange(false, false, 0, 0, false)
+  reaper.Main_OnCommand(b > a and 41296 or 41295, 0)
+end
+function M.new_track_like_this() -- Logic's "New Track With Duplicate Settings": duplicate, then empty it (items unselected first, so none elsewhere go)
+  M.run_cmds("40062,40289,40421,40006", "New track like this")
 end
 function M.without_ripple(cmd)
   local id = tonumber(cmd) or reaper.NamedCommandLookup(cmd)
@@ -2244,7 +2315,8 @@ function M.block_title(b)
   elseif b.kind == "themeset" then return "Theme settings: " .. (M.safe_themeset(b.set) and M.themeset_words(M.safe_themeset(b.set)) or "none") end
   return "?"
 end
-function M.safe_feel(list) -- a shared file's feel, keeping only commands ReaPersona's own personas and settings use (a file can't run others)
+function M.feel_ok() -- the commands a persona's feel may run: ReaPersona's own personas' and settings' (cached)
+  if M._feel_ok then return M._feel_ok end
   local ok = {}
   local function add(c) ok[tostring(c)] = true end
   for _, st in ipairs(M.styles_json.styles or {}) do
@@ -2255,6 +2327,18 @@ function M.safe_feel(list) -- a shared file's feel, keeping only commands ReaPer
   end
   for _, g in ipairs(M.SETTING_GROUPS) do for _, it in ipairs(g.items) do if type(it[1]) == "table" then for _, c in ipairs(it[1]) do add(c) end else add(it[1]) end end end
   for _, c in ipairs(EXTRA_TOGGLES) do add(c) end
+  M._feel_ok = ok
+  return ok
+end
+function M.mouse_plain(f) -- (pure) a mouse line as it goes into the put-back list: context, flag 0-15, behaviour in one plain piece each -> it, or nil
+  local fl = math.tointeger(tonumber(f[3]))
+  if not (type(f[2]) == "string" and f[2]:match("^[%w_:]+$") and #f[2] <= 64 and fl and fl >= 0 and fl <= 15
+          and type(f[4]) == "string" and not f[4]:find("[|;]") and not M.has_break(f[4]) and #f[4] <= 64) then return nil end
+  local c = { table.unpack(f) }; c[3] = fl
+  return c
+end
+function M.safe_feel(list) -- a shared file's feel, keeping only commands ReaPersona's own personas and settings use (a file can't run others)
+  local ok = M.feel_ok()
   local out = {}
   for _, f in ipairs(type(list) == "table" and list or {}) do
     local good = type(f) == "table" and type(f[1]) == "string"
@@ -2264,8 +2348,9 @@ function M.safe_feel(list) -- a shared file's feel, keeping only commands ReaPer
       good = type(f[2]) == "table" and ok[tostring(f[3])]
       for _, c in ipairs(good and f[2] or {}) do good = good and ok[tostring(c)] end
     elseif good and f[1] == "mouse" then -- (no custom actions; context and behaviour plain, as they go into the put-back list: review 2026-11-18)
-      good = type(f[2]) == "string" and f[2]:match("^[%w_:]+$") ~= nil and #f[2] <= 64 and tonumber(f[3]) ~= nil
-        and type(f[4]) == "string" and not f[4]:find("_", 1, true) and not f[4]:find("[%c|;]") and #f[4] <= 64
+      local c = M.mouse_plain(f)
+      good = c ~= nil and not c[4]:find("_", 1, true) and not c[4]:match("^%s*%d+%s*c?%s*$") -- (no action, by name or number, on a click: review 2)
+      if good then f = c end
     elseif good and f[1] == "pref" then
       good = M.pref_ok(f[2], f[3])
       if good then f = { "pref", f[2], tonumber(f[3]), PREF[f[2]][2] .. ": " .. M.pref_words(f[2], f[3]) } end
@@ -2300,9 +2385,8 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
     if daw and b.keys then
       for _, k in ipairs(st.midi_keys or {}) do out[#out + 1] = { slot = "midi " .. M.canon(k[1]), kind = "midi", label = k[3], key = k[1], entry = k } end
       for i, k in ipairs(type(b.extra) == "table" and b.extra or {}) do -- (keys added from other personas, your keymap, or any action)
-        if type(k) == "table" and type(k[1]) == "string" and M.encode(k[1]) and (type(k[2]) == "number" or type(k[2]) == "string") then
-          key({ k[1], k[2], tostring(k[3] or k[2]) }, M.is_wheel(k[1]), i)
-        end
+        local sk = M.safe_keys({ k })[1]
+        if sk and M.encode(sk[1]) then key({ sk[1], sk[2], sk[3] ~= "" and sk[3] or tostring(sk[2]) }, M.is_wheel(sk[1]), i) end
       end
     end
     local mat = {}
@@ -2310,6 +2394,8 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
       local s = feel_slot(f)
       local v = not extra and type(b.mset) == "table" and s and b.mset[s] -- (an added line is changed in b.mextra itself)
       if v then f = { "mouse", f[2], f[3], v, f[#f] } end
+      f = M.mouse_plain(f) -- (a changed or added line: plain, as it goes into the put-back list; an action on a click is yours to choose. Review 2)
+      if not f then return end
       local before = #out
       feel(f)
       if #out > before then
@@ -2324,7 +2410,8 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
     end
     if b.kind == "mouse" then
       for i, k in ipairs(type(b.extra) == "table" and b.extra or {}) do -- (wheel and trackpad bindings added: keys on the wheel)
-        if type(k) == "table" and type(k[1]) == "string" and M.is_wheel(k[1]) and M.encode(k[1]) then key({ k[1], k[2], tostring(k[3] or k[2]) }, true, i) end
+        local sk = M.safe_keys({ k })[1]
+        if sk and M.is_wheel(sk[1]) and M.encode(sk[1]) then key({ sk[1], sk[2], sk[3] ~= "" and sk[3] or tostring(sk[2]) }, true, i) end
       end
       for i, f in ipairs(type(b.mextra) == "table" and b.mextra or {}) do
         if type(f) == "table" and type(f[2]) == "string" and tonumber(f[3]) and type(f[4]) == "string" then mfeel({ "mouse", f[2], tonumber(f[3]), f[4], tostring(f[5] or f[4]) }, i) end
@@ -2570,8 +2657,8 @@ function M.strip_items(chunk) return M.strip_blocks(chunk, { ITEM = true }) end 
 -- (its tracks with their FX, routing and folders, sample rate, recording format, render settings, tempo and time signature, markers and
 -- regions, grid, notes) without its media items, its media bay, scripts' data stored in it (StudioSync's would make a new project look
 -- shared) or its own folders (recording path, render file). Pure.
-local TEMPLATE_DROP = { ITEM = true, EXTSTATE = true, PROJBAY = true }
-local TEMPLATE_DROP_LINE = { RECORD_PATH = true, RENDER_FILE = true }
+local TEMPLATE_DROP = { ITEM = true, EXTSTATE = true, PROJBAY = true, ["S&M_PROJACTION"] = true }
+local TEMPLATE_DROP_LINE = { RECORD_PATH = true, RENDER_FILE = true, ["S&M_PROJACTION"] = true } -- (SWS runs that action as the project opens: review 2)
 function M.template_from_rpp(t)
   local out = {}
   for line in M.strip_blocks(t, TEMPLATE_DROP):gmatch("[^\n]*\n") do
@@ -2702,7 +2789,7 @@ function M.apply_project(st) -- the persona's project part, in the project in fr
   local _, was = reaper.GetProjExtState(0, M.SECTION, "set up")
   if type(p.template) == "string" and p.template ~= "" and fresh and was ~= pid then
     local f = M.here .. "/_template.RPP"
-    if M.write(f, p.template) then
+    if M.write(f, M.template_from_rpp(p.template)) then -- (again here: one that came from elsewhere is filtered too)
       reaper.Main_openProject("template:" .. f) -- (into this tab, as a new untitled project: a fresh one has nothing to lose, and REAPER would ask if it had)
       os.remove(f)
       reaper.SetProjExtState(0, M.SECTION, "set up", pid) -- (so it isn't loaded again over itself)
@@ -3204,7 +3291,7 @@ function M.kb_plan(kb, styles, scripts, manifest, old_fb, defaults, remove, no_m
           local f, k = M.encode(spec)
           if not f then why = why or ("unknown key: " .. spec) end
           if why then warnings[#warnings + 1] = string.format("%s: skipped key %s (%s)", tostring(st.name), tostring(e[1]), why)
-          else plan[#plan + 1] = { f, k, idstr(cmd), alt, (string.format("%s : %s : %s : %s", KB_TAG, st.name, spec, tostring(what)):gsub("%c", " ")) } end
+          else plan[#plan + 1] = { f, k, idstr(cmd), alt, M.one_line(string.format("%s : %s : %s : %s", KB_TAG, st.name, spec, tostring(what))) } end
         end
       end
     end
@@ -3338,8 +3425,8 @@ function M.menu_plan(menu, styles, remove, read_toolbar, warnings)
             for i, it in ipairs(list) do
               if it == -1 then body[#body + 1] = string.format("item_%d=-1", i - 1)
               else
-                if it[3] then body[#body + 1] = string.format("icon_%d=%s", i - 1, idstr(it[3])) end
-                body[#body + 1] = string.format("item_%d=%s %s", i - 1, idstr(it[1]), idstr(it[2]))
+                if it[3] then body[#body + 1] = M.one_line(string.format("icon_%d=%s", i - 1, idstr(it[3]))) end
+                body[#body + 1] = M.one_line(string.format("item_%d=%s %s", i - 1, idstr(it[1]), idstr(it[2])))
               end
             end
           end
@@ -3594,6 +3681,10 @@ function M.remove_tree(dir) -- a folder ReaPersona made itself, and everything i
   else sh("/bin/rm -rf '" .. dir:gsub("'", "'\\''") .. "'", 20000) end -- (a full path: on a Mac REAPER runs a bare name as nothing, code -999)
 end
 function M.python() -- -> "Python 3.x" when a Python 3 runs here, else nil (cached; M.py is the command that worked)
+  if M._py == nil then -- (found once a REAPER session: each "use" action loads its own copy of this file. Review 2)
+    local was = reaper.GetExtState(M.SECTION, "python found")
+    if was == "-" then M._py = false elseif was ~= "" then M._py, M.py = was:match("^(.-)\t(.+)$") end
+  end
   if M._py == nil then
     M._py = false
     local win = reaper.GetOS():find("^Win")
@@ -3616,6 +3707,7 @@ function M.python() -- -> "Python 3.x" when a Python 3 runs here, else nil (cach
       local v = code == "0" and text:match("Python 3%S*")
       if v then M._py, M.py = v, c; break end
     end
+    reaper.SetExtState(M.SECTION, "python found", M._py and (M._py .. "\t" .. M.py) or "-", false)
   end
   return M._py or nil
 end
@@ -4571,6 +4663,7 @@ function M.import(path) -- -> the style, or nil + why. Shortcuts need install_sh
   -- (review 2026-11-18: a shared file can't add scripts that start with REAPER, or a whole project (SWS can run actions when one opens);
   -- its keys' names and labels go into reaper-kb.ini lines, so no line breaks)
   st.keys = st.keys and M.safe_keys(st.keys)
+  M.safe_toolbar(st)
   st.starts = nil
   if type(st.project) == "table" then st.project.template, st.project.template_name = nil, nil end
   if type(st.theme_file) == "table" and type(st.theme_file.name) == "string" and type(st.theme_file.text) == "string" then
@@ -4641,10 +4734,13 @@ M.EXT_SETTINGS = { -- (here: keys that belong to this computer, never copied)
 local HERE_ONLY = { style = true, orig = true, ["orig project"] = true, migrated = true, page = true, search = true, ["follow beat"] = true,
   ["midi dock"] = true, ["theme my_reaper"] = true, ["theme path my_reaper"] = true, welcomed = true, ["text size"] = true, look = true, view = true,
   ["last style"] = true, ["menu once"] = true, onboarded = true, ["screen reader"] = true, workflow = true, ["first setup"] = true,
-  ["update seen"] = true, ["persona prefs"] = true, ["themeset orig"] = true } -- (when this computer last looked, 5.23; what a persona holds here, 5.36.1) -- (screen reader: each computer's own, or one
+  ["update seen"] = true, ["persona prefs"] = true, ["themeset orig"] = true, ["orig token"] = true, advanced = true, ["python found"] = true,
+  ["starts asked"] = true } -- (review 2: the switch token, Show everything, start scripts asked about) -- (when this computer last looked, 5.23; what a persona holds here, 5.36.1) -- (screen reader: each computer's own, or one
   -- computer turning the menu off could lock a screen-reader user on another out of it. Review, 5.14)
 local HERE_PREFIX = { "docker ", "params ", "forks ", "sync ", "declined ", "inputs " }
 function M.synced_setting(k) -- a ReaPersona ExtState key that goes to your other computers (pure)
+  if M.has_break(k) then return false end
+  k = k:lower() -- (REAPER may treat ExtState names in any case: review 2)
   if HERE_ONLY[k] then return false end
   for _, p in ipairs(HERE_PREFIX) do if k:sub(1, #p) == p then return false end end
   return true
@@ -4748,16 +4844,21 @@ local FILE_DIRS = { tpl = { "FXChains/", "TrackTemplates/", "ProjectTemplates/",
 function M.item_allowed(item, v)
   local k, rest = tostring(item):match("^(%a+) (.+)$")
   if not k then return false end
+  if (k == "setting" or k == "ext" or k == "xstate") and (M.has_break(rest) or (v ~= nil and M.has_break(v))) then return false end -- (review 2)
   if k == "setting" then return M.synced_setting(rest) end
   if k == "ext" then
     local sec, key = rest:match("^([^|]+)|(.+)$")
-    for _, x in ipairs(M.EXT_SETTINGS) do if x.section == sec then return not x.here[key] end end
+    for _, x in ipairs(M.EXT_SETTINGS) do if sec and x.section:lower() == sec:lower() then return not x.here[key:lower()] end end
     return false
   end
   if k == "xstate" then local sec, key = rest:match("^([^|]+)|(.+)$"); return sec ~= nil and M.xstate_synced(sec, key, v) end
   if k == "pref" then return M.pref_synced(rest, v) end
   if FILE_DIRS[k] then
     if rest:find("..", 1, true) or rest:find("\\", 1, true) or rest:match("^/") or rest:find(":", 1, true) or rest:lower():find("__startup") then return false end
+    -- (review 2: "Scripts/./ReaPersona", "//", "ReaPersona." and "ReaPersona " all name ReaPersona's own folder: every part plain, or nothing)
+    for seg in (rest .. "/"):gmatch("([^/]*)/") do
+      if seg == "" or seg == "." or seg:find("^%s") or seg:find("[%.%s]$") or seg:find("[~<>\"|?*]") or M.has_break(seg) then return false end
+    end
     local ok = false
     for _, d in ipairs(FILE_DIRS[k]) do if rest:sub(1, #d) == d then ok = true end end
     if k == "code" then
@@ -4799,10 +4900,26 @@ local function apply_items(list)
     for _, x in ipairs(by[kind]) do
       local v = x.a.v
       if wrap then
-        for n = #list, 1, -1 do if type(list[n]) == "table" and list[n].id == x.id then table.remove(list, n) end end
-        if v then
+        if v and (type(v) ~= "table" or type(v.name) ~= "string" or (v.short ~= nil and type(v.short) ~= "string")) then -- (review 2: one that would stop the window opening)
+          M.log("sync: not taken in (not a persona): " .. tostring(x.a.item)); rep.refused = rep.refused + 1; v = "skip"
+        end
+        for n = #list, 1, -1 do if v ~= "skip" and type(list[n]) == "table" and list[n].id == x.id then
+          if kind == "persona" then pcall(M.keep_version, x.id, list[n]) end -- (yours as it was, on its page's Earlier versions: review 2)
+          table.remove(list, n)
+        end end
+        if v == "skip" then v = nil
+        elseif v then
           v.id = x.id
-          if type(v.name) == "string" then v.name = v.name:gsub("%c", " ") end
+          v.name = M.one_line(v.name)
+          if v.short then v.short = M.one_line(v.short) end
+          if v.midi_keys ~= nil then
+            local mk = {}
+            for _, e in ipairs(type(v.midi_keys) == "table" and v.midi_keys or {}) do
+              if type(e) == "table" and type(e[1]) == "string" and not M.has_break(e[1]) and (type(e[2]) == "string" or type(e[2]) == "number" or type(e[2]) == "table") then mk[#mk + 1] = e end
+            end
+            v.midi_keys = mk
+          end
+          if kind == "persona" then M.safe_toolbar(v) end
           if (kind == "persona" or kind == "preset") and v.feel ~= nil then v.feel = M.safe_feel(v.feel) end -- (presets too: review 2026-11-18)
           if kind == "persona" and type(v.keys) == "table" then v.keys = M.safe_keys(v.keys) end
           if (kind == "persona" or kind == "preset") and v.colours ~= nil then v.colours = M.safe_colours(v.colours) end
@@ -4850,7 +4967,7 @@ M.SETUP_RESTART = "Smooth Wheel Scroll and ReaSmoothPlayhead read their settings
 --   repo/pkg ReaPack's repositories, and its packages: the ones another computer has and this one doesn't are offered (Install).
 -- Files travel by content: <folder>/blobs/<hash>, written once, read by the others. Deleting a file doesn't delete it elsewhere.
 M.ADVANCED = {
-  { id = "prefs", name = "REAPER's preferences", kinds = { "pref" }, tip = "Everything in Preferences that isn't this computer's own (paths, audio and MIDI devices, window places, recent files): taken in when REAPER restarts (Apply)." },
+  { id = "prefs", name = "REAPER's preferences", kinds = { "pref" }, tip = "Everything in Preferences that isn't this computer's own (paths, audio and MIDI devices, window places, recent files): taken in when REAPER restarts. Needs Python." },
   { id = "xstate", name = "Other scripts' settings", kinds = { "xstate" }, tip = "What your other scripts and extensions remember in REAPER (their ExtState), apart from file paths and StudioSync's own." },
   { id = "keys", name = "Shortcuts, mouse, menus and toolbars", kinds = { "ini" }, tip = "Your keymap, mouse modifiers, menus and toolbars, merged into this computer's when REAPER restarts (Apply). Window sets stay each computer's: they hold its screens' places." },
   { id = "templates", name = "FX chains and templates", kinds = { "tpl" }, tip = "FX chains, track templates, project templates, MIDI note names and key map files." },
@@ -4874,7 +4991,7 @@ local PREF_HERE = { "_x$", "_y$", "_w$", "_h$", "_ew$", "_eh$", "_dx$", "_dy$", 
   "font", "uiscale", "retina", "hidpi", "^adjrec", "lat[io][nu]t?$", "latency", "^bsize", "^bufsize", -- (an interface's latency offsets, buffers)
   "hwout", "^zoom$", "^vzoom", "^toppane", "^langpack", "tmpl", "^lastproj", ":", "^ccresettab", "^insertmtracklast", "^errnowarn" }
 function M.pref_synced(k, v) -- (pure)
-  if tostring(k):find("[%c=%[%]]") or (type(v) == "string" and v:find("%c")) then return false end -- (one plain key=value line: review 2026-11-18)
+  if tostring(k):find("[=%[%]]") or M.has_break(k) or (type(v) == "string" and M.has_break(v)) then return false end -- (one plain key=value line: review 2026-11-18; U+2028 too, review 2)
   local low = k:lower()
   for _, pat in ipairs(PREF_HERE) do if low:find(pat) then return false end end
   if type(v) == "string" and (v:match("^%a:[\\/]") or v:match("^/") or v:match("^\\\\")) then return false end -- (a path on this computer)
@@ -4899,8 +5016,8 @@ for k in ([[afxcfg audioprshift autoxfade defpitchcfg defstretchmode envmgropts 
 function M.project_var(k) return PROJECT_VARS[k:lower()] == true end -- (pure)
 local XSTATE_HERE ={ ReaPersona = true, BandSync = true, StudioSync = true, ["reaper-daemon"] = true, reaper_daemon = true }
 function M.xstate_synced(section, k, v) -- (pure)
-  if XSTATE_HERE[section] then return false end
-  for _, x in ipairs(M.EXT_SETTINGS) do if x.section == section then return false end end -- (already: the "ext" items)
+  for s in pairs(XSTATE_HERE) do if s:lower() == section:lower() then return false end end -- (any case: review 2)
+  for _, x in ipairs(M.EXT_SETTINGS) do if x.section:lower() == section:lower() then return false end end -- (already: the "ext" items)
   local low = k:lower()
   if low:find("pos") or low:find("dock") or low:find("^wnd") or low:find("window") or low:find("_x$") or low:find("_y$") or low:find("path") or low:find("dir$") then return false end
   if type(v) == "string" and (v:match("^%a:[\\/]") or v:match("^/Users/") or v:match("^/home/") or v:match("^\\\\")) then return false end
@@ -5122,6 +5239,9 @@ local function put_file(rel, v)
   if rel:find("%.%.") or rel:match("^[/\\]") or rel:match("^%a:") then return false end -- (only inside the resource path)
   local text = from_blob(v)
   if not text or M.content_hash(text) ~= v.h then return false end
+  local mine = M.here:sub(1, #res) == res and M.here:sub(#res + 2):lower() .. "/" or nil
+  if (mine and rel:lower():sub(1, #mine) == mine) or (M.owned and M.owned[rel]) then return false end -- (ReaPersona's own files, and ReaPack's: review 2)
+  if rel:match("^ProjectTemplates/") then text = text:gsub("[^\n]*S&M_PROJACTION[^\n]*\n?", "") end -- (no action run as a project opens)
   local full = res .. "/" .. rel
   reaper.RecursiveCreateDirectory(full:match("^(.*)/[^/]*$"), 0)
   local ok = M.write(full, text)
@@ -5133,7 +5253,7 @@ local function put_file(rel, v)
 end
 function M.pending_words(list) -- (pure) the files waiting in pending/, in plain words ("your shortcuts, REAPER preferences"). Review 2026-11-18
   local words = { ["reaper-kb.ini"] = "shortcuts from your other computers", ["reaper-mouse.ini"] = "mouse settings from your other computers",
-    ["reaper-menu.ini"] = "menus and toolbars from your other computers", ["reaper-screensets.ini"] = "window sets (ReaPersona's, or your other computers')",
+    ["reaper-menu.ini"] = "menus and toolbars from your other computers", ["reaper-screensets.ini"] = "ReaPersona's window set",
     ["prefs.json"] = "REAPER preferences" }
   local out = {}
   for _, f in ipairs(list or {}) do out[#out + 1] = words[f] or f end
@@ -5144,7 +5264,7 @@ function M.restart_pending() -- what waits for REAPER's next restart (Apply): fi
   if reaper.time_precise() - pend_seen.at < 1 and pend_seen.list then return pend_seen.list end
   local out = {}
   reaper.EnumerateFiles(M.here .. "/pending", -1)
-  for i = 0, 100 do local f = reaper.EnumerateFiles(M.here .. "/pending", i); if not f then break end out[#out + 1] = f end
+  for i = 0, 100 do local f = reaper.EnumerateFiles(M.here .. "/pending", i); if not f then break end if f ~= "prefs.json" or M.python() then out[#out + 1] = f end end
   pend_seen.at, pend_seen.list = reaper.time_precise(), out
   return out
 end
@@ -5153,6 +5273,7 @@ local function pend_pref(k, v)
   local p = M.here .. "/pending/prefs.json"
   local d = M.load_json(p) or {}
   d[k] = v
+  pend_seen.at = -10 -- (looked at again: code review 2)
   return M.save_json(p, setmetatable(d, M.OBJECT))
 end
 M.pend_pref = pend_pref
@@ -5162,6 +5283,7 @@ function M.unpend_pref(k) -- (5.35) a queued preference out again (REAPER alread
   local d = M.load_json(p) or {}
   if d[k] == nil then return end
   d[k] = nil
+  pend_seen.at = -10
   if next(d) == nil then os.remove(p) else M.save_json(p, setmetatable(d, M.OBJECT)) end
 end
 M.ADVANCED_APPLY = {
@@ -5170,6 +5292,7 @@ M.ADVANCED_APPLY = {
   -- and go into reaper.ini, which REAPER reads itself.)
   pref = function(k, v)
     if not v then return true end
+    if not M.python() then M.prefs_need_python = true; return true end -- (only the Python installer puts them in: review 2)
     return pend_pref(k, v) and true or false
   end,
   xstate = function(rest, v)
@@ -5182,6 +5305,7 @@ M.ADVANCED_APPLY = {
     local text = from_blob(v) -- (checked against its hash)
     if not text then return false end
     reaper.RecursiveCreateDirectory(M.here .. "/pending", 0)
+    pend_seen.at = -10
     return M.write(M.here .. "/pending/" .. name, text) -- (merged in when REAPER restarts: install_shortcuts.py --apply-setup)
   end,
   tpl = function(rel, v) if not v then return true end return put_file(rel, v) end,
@@ -5191,6 +5315,8 @@ M.ADVANCED_APPLY = {
     if M.PKG_HERE[name] then return true end
     local url, en, auto = (v or ""):match("^(.-)|(%d)|(%d)$")
     if not url or not reaper.ReaPack_AddSetRepository then return false end
+    if not url:match("^https://[^%s\"'|]+$") or M.has_break(name) then return true end -- (review 2: not taken)
+    if reaper.ReaPack_GetRepositoryInfo then local have, was = reaper.ReaPack_GetRepositoryInfo(name); if have and was ~= "" and was ~= url then return true end end
     local ok = reaper.ReaPack_AddSetRepository(name, url, en == "1", 0, "") -- (0: never "install everything in it": its packages come one by one, Install them)
     M.repos_changed = true
     return ok and true or false
@@ -5526,7 +5652,7 @@ end
 function M.update_start(info) -- -> "reapack" (ReaPack's sync started), or a job for M.update_poll; or nil + why
   if M.reapack_owned() then
     local cmd = reaper.NamedCommandLookup("_REAPACK_SYNC")
-    if cmd ~= 0 then reaper.Main_OnCommand(cmd, 0); return "reapack" end
+    if cmd ~= 0 then reaper.Main_OnCommand(cmd, 0); M._version = nil; return "reapack" end
   end
   local stage = M.here .. "/_downloads/update"
   M.remove_tree(stage)
@@ -5560,6 +5686,7 @@ function M.update_poll(job) -- -> nil while it's downloading; then how many file
     if not M.write(dest, got[f[1]]) then M.remove_tree(stage); return false, "couldn't write " .. f[1] .. " (some files are new already: update again)" end
   end
   M.remove_tree(stage)
+  M._version = nil -- (read again: Updates says the new one)
   return #info.files
 end
 function M.open_url(u)

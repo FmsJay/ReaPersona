@@ -157,7 +157,7 @@
         ["Ctrl+X", "_SWS_SMARTCUT", "Cut (the selected range, else the clips)"],
         ["Ctrl+C", "_SWS_SMARTCOPY", "Copy (the selected range, else the clips)"],
         ["Ctrl+V", 42398, "Paste"],
-        ["Ctrl+D", 41296, "Duplicate the selection"],
+        ["Ctrl+D", "script:pt duplicate", "Duplicate (the selection, or the clip when there's no selection)"],
         ["Ctrl+E", "_SWS_SMARTSPLIT2", "Separate Clip at Selection (at the selection's edges, else at the cursor)"],
         ["Ctrl+H", 40548, "Heal Separation"],
         ["Ctrl+B", "_SWS_SMARTREMOVE", "Clear (the selected range, else the clips)"],
@@ -267,10 +267,10 @@
         ["mouse", "MM_CTX_ITEMLOWER", 8, "Move item vertically", "Start(Control)+drag with the Grabber keeps a clip in time, moving it vertically"]
       ],
       "extras": [
-        ["Edit modes: F1 Shuffle (ripple per track), F2 Slip, F4 Grid (snap) pick one each, as in Pro Tools; Shift+F4 turns snap on or off. Spot has no equivalent.", 41990, "F1"],
+        ["Edit modes: F1 Shuffle (ripple per track), F2 Slip and F4 Grid (snap) each select one mode, as in Pro Tools; Shift+F4 turns snap on or off. Spot has no equivalent. The toolbar's Shuffle and Grid buttons are on/off switches.", "script:pt shuffle", "F1"],
         ["Smart Tool: on (the top half of a clip selects a range, the bottom half moves it). Change it in Preferences > Mouse modifiers > Media item / Media item bottom half.", null, null],
         ["Tab to Transient: REAPER's 'move to the next transient' action. Tab itself goes to the next clip boundary, as in Pro Tools with Tab to Transient off.", 40375, null],
-        ["Playlists: turn on fixed lanes for a track; each take is a lane. Shift+S solos the lane under the mouse, Ctrl+Shift+Up/Down cycles the comp area through lanes.", 42430, null],
+        ["Playlists: turn on fixed lanes for a track; each take is a lane. Ctrl+Shift+Up/Down cycles the comp area through lanes.", 42430, null],
         ["Memory Locations: REAPER's markers. Keypad period, number, Enter recalls one; the Region/Marker Manager lists them.", 40326, "Num."],
         ["Pro Tools track colours: in SWS Color Management, Load the palette PT2020.SWSColor (or PT125) from ColorThemes, then colour tracks from it.", "_SWSCOLORWND", null],
         ["Clip gain: drag an item's top edge (its volume handle), or show a take volume envelope to draw it.", 40693, null],
@@ -361,7 +361,7 @@
         ["Ctrl+X", "_SWS_SMARTCUT", "Cut (the selected range, else the clips)"],
         ["Ctrl+C", "_SWS_SMARTCOPY", "Copy (the selected range, else the clips)"],
         ["Ctrl+V", 42398, "Paste"],
-        ["Ctrl+D", 41296, "Duplicate the selection"],
+        ["Ctrl+D", "script:pt duplicate", "Duplicate (the selection, or the clip when there's no selection)"],
         ["Ctrl+E", "_SWS_SMARTSPLIT2", "Separate Clip at Selection (at the selection's edges, else at the cursor)"],
         ["Ctrl+H", 40548, "Heal Separation"],
         ["Ctrl+B", "_SWS_SMARTREMOVE", "Clear (the selected range, else the clips)"],
@@ -472,10 +472,10 @@
       ],
       "extras": [
         ["Intro's limits: 8 audio, 8 instrument and 8 MIDI tracks, 4 aux inputs and 4 routing folders. REAPER has no track limit, so a session that outgrows Intro just keeps going.", null, null],
-        ["Edit modes: F1 Shuffle (ripple per track), F2 Slip, F4 Grid (snap) pick one each, as in Pro Tools; Shift+F4 turns snap on or off. Spot has no equivalent.", 41990, "F1"],
+        ["Edit modes: F1 Shuffle (ripple per track), F2 Slip and F4 Grid (snap) each select one mode, as in Pro Tools; Shift+F4 turns snap on or off. Spot has no equivalent. The toolbar's Shuffle and Grid buttons are on/off switches.", "script:pt shuffle", "F1"],
         ["Smart Tool: on (the top half of a clip selects a range, the bottom half moves it). Change it in Preferences > Mouse modifiers > Media item / Media item bottom half.", null, null],
         ["Tab to Transient: REAPER's 'move to the next transient' action. Tab itself goes to the next clip boundary, as in Pro Tools with Tab to Transient off.", 40375, null],
-        ["Playlists: turn on fixed lanes for a track; each take is a lane. Shift+S solos the lane under the mouse, Ctrl+Shift+Up/Down cycles the comp area through lanes.", 42430, null],
+        ["Playlists: turn on fixed lanes for a track; each take is a lane. Ctrl+Shift+Up/Down cycles the comp area through lanes.", 42430, null],
         ["Memory Locations: REAPER's markers. Keypad period, number, Enter recalls one; the Region/Marker Manager lists them.", 40326, "Num."],
         ["Pro Tools track colours: in SWS Color Management, Load the palette PT2020.SWSColor (or PT125) from ColorThemes, then colour tracks from it.", "_SWSCOLORWND", null],
         ["Clip gain: drag an item's top edge (its volume handle), or show a take volume envelope to draw it.", 40693, null],
@@ -521,7 +521,7 @@
         "CLogic.ReaperThemeZip",
         "FLogic - B.ReaperTheme"
       ],
-      "description": "Apple Logic Pro 13's key commands, with Command as Ctrl and Option as Alt (Logic 11 had B, Y and Cmd+K the other way round: Smart Controls, Library, Musical Typing). Space plays and stops (the playhead stays where it stopped), R records, Return goes to the beginning, C cycles, K is the metronome, X the mixer, P the piano roll, Cmd+T splits, Cmd+J joins, Cmd+Shift+D makes a Track Stack. Drag in empty space to rubber-band select, Option-drag copies.",
+      "description": "Apple Logic Pro 13's key commands, with Command as Ctrl and Option as Alt (in Logic 11, B was Smart Controls, Y the Library and Cmd+K Musical Typing). Space plays and stops (the playhead stays where it stopped), R records, Return goes to the beginning, C cycles, K is the metronome, X the mixer, P the piano roll, Cmd+T splits, Cmd+J joins, Cmd+Shift+D makes a Track Stack. Drag in empty space to rubber-band select, Option-drag copies.",
       "docs": [
         "https://support.apple.com/guide/logicpro/global-commands-lgcp02bf31b6/mac",
         "https://support.apple.com/guide/logicpro/main-window-tracks-and-various-editors-lgcpe8314fe2/mac",
@@ -624,7 +624,8 @@
         ["7", 40460, "Recall Screenset 7 (here: REAPER's screenset 7)"],
         ["8", 40461, "Recall Screenset 8 (here: REAPER's screenset 8)"],
         ["9", 40462, "Recall Screenset 9 (here: REAPER's screenset 9)"],
-        ["Ctrl+Alt+Win+Z", 40072, "Undo History"]
+        ["mac:Ctrl+Alt+Win+Z", 40072, "Undo History"],
+        ["win:Ctrl+Alt+Z", 40072, "Undo History"]
       ],
       "midi_keys": [
         ["Alt+Up", "Edit: Move notes up one semitone", "Transpose Event +1 Semitone"],
@@ -824,7 +825,9 @@
         ["Left", "Navigate: Select previous note", "Select the previous event in the Editor"],
         ["Right", "Navigate: Select next note", "Select the next event in the Editor"],
         ["Ctrl+T", "Edit: Split notes", "Split the selected event at the playhead position"],
-        ["Ctrl+J", "Edit: Join notes", "Join notes"]
+        ["Ctrl+J", "Edit: Join notes", "Join notes"],
+        ["E", "File: Close window", "Show/hide the editor (closes it)"],
+        ["P", "File: Close window", "Show/Hide Piano Roll (closes it)"]
       ],
       "feel": [
         ["switch", 41959, 40303, "Logic Pro/GarageBand piano roll toolbar in the MIDI editor (REAPER MIDI toolbar 8)"],
@@ -914,7 +917,7 @@
         ["Shift+Tab", 40291, "Toggle Between Device/Clip View (here: the track's devices)"],
         ["Ctrl+Alt+3", 40153, "Hide/Show Clip View (here: the MIDI editor)"],
         ["Ctrl+Shift+M", 40214, "Insert MIDI clip"],
-        ["M", 40637, "Computer MIDI Keyboard (here: all typing goes to REAPER's virtual MIDI keyboard)"],
+        ["M", 40377, "Computer MIDI Keyboard (here: REAPER's virtual MIDI keyboard)"],
         ["Tab", "_HB_SHOW_HIDE_PLAYTIME", "Toggle Session/Arrangement View (here: Helgobox Playtime, a paid add-on)"],
         ["Ctrl+G", 42785, "Group tracks"],
         ["Ctrl+B", 40788, "Bounce to new track"],
@@ -989,7 +992,7 @@
         ["midi_dock", 1, "Clip View sits at the bottom of the window (applied when a MIDI editor is open)"],
         ["mouse", "win:MM_CTX_ITEM", 4, "Move item ignoring snap", "Alt+drag bypasses snapping"],
         ["mouse", "mac:MM_CTX_ITEM", 2, "Move item ignoring snap", "Cmd+drag bypasses snapping"],
-        ["mouse", "win:MM_CTX_ITEM", 5, "Move item contents", "Ctrl+Shift+drag slides a clip's waveform or MIDI"],
+        ["mouse", "win:MM_CTX_ITEM", 5, "Move item contents", "Shift+Alt+drag slides a clip's waveform or MIDI"],
         ["mouse", "mac:MM_CTX_ITEM", 5, "Move item contents", "Shift+Option+drag slides a clip's waveform or MIDI"]
       ],
       "extras": [
@@ -1156,7 +1159,8 @@
         ["PgUp", "View: Zoom in horizontally", "Zoom in"],
         ["PgDn", "View: Zoom out horizontally", "Zoom out"],
         ["Ctrl+U", "Split notes on grid", "Quick chop"],
-        ["Ctrl+Q", "Quantize notes position and end to grid", "Quick quantize"]
+        ["win:Ctrl+Q", "Quantize notes position and end to grid", "Quick quantize"],
+        ["mac:Ctrl+Alt+Q", "Quantize notes position and end to grid", "Quick quantize (Option+Cmd+Q, as FL does on a Mac)"]
       ],
       "feel": [
         ["switch", 42735, 41646, "FL Studio toolbar in place of your main toolbar (REAPER toolbar 23; My REAPER switches yours back)"],
@@ -1179,7 +1183,7 @@
       ],
       "extras": [
         ["Channel Rack and Step Sequencer: MPL's RS5k step sequencer (F6).", "_RSa31e94c408150d20aad669ba609f01c4083975ae", "F6"],
-        ["Patterns: copies of a MIDI item can share their notes (pooled). To pool every copy, turn on Options > Pooled MIDI when copying; to make one unique again, unpool it.", 41071, null],
+        ["Patterns: copies of a MIDI item share their notes (pooled MIDI, on with this persona); Unpool takes one out of the pool.", 41613, null],
         ["Make unique: take a pattern copy out of the pool.", 41613, null],
         ["Playlist: REAPER's arrange view is the playlist.", null, null],
         ["Piano roll ghost notes: the MIDI editor shows other tracks' notes (View > Show events from other tracks).", null, null],
@@ -1376,18 +1380,20 @@
         ["Ctrl+Shift+Mousewheel", 1000, "Zoom vertically"],
         ["Shift+U", 40720, "Unmute Events"],
         ["Alt+Space", 43355, "Play Selection Range"],
-        ["I", 40076, "Punch In (here: record only inside the time selection)"],
+        ["I", "script:autopunch", "Punch In on/off (here: record only inside the time selection)"],
         ["Shift+S", 40021, "Project Setup"],
         ["Alt+F3", 40083, "MixConsole in Project Window (here: the mixer docked in the main window)"],
         ["Alt+R", 40086, "Activate Read for All Tracks"],
-        ["Alt+W", 40090, "Activate Write for All Tracks"],
+        ["Alt+W", 40087, "Activate Write for All Tracks (here: Touch, which writes only what you move)"],
         ["Alt+H", 40155, "Waveform zoom in"],
         ["Alt+G", 40156, "Waveform zoom out"],
         ["E", 41305, "Left Selection Side to Cursor (here: trims the selected events' start to the cursor)"],
         ["D", 41311, "Right Selection Side to Cursor (here: trims the selected events' end to the cursor)"],
         ["Ctrl+Shift+I", 40847, "Edit In-Place (here: the item's inline MIDI editor)"],
         ["Alt+Left", 40225, "Nudge Start Left"],
-        ["Alt+Right", 40228, "Nudge End Right"]
+        ["Alt+Right", 40228, "Nudge End Right"],
+        ["Alt+Shift+Right", 40226, "Nudge Start Right"],
+        ["Alt+Shift+Left", 40227, "Nudge End Left"]
       ],
       "midi_keys": [
         ["Up", "Edit: Move notes up one semitone", "Up: move selected event in the Key Editor one semitone up"],
@@ -1645,7 +1651,15 @@
         ["Alt+Num8", 40461, "Workspace 8"],
         ["Alt+Num9", 40462, "Workspace 9"],
         ["Ctrl+Mousewheel", 990, "Zoom horizontally"],
-        ["Ctrl+Shift+Mousewheel", 1000, "Zoom vertically"]
+        ["Ctrl+Shift+Mousewheel", 1000, "Zoom vertically"],
+        ["I", "script:autopunch", "Punch In on/off (here: record only inside the time selection)"],
+        ["Alt+W", 40087, "Activate Write for All Tracks (here: Touch, which writes only what you move)"],
+        ["Alt+Space", 43355, "Play Selection Range"],
+        ["Shift+S", 40021, "Project Setup"],
+        ["Alt+F3", 40083, "MixConsole in Project Window (here: the mixer docked in the main window)"],
+        ["Alt+R", 40086, "Activate Read for All Tracks"],
+        ["Alt+H", 40155, "Waveform zoom in"],
+        ["Alt+G", 40156, "Waveform zoom out"]
       ],
       "midi_keys": [
         ["Up", "Edit: Move notes up one semitone", "Up: move selected event in the Key Editor one semitone up"],
@@ -1801,7 +1815,7 @@
         ["M", 6, "Mute track"],
         ["S", 7, "Solo track"],
         ["U", 40495, "Monitor"],
-        ["P", 40622, "Loop Selection Snapped"],
+        ["P", 40622, "Loop Selection Snapped (here: the same as Shift+P)"],
         ["L", 40630, "Locate selection"],
         ["Num1", 40632, "Go to loop start"],
         ["Num2", 40633, "Go to loop end"],
@@ -2312,7 +2326,7 @@
         ["Num9", 40364, "Metronome click on/off"],
         ["Ctrl+L", 41039, "Set Loop Locators to encompass selected clips"],
         ["Alt+X", 40012, "Split selected Clips at the Song Position Marker"],
-        ["Ctrl+J", 40362, "Join clips"],
+        ["Ctrl+J", 40362, "Join clips (here: REAPER's glue; audio clips become one new file)"],
         ["Delete", 40697, "Delete"],
         ["Backspace", 40697, "Delete"],
         ["Ctrl+X", 40699, "Cut Clip or Event"],
@@ -2553,7 +2567,7 @@
       "theme": "Default_7.0.ReaperThemeZip",
       "themes": ["Default_7.0.ReaperThemeZip"],
       "accent": "#9B7BEA",
-      "description": "Adobe Audition (Windows keys), Multitrack view. Space plays and stops, Home and End go to the start and end, Ctrl+Left/Right jump to the previous or next marker, clip or selection edge, = and - zoom (Alt for vertical), M adds a marker, Alt+, and Alt+. nudge clips. Keys from Adobe's default shortcut list, which Adobe calls partial; Cut, Copy, Paste, Undo and the rest are REAPER's own, which are the same keys.",
+      "description": "Adobe Audition (Windows keys), Multitrack view. Space plays and stops, Home and End go to the start and end, Ctrl+Left/Right jump to the previous or next marker, clip or selection edge, = and - zoom (Alt for vertical), M adds a marker, Alt+, and Alt+. nudge clips. Keys from Adobe's default shortcut list, which Adobe calls partial; Delete, Cut and Copy act on the time selection when there is one, as Audition's do; Paste, Undo and the rest are REAPER's own.",
       "docs": [
         "https://helpx.adobe.com/audition/using/default-keyboard-shortcuts.html",
         "https://help.adobe.com/archive/en/audition/cs6/audition_reference.pdf"

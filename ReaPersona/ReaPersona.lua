@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.37.0
+-- @version 5.37.1
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -256,7 +256,7 @@ local selected, filter, pfilter = reaper.GetExtState(SECTION, "style"), "", ""
 local page = reaper.GetExtState(SECTION, "page") ~= "" and reaper.GetExtState(SECTION, "page") or "DAWs" -- (the page you were on)
 local search_q, search_focus = "", false -- (search everything: top bar, Ctrl+K)
 local MOD = (reaper.GetOS():find("^OSX") or reaper.GetOS():find("^mac")) and "Cmd" or "Ctrl" -- (what ImGui's Ctrl is called on this computer)
-local page_name, page_shown -- (a page's name as the window shows it, and whether Show everything hides it: set up after GROUPS)
+local page_name, page_shown, set_advanced -- (a page's name as the window shows it, whether Show everything hides it, the switch: set up after GROUPS)
 local function go(pg) -- (a screen reader with OSARA hears the page's name)
   page = pg; search_q = ""; reaper.SetExtState(SECTION, "page", pg, false)
   if reaper.osara_outputMessage then reaper.osara_outputMessage(pg == "Guide" and "How it works" or (page_name and page_name(pg)) or pg) end
@@ -1109,8 +1109,8 @@ local function settings_page(sec) -- (5.33: in sub-tabs; sec = which)
     local pend = core.restart_pending() -- (shown whether or not the advanced parts are unfolded)
     if #pend > 0 then
       ImGui.TextColored(ctx, C.YELLOW, "Waiting for REAPER to restart: " .. core.pending_words(pend))
-      if primary("Apply (REAPER restarts)##applysetup") then install_shortcuts() end
-      ImGui.SetItemTooltip(ctx, "REAPER closes (asking about anything unsaved), they're merged into this computer's (backed up first), your persona shortcuts go back in, and REAPER opens again.")
+      if primary("Restart REAPER now##applysetup") then install_shortcuts() end
+      ImGui.SetItemTooltip(ctx, "REAPER closes (asking about anything unsaved), these go in (what's replaced is backed up first), and it opens again.")
     end
     ImGui.Dummy(ctx, 0, 4)
     local n_adv = 0
@@ -1221,9 +1221,9 @@ local function settings_page(sec) -- (5.33: in sub-tabs; sec = which)
   end
   if sec == "look" and card("set look") then
     heading("ReaPersona's look")
-    if setting_row("##advset", "Show everything: the editors, Layout, Project, REAPER's options and the theme tools", reaper.GetExtState(SECTION, "advanced") ~= "0",
-        "Off, ReaPersona shows its main tabs only (Home, Personas, Themes, Colours, Shortcuts, Settings, Help). The same switch is at the bottom of the list on the left.") then
-      reaper.SetExtState(SECTION, "advanced", reaper.GetExtState(SECTION, "advanced") ~= "0" and "0" or "1", true)
+    if setting_row("##advset", "Show everything: also Mouse & trackpad, Layout, Project, REAPER's options, and adjusting and building themes", reaper.GetExtState(SECTION, "advanced") ~= "0",
+        "Off, ReaPersona shows its main tabs only (Home, Personas, Themes, Colours, Shortcuts, Settings, Help); while you make or edit a persona every tab shows. The same switch is at the bottom of the list on the left (in the drop-down on a narrow window).") then
+      set_advanced(reaper.GetExtState(SECTION, "advanced") == "0")
     end
     local look = reaper.GetExtState(SECTION, "look")
     if look == "" then look = "Follow StudioSync" end
@@ -1600,7 +1600,7 @@ end
 local function setup_row(id, done, what, why, button, fn, tip)
   ImGui.TableNextRow(ctx)
   ImGui.TableNextColumn(ctx); ImGui.AlignTextToFramePadding(ctx)
-  ImGui.TextColored(ctx, done and C.GREEN or C.YELLOW, done and "Done" or "To do")
+  if done == "optional" then ImGui.TextColored(ctx, C.MUTED, "Optional") else ImGui.TextColored(ctx, done and C.GREEN or C.YELLOW, done and "Done" or "To do") end
   ImGui.TableNextColumn(ctx); ImGui.AlignTextToFramePadding(ctx); ImGui.PushTextWrapPos(ctx, 0); ImGui.Text(ctx, what)
   if why and why ~= "" then ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.MUTED); ImGui.Text(ctx, why); ImGui.PopStyleColor(ctx) end
   ImGui.PopTextWrapPos(ctx)
@@ -1655,8 +1655,9 @@ end
 function install_shortcuts(remove, extra, asked) -- (remove: Remove ReaPersona, which has asked already: the lines come out instead. extra: a persona that
   -- needs its layer now; asked: the question was already put)
   if not remove then
-    if not asked and reaper.MB("REAPER closes (it asks first if anything is unsaved), what waits for a restart goes in (your persona shortcuts, and any REAPER preferences or window set), and REAPER opens again: about 10 seconds.\n\n" ..
-      "Your keymap is backed up first.", "ReaPersona: restart REAPER", 1) ~= 1 then return end
+    local what = core.pending_words(core.restart_pending())
+    if not asked and reaper.MB("REAPER closes (it asks about anything unsaved first) and opens again in about 10 seconds, with your projects.\n\n" ..
+      "Going in: your persona shortcuts" .. (what ~= "" and (", " .. what) or "") .. ".\n\nYour keymap is backed up first.", "ReaPersona: restart REAPER", 1) ~= 1 then return end
     core.prepare_layers(extra) -- (5.29: layers for the personas this computer uses; shared where the keys are the same)
     if core.scripts_missing() > 0 then core.ensure_scripts() end -- (the scripts the keys run have to be registered first)
     if not reaper.file_exists(here .. "/midi_defaults.json") then core.midi_defaults() end
@@ -1701,8 +1702,9 @@ remove_finish = function() -- (Remove ReaPersona, once My REAPER is back) -> fal
 end
 local setup_job -- (Set up everything: one step per frame behind a progress window, so REAPER never looks frozen. 5.25)
 local function finish_setup() -- (5.37: the startup line, quietly, then the shortcuts with REAPER's one restart)
-  if not core.startup_on() then local ok, why = core.add_startup(); if not ok then say("The startup line wasn't added: " .. tostring(why)) end end
-  install_shortcuts()
+  if not core.startup_on() then local ok, why = core.add_startup(); if not ok then return reaper.MB("The startup line wasn't added: " .. tostring(why), "ReaPersona", 0) end end
+  local have, want = shortcuts_state()
+  if have < want or #core.restart_pending() > 0 then install_shortcuts() else say("Set up: your persona comes back each time REAPER starts.") end
 end
 local function setup_all()
   if reaper.MB("Set up everything ReaPersona can do from here?\n\n" ..
@@ -1760,7 +1762,7 @@ local function setup_page()
           selected = st.id; use(st); reaper.SetExtState(SECTION, "welcomed", "1", true)
           core.set_favourite("my_reaper", true); core.set_favourite(st.id, true) -- (your setup and the DAW you came from, on Favourites. 5.27)
           local kept = core.by_id(reaper.GetExtState(SECTION, "first setup"))
-          if setup_todo() then say(st.name .. " in use." .. (kept and (" Your own setup is kept as " .. kept.name .. ".") or "") .. " Next: install its shortcuts below.") end
+          if setup_todo() then say(st.name .. " in use." .. (kept and (" Your own setup is kept as " .. kept.name .. ".") or "") .. " Next: Finish setting up, below (REAPER restarts once).") end
         end
       end
     end
@@ -1776,14 +1778,14 @@ local function setup_page()
     local have, want = have0, want0
     local steps = {
       { core.current().id ~= "my_reaper", "1. Pick the DAW you're coming from", "Its look and feel straight away, and its shortcuts once they're installed (step 2). Back to My REAPER (top) puts yours back.", "Pick one", function() go("DAWs") end },
-      { have == want and core.startup_on(), "2. Finish setting up (one restart)", "Adds the line that brings your persona back when REAPER starts, then REAPER closes, the persona shortcuts go in (your keymap is backed up first) and it opens again.", "Finish setting up", function() finish_setup() end }, -- (5.37: one step, one restart)
+      { have == want and core.startup_on(), "2. Finish setting up (one restart)", "REAPER restarts once (about 10 seconds; it asks about anything unsaved first). Your persona's shortcuts go in, and your persona comes back each time REAPER starts. Your keymap is backed up first.", "Finish setting up", function() finish_setup() end }, -- (5.37: one step, one restart)
       { core.sync_folder() ~= "" and true or "optional", "3. More than one computer? (optional)", "Save your setup to a file, or keep them the same through a shared folder.", "Set it up", function() go("Settings") end },
     }
     if ImGui.BeginTable(ctx, "first steps", 3, ImGui.TableFlags_SizingStretchProp) then
       ImGui.TableSetupColumn(ctx, "state", ImGui.TableColumnFlags_WidthFixed, 56)
       ImGui.TableSetupColumn(ctx, "what", ImGui.TableColumnFlags_WidthStretch)
       ImGui.TableSetupColumn(ctx, "do", ImGui.TableColumnFlags_WidthFixed)
-      for i, s in ipairs(steps) do setup_row("step" .. i, s[1], s[2], s[3], not s[1] and s[4] or nil, s[5]) end
+      for i, s in ipairs(steps) do setup_row("step" .. i, s[1], s[2], s[3], s[1] ~= true and s[4] or nil, s[5]) end
       ImGui.EndTable(ctx)
     end
     if ImGui.SmallButton(ctx, "How it works (F1)##first") then go("Guide") end
@@ -1825,6 +1827,8 @@ local function setup_page()
         "Each persona's keys. REAPER restarts to load them (about 10 seconds). REAPER has 16 layers, so ReaPersona gives them to the personas you use (favourites, the one in use, your own); a persona without one gets it the first time it's used, and personas with the same keys share one.", have < want and "Install and restart" or "Reinstall", install_shortcuts)
       setup_row("start", core.startup_on(), "Brings your persona back when REAPER starts", "One block in Scripts/__startup.lua.", not core.startup_on() and "Add it" or nil,
         function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end)
+      local pend = core.restart_pending()
+      if #pend > 0 then setup_row("pend", false, "Waiting for REAPER to restart: " .. core.pending_words(pend), "They go in when REAPER starts.", "Restart REAPER now", install_shortcuts) end
       local ext_keys = {}
       for key in pairs(core.EXTENSIONS) do if core.ext_here(key) then ext_keys[#ext_keys + 1] = key end end -- (Windows-only ones only on Windows)
       table.sort(ext_keys)
@@ -2026,6 +2030,7 @@ function bld_load(st) -- edit a persona: one you built is saved over itself; any
   bld.from = not mine and st.name or nil -- (unnamed, it's saved as "<this> - custom")
   local c = core.draft_get(bld.blocks, "colour")
   bld.colour = c and tonumber((c.hex or ""):gsub("#", ""), 16) or nil
+  bld.snap = core.json_encode(bld.blocks) -- (Stop asks only once something changed)
   say("Editing " .. st.name .. ": change its shortcuts, mouse, layout, theme, colours, project or REAPER settings on their tabs. " ..
     (mine and "Save changes from the bar at the top." or ("Save from the bar at the top makes a new persona (" .. st.name .. " stays as it is).")))
 end
@@ -2111,10 +2116,10 @@ local function draft_strip() -- the persona being made, over every tab
     local ch, col = ImGui.ColorEdit3(ctx, "##stripcol", bld.colour or 0x3A86FF, ImGui.ColorEditFlags_NoInputs)
     if ch then bld.colour = col; core.draft_add(bld.blocks, core.new_block("colour", string.format("#%06X", col))) end
     ImGui.SetItemTooltip(ctx, "Its colour in ReaPersona: its card, buttons and badge.")
-    ImGui.SameLine(ctx)
+    ImGui.SameLine(ctx); if ImGui.GetContentRegionAvail(ctx) < 110 * UI then ImGui.NewLine(ctx) end -- (a narrow window: the buttons go on)
     if primary(bld.id and "Save changes##strip" or "Save as new##strip") then bld_save() end
     ImGui.SetItemTooltip(ctx, bld.id and ("Saves over " .. bld.name .. ", which you made.") or "A new persona of yours: the DAWs and personas it came from stay as they are.")
-    ImGui.SameLine(ctx)
+    ImGui.SameLine(ctx); if ImGui.GetContentRegionAvail(ctx) < 60 * UI then ImGui.NewLine(ctx) end
     if ImGui.Button(ctx, "Try it##strip") then
       local st, install = core.build_style(bld_blocks(), bld.name ~= "" and bld.name or "Your persona", "built_try")
       if st then
@@ -2129,9 +2134,11 @@ local function draft_strip() -- the persona being made, over every tab
       if ImGui.Button(ctx, "Go back##strip") then local back = core.by_id(bld.back); bld.back = nil; if back then use(back) end end
       ImGui.SetItemTooltip(ctx, "Back to " .. ((core.by_id(bld.back) or {}).name or "the persona you had") .. ", exactly as it was.")
     end
-    ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "Stop##strip") and (#bld.blocks == 0 or reaper.MB("Stop making this persona? What you chose on the tabs isn't saved.", "ReaPersona", 4) == 6) then -- (asks first: review 2026-11-18)
-      bld.blocks, bld.name, bld.id, bld.msg, bld.active, bld.colour, bld.from = {}, "", nil, "", false, nil, nil
+    ImGui.SameLine(ctx); if ImGui.GetContentRegionAvail(ctx) < 50 * UI then ImGui.NewLine(ctx) end
+    if ImGui.Button(ctx, "Stop##strip") and (#bld.blocks == 0 or bld.snap == core.json_encode(bld.blocks)
+        or reaper.MB(bld.id and ("Stop editing " .. bld.name .. "? Changes you haven't saved are lost.") or "Stop making this persona? What you chose isn't saved.", "ReaPersona", 4) == 6) then -- (asks first: review 2026-11-18)
+      if bld.back then local b = core.by_id(bld.back); bld.back = nil; if b then use(b) end end -- (out of a trial: what you had)
+      bld.blocks, bld.name, bld.id, bld.msg, bld.active, bld.colour, bld.from, bld.snap = {}, "", nil, "", false, nil, nil, nil
     end
     ImGui.SetItemTooltip(ctx, "Stop making it: nothing is saved, and personas you have stay as they are.")
     if bld.msg ~= "" then muted(bld.msg) end
@@ -2858,7 +2865,7 @@ do
       return ch, n <= -60 and 0 or 10 ^ (n / 20)
     else
       local labels = {}
-      if x[3] == "shape" then for i = 1, 8 do labels[i] = "Shape " .. i end else labels = x[4] end
+      if x[3] == "shape" then for i = 1, (x.max or 7) + 1 do labels[i] = "Shape " .. i end else labels = x[4] end -- (in the order REAPER's fade-shape menu lists them; item fades have 7, crossfades 8)
       local out, changed = v, false
       if ImGui.BeginCombo(ctx, "##pfv" .. k, labels[math.floor(v) + 1] or tostring(v)) then
         for i, l in ipairs(labels) do if ImGui.Selectable(ctx, l .. "##pfo" .. k .. i, i - 1 == v) then out, changed = i - 1, true end end
@@ -2913,6 +2920,7 @@ do
       end
       ImGui.SameLine(ctx); ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, x[2]); ImGui.SameLine(ctx, 0, 16 * UI)
       if ImGui.GetCursorPosX(ctx) < 400 * UI then ImGui.SetCursorPosX(ctx, 400 * UI) end -- (a long label pushes its value along: review 2026-11-18)
+      if ImGui.GetContentRegionAvail(ctx) < 300 * UI then ImGui.NewLine(ctx); ImGui.SetCursorPosX(ctx, 40 * UI) end -- (narrow: on its own line, review 2)
       if v then
         local c2, n = control(x, v)
         if c2 then values()[x[1]] = n; bld.active = true end
@@ -3223,19 +3231,19 @@ local function tweaks_page(only) -- (5.33: REAPER's defaults, one group per tab;
           if it.tip then ImGui.SetItemTooltip(ctx, it.tip) end
           for k, o in ipairs(it[3]) do
             ImGui.SameLine(ctx)
-            if ImGui.RadioButton(ctx, o .. "##ch" .. k, now == k) and now ~= k then reaper.Main_OnCommand(core.cmd_id(it[1][k]), 0); touched = true end
+            if ImGui.RadioButton(ctx, o .. "##ch" .. k, now == k) and now ~= k then reaper.Main_OnCommand(core.cmd_id(it[1][k]), 0); touched = n end
           end
         else
           local id = core.cmd_id(it[1])
           if id == 0 then
             ImGui.BeginDisabled(ctx); setting_row("##tw", it[2] .. "  (needs SWS)", false, it.tip); ImGui.EndDisabled(ctx)
           elseif setting_row("##tw", it[2], reaper.GetToggleCommandState(id) == 1, it.tip) then
-            reaper.Main_OnCommand(id, 0); touched = true
+            reaper.Main_OnCommand(id, 0); touched = n
           end
         end
         ImGui.PopID(ctx)
       end
-      if inb and touched then inb.values = core.new_block("settings", g.id).values end
+      if inb and touched then inb.values = type(inb.values) == "table" and inb.values or {}; inb.values[touched] = core.new_block("settings", g.id).values[touched] end -- (that one only: review 2)
       if g.id == "colours" and core.cmd_id("_SWSAUTOCOLOR_APPLY") ~= 0 then
         ImGui.Dummy(ctx, 0, 2)
         if ImGui.Button(ctx, "Colour the tracks now") then reaper.Main_OnCommand(core.cmd_id("_SWSAUTOCOLOR_APPLY"), 0); say("Tracks coloured by SWS's rules.") end
@@ -3265,9 +3273,14 @@ local GROUPS = { -- { name, what it's for, its pages (tabs), the tabs' labels }
 -- Show everything (5.37, product review 2026-11-18: pick your DAW and restart once was hard to see among 30 tabs). Off, the editors and
 -- REAPER's own options are out of the way: Mouse & trackpad, Layout, Project, the REAPER tab, and Themes' Adjust and Build one. A new
 -- install starts with it off; one that was already in use keeps everything (ExtState "advanced").
-if reaper.GetExtState(SECTION, "advanced") == "" then reaper.SetExtState(SECTION, "advanced", reaper.GetExtState(SECTION, "welcomed") == "" and "0" or "1", true) end
+if reaper.GetExtState(SECTION, "advanced") == "" then reaper.SetExtState(SECTION, "advanced", (reaper.GetExtState(SECTION, "welcomed") == "" and reaper.GetExtState(SECTION, "style") == "") and "0" or "1", true) end
 local ADV_ONLY = { Mouse = true, Layout = true, Project = true, Adjust = true, Merge = true }
-page_shown = function(pg) return reaper.GetExtState(SECTION, "advanced") ~= "0" or not (ADV_ONLY[pg] or tostring(pg):match("^R_")) end
+page_shown = function(pg) return bld.active or reaper.GetExtState(SECTION, "advanced") ~= "0" or not (ADV_ONLY[pg] or tostring(pg):match("^R_")) end -- (making a persona: every part's tab. Review 2 2026-11-18)
+set_advanced = function(on)
+  reaper.SetExtState(SECTION, "advanced", on and "1" or "0", true)
+  say(on and "Every tab is showing: also Mouse & trackpad, Layout, Project, REAPER's options, and adjusting and building themes." or "Showing the main tabs. Show everything brings the rest back.")
+  if not page_shown(page) then go("Setup") end -- (not left on a page the list no longer has)
+end
 page_name = function(pg) -- ("REAPER: Preferences", "Settings: Sync": not "R_prefs", "Settings". Review 2026-11-18)
   for _, g in ipairs(GROUPS) do
     for i, p in ipairs(g[3]) do if p == pg then return #g[3] > 1 and (g[1] .. ": " .. g[4][i]) or g[1] end end
@@ -3286,9 +3299,8 @@ end
 local GUIDE = {
   { "Getting started", {
     "1. Pick the DAW you're coming from: Personas > DAWs, or the first card on Home. REAPER takes on its look and feel straight away, and its shortcuts once they're installed (step 2). Back to My REAPER (top) puts your own setup back, exactly as it was.",
-    "2. Install the shortcuts: Home > Install and restart. REAPER reads its keymap only when it starts, so it closes (asking about anything unsaved), the persona layers go in and it opens again, in about 10 seconds. Do it again after adding or changing a persona.",
-    "3. Add the startup line on Home, so your persona's keys come back each time REAPER starts.",
-    "4. More than one computer? Settings > Sync: save your setup to a file, or keep them the same through a shared folder." } },
+    "2. Finish setting up: Home > Finish setting up. REAPER restarts once (about 10 seconds; it asks about anything unsaved first): your persona's shortcuts go in, and your persona comes back each time REAPER starts. After adding or changing a persona, Home > Install and restart puts its keys in.",
+    "3. More than one computer? Settings > Sync: save your setup to a file, or keep them the same through a shared folder." } },
   { "What each page does", {
     "Home: the first steps, what ReaPersona can use and whether it's there (one click for each), importing from another DAW on this computer, and themes by other people. Drop theme, toolbar, keymap or persona files anywhere on the window to add them.",
     "Personas > DAWs: each DAW's persona, with its keys, look and feel: Use it, its cheat sheet, a new project like it, and that DAW's plug-ins with REAPER's own for each (it can add a \"<DAW> -> REAPER\" folder to REAPER's FX browser). Workflow on top (above the cards) adds a kind of session, voiceover or mixing say, to whichever persona is in use. Your personas: the ones you saved or built, and your workflows. Favourites: the ones you starred.",
@@ -3301,8 +3313,8 @@ local GUIDE = {
     "Project: what a new project gets with your persona: sample rate, tempo, time signature, grid, render settings, starter tracks or a template, a window set.",
     "REAPER: REAPER's and SWS's options, an area per tab, each one In my persona or not; and Preferences: fades and crossfades, zoom, new tracks, recording and solo, which go in when REAPER restarts.",
     "Settings: Sync (your other computers), Personas (what a persona may change, a persona per project, ReaPersona's actions), Scrolling & zoom, Look (this window, the screen-reader menu), Updates, and Remove.",
-    "Show everything (bottom left, or Settings > Look): off, only the main tabs show; on, also the editors, Layout, Project, REAPER's options and the theme tools.",
-    "Restarting REAPER: some parts go in only when REAPER starts: your persona shortcuts, REAPER preferences, ReaPersona's window set and FX folders. Each page that changes one offers Restart REAPER now; REAPER asks about anything unsaved first.",
+    "Show everything (bottom left, or Settings > Look): off, only the main tabs show; on, also Mouse & trackpad, Layout, Project, REAPER's options, and adjusting and building themes. While you make or edit a persona, every tab shows.",
+    "Restarting REAPER: some parts go in only when REAPER starts: your persona shortcuts, REAPER preferences, ReaPersona's window set and FX folders. Home lists what's waiting, with Restart REAPER now; REAPER asks about anything unsaved first.",
     "Help > How it works: this page. Check and repair: what's installed, a check of every persona against this REAPER, and registering ReaPersona's actions again." } },
   { "Keyboard", {
     "Tab and Shift+Tab move between controls, the arrow keys move within a page, Enter or Space presses, and Escape closes a menu or clears the search.",
@@ -3520,26 +3532,26 @@ local function frame()
         for _, g in ipairs(GROUPS) do
           local first = nil
           for _, p in ipairs(g[3]) do if not first and page_shown(p) then first = p end end
-          if first and ImGui.Selectable(ctx, g[1] .. "##navc", g == group_of(page)) then go(last_tab[g[1]] and page_shown(last_tab[g[1]]) and last_tab[g[1]] or first) end
+          if (first or g == group_of(page)) and ImGui.Selectable(ctx, g[1] .. "##navc", g == group_of(page)) then go(last_tab[g[1]] and page_shown(last_tab[g[1]]) and last_tab[g[1]] or first or page) end
         end
-        if ImGui.Selectable(ctx, (reaper.GetExtState(SECTION, "advanced") ~= "0" and "Show less" or "Show everything") .. "##navadv") then
-          reaper.SetExtState(SECTION, "advanced", reaper.GetExtState(SECTION, "advanced") ~= "0" and "0" or "1", true)
-        end
+        ImGui.Separator(ctx)
+        local adv = reaper.GetExtState(SECTION, "advanced") ~= "0"
+        if ImGui.Selectable(ctx, "Show everything##navadv", adv) then set_advanced(not adv) end
         ImGui.EndCombo(ctx)
       end
     end
     ImGui.PushStyleColor(ctx, ImGui.Col_ChildBg, C.NAV)
     ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowPadding, 8, 10)
     ImGui.PushStyleVar(ctx, ImGui.StyleVar_SelectableTextAlign, 0, 0.5)
-    if not narrow and ImGui.BeginChild(ctx, "nav", 150, 0, ImGui.ChildFlags_AlwaysUseWindowPadding) then
+    if not narrow and ImGui.BeginChild(ctx, "nav", 160 * UI, 0, ImGui.ChildFlags_AlwaysUseWindowPadding) then
       ImGui.PushFont(ctx, nil, 16 * UI)
       local cur_g = group_of(page)
       for _, g in ipairs(GROUPS) do
         local first = nil
         for _, p in ipairs(g[3]) do if not first and page_shown(p) then first = p end end
-        if first then
+        if first or g == cur_g then -- (the group you're on stays, even one Show everything hides: reached by a link)
         local x, y = ImGui.GetCursorScreenPos(ctx)
-        if ImGui.Selectable(ctx, "  " .. g[1] .. "##nav", g == cur_g, ImGui.SelectableFlags_None, 0, 36) then go(last_tab[g[1]] and page_shown(last_tab[g[1]]) and last_tab[g[1]] or first) end
+        if ImGui.Selectable(ctx, "  " .. g[1] .. "##nav", g == cur_g, ImGui.SelectableFlags_None, 0, 36) then go(last_tab[g[1]] and page_shown(last_tab[g[1]]) and last_tab[g[1]] or first or page) end
         ImGui.SetItemTooltip(ctx, g[2])
         if g == cur_g then ImGui.DrawList_AddRectFilled(ImGui.GetWindowDrawList(ctx), x - 8, y + 6, x - 4, y + 30, C.ACCENT, 2) end
         if g[1] == "Home" and setup_todo() then ImGui.DrawList_AddCircleFilled(ImGui.GetWindowDrawList(ctx), x + 112, y + 18, 4, C.YELLOW) end -- (something to do)
@@ -3550,8 +3562,8 @@ local function frame()
       ImGui.PushFont(ctx, nil, 13 * UI)
       local adv = reaper.GetExtState(SECTION, "advanced") ~= "0"
       local chg, on = ImGui.Checkbox(ctx, "Show everything##navadv", adv)
-      if chg then reaper.SetExtState(SECTION, "advanced", on and "1" or "0", true); say(on and "Every tab is showing: the editors, Layout, Project, REAPER's options and the theme tools." or "Showing the main tabs. Show everything brings the rest back.") end
-      ImGui.SetItemTooltip(ctx, "Off: the main tabs only (Home, Personas, Themes, Colours, Shortcuts, Settings, Help). On: also the editors, Layout, Project, REAPER's own options, and theme adjusting and building.")
+      if chg then set_advanced(on) end
+      ImGui.SetItemTooltip(ctx, "Off: the main tabs only (Home, Personas, Themes, Colours, Shortcuts, Settings, Help). On: also Mouse & trackpad, Layout, Project, REAPER's own options, and adjusting and building themes. While you make or edit a persona, every tab shows.")
       ImGui.PopFont(ctx)
       ImGui.EndChild(ctx)
     end
@@ -3580,7 +3592,8 @@ local function frame()
         ImGui.Dummy(ctx, 0, 2)
       end
       if search_q == "" then draft_strip() end -- (the persona being made, over every tab)
-      if core.prefs_queued then core.prefs_queued = false; say("Some of this persona's REAPER preferences go in when REAPER restarts: REAPER > Preferences has Restart REAPER now.") end
+      if core.prefs_queued then core.prefs_queued = false; say("Some of this persona's REAPER preferences go in when REAPER restarts (Home > Restart REAPER now).") end
+      if core.prefs_need_python then core.prefs_need_python = false; say("This persona's REAPER preferences need Python 3 to go in (python.org): the rest of it is in use.") end
       if search_q ~= "" then search_page()
       elseif page == "Setup" then setup_page()
       elseif page == "DAWs" or page == "Styles" then daws_page(sel, alt)
@@ -3784,14 +3797,14 @@ local function screen_reader_menu(once) -- -> true: open the window instead. onc
     item("Cheat sheet for " .. cur.name .. " (opens in your browser)", function() local p, why = core.cheat_sheet(cur); if p then core.open_url(p) else say(why) end end)
     sep()
     local have, want = shortcuts_state()
-    item((have < want and "Install" or "Reinstall") .. " the shortcuts (REAPER restarts)", "install")
+    local pend = core.restart_pending()
+    item(#pend > 0 and ("Restart REAPER to put in your persona shortcuts and " .. core.pending_words(pend)) or ((have < want and "Install" or "Reinstall") .. " the shortcuts (REAPER restarts)"), "install")
     if not core.startup_on() then item("Bring your persona back when REAPER starts (adds the startup line)", function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end) end
     sep()
     if core.sync_folder() ~= "" then item("Sync with your other computers now", function() sync_step(true) end)
     else item("Keep your computers the same through a shared folder...", choose_sync_folder) end
     item("Save your setup to a file...", save_setup_file)
     item("Load a setup file...", load_setup_file)
-    if #core.restart_pending() > 0 then item("Restart REAPER: " .. core.pending_words(core.restart_pending()) .. " go in", "install") end
     sep()
     item("How ReaPersona works", function() reaper.MB(guide_text(), "ReaPersona: how it works", 0) end)
     item("Open ReaPersona's window", "window")
