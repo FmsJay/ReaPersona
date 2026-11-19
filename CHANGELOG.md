@@ -1,5 +1,16 @@
 # Changelog
 
+## 5.36.1
+Fixes from a review of the whole of ReaPersona (seven reviews: engine, the window, UX and wording, functionality, security, performance,
+the product). What was found, fixed and left: docs/REVIEW-2026-11-18.md.
+- Shared and synced files can't run actions or add startup scripts: mouse settings, synced presets, key labels, imported templates and
+  startup scripts, synced preferences and scripts are checked.
+- Switching twice quickly no longer loses the second persona's put-back list; a persona preference's original survives a restart in
+  between; a broken project part no longer stops a switch.
+- Remove ReaPersona puts your preferences back and takes out its window set and FX folders. Without Python, preferences aren't queued.
+- The REAPER tab no longer copies REAPER's state into the persona you're making on every frame; pages no longer read files every frame;
+  the message at the bottom wraps; a screen reader hears page names; Help and the README are up to date.
+
 ## 5.36.0
 - **Each DAW's plug-ins in REAPER.** A DAW's page (Pro Tools, Logic, GarageBand, Ableton, FL Studio, Cubase/Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition) lists its stock plug-ins with REAPER's own for each: Channel EQ is ReaEQ, Space Designer is ReaVerb, Simpler is ReaSamplOmatic5000, and so on.
 - **A "<DAW> -> REAPER" folder** in REAPER's FX browser with those plug-ins, added or taken out from that page. Only REAPER's stock plug-ins (ReaPlugs and Cockos JSFX), found on each computer; every other folder (yours, StudioSync's) stays as it is. REAPER shows the folder after its next restart.

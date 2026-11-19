@@ -338,7 +338,7 @@ def set_prefs(text, prefs):
         lines = ["[REAPER]"] + lines
         start = 0
     end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("[")), len(lines))
-    left = dict(prefs)
+    left = {k: v for k, v in prefs.items() if not re.search(r"[\x00-\x1f=\[\]]", str(k)) and not re.search(r"[\x00-\x1f]", str(v))}  # (one plain line each: review 2026-11-18)
     for i in range(start + 1, end):
         k = lines[i].split("=", 1)[0]
         if "=" in lines[i] and k in left:
@@ -367,6 +367,48 @@ def apply_setup():
         write_atomic(dst, merged.replace("\n", eol).encode("utf-8", errors="surrogateescape"))
         os.remove(src)
         done.append("took in %s from your other computers (yours backed up first)" % name)
+    done += apply_prefs()
+    return done
+
+
+UNDOCK_SET = "ReaPersona: windows"
+
+
+def without_window_set(text):
+    """reaper-screensets.ini without ReaPersona's own window set (Remove ReaPersona, review 2026-11-18). Pure."""
+    out, keep = [], True
+    for line in text.splitlines():
+        if line.startswith("["):
+            keep = True
+        out.append(line)
+        if line.strip() == "name=" + UNDOCK_SET and out:
+            keep = False
+            while out and not out[-1].startswith("["):
+                out.pop()
+            if out:
+                out.pop()  # (its [ssetN] line too)
+            continue
+        if not keep:
+            out.pop()
+    return "\n".join(out) + ("\n" if out else "")
+
+
+def remove_window_set():
+    path = os.path.join(RES, "reaper-screensets.ini")
+    if not os.path.exists(path):
+        return []
+    text = open(path, encoding="utf-8", errors="surrogateescape").read()
+    new = without_window_set(text.replace("\r\n", "\n"))
+    if new == text.replace("\r\n", "\n"):
+        return []
+    eol = "\r\n" if "\r\n" in text else "\n"
+    write_atomic(path, new.replace("\n", eol).encode("utf-8", errors="surrogateescape"))
+    return ["took ReaPersona's window set out of reaper-screensets.ini"]
+
+
+def apply_prefs():
+    """REAPER's preferences waiting in ReaPersona/pending/prefs.json, into reaper.ini (REAPER closed). -> lines"""
+    done = []
     pf = os.path.join(PENDING, "prefs.json")
     if os.path.exists(pf):
         prefs = json.load(open(pf, encoding="utf-8"))
@@ -406,7 +448,7 @@ def run(remove=False, no_midi=False):
                 elif not (isinstance(cmd, int) or (isinstance(cmd, str) and cmd and not any(c.isspace() for c in cmd))):
                     raise ValueError("bad command %r" % (cmd,))
                 f, k = encode(spec)
-                plan.append((f, k, cmd, alt, "%s : %s : %s : %s" % (TAG, st["name"], spec, what)))
+                plan.append((f, k, cmd, alt, re.sub(r"[\x00-\x1f\x7f]", " ", "%s : %s : %s : %s" % (TAG, st["name"], spec, what))))  # (no line breaks into reaper-kb.ini: review 2026-11-18)
             except (ValueError, KeyError, TypeError) as e:
                 warnings.append("%s: skipped key %r (%s)" % (st.get("name"), entry, e))
         for mk in st.get("midi_keys", []):
@@ -524,6 +566,8 @@ if __name__ == "__main__":
     mine = "SCR 4 0 RSaa \"Custom: a\" a.lua\nKEY 9 90 _RSmine 0\n"
     assert merge_kb(mine, "KEY 9 90 _RSzz 0\nKEY 9 90 0 0\nKEY 1 70 40001 3\nKEY 1 71 _RSaa 0\n") == mine + "KEY 1 71 _RSaa 0\n"
     assert merge_ini("[a]\nx=1\n[b]\ny=2\n", "[b]\ny=3\n[c]\nz=4\n") == "[a]\nx=1\n[b]\ny=3\n[c]\nz=4\n"
+    assert without_window_set("[screensets]\nnb=10\n[sset8]\nname=Mine\n[sset9]\nname=ReaPersona: windows\nmask=-3618\nposlist0_id=x\n[other]\na=1\n") == "[screensets]\nnb=10\n[sset8]\nname=Mine\n[other]\na=1\n"
+    assert set_prefs("[REAPER]\na=1\n", {"b": "2", "c": "3\n[Python]\npath=x", "d\n": "1"}) == "[REAPER]\na=1\nb=2\n"
     assert set_prefs("[reaper]\nfoo=1\nbar=2\n[x]\nq=1", {"bar": "5", "new": "7"}) == "[reaper]\nfoo=1\nbar=5\nnew=7\n[x]\nq=1\n"
     if "--help" in sys.argv or "-h" in sys.argv:
         sys.exit(__doc__)
@@ -548,6 +592,12 @@ if __name__ == "__main__":
             with contextlib.redirect_stdout(out):
                 if "--apply-setup" in sys.argv:  # (your setup from your other computers, waiting for REAPER to close: 5.11)
                     for line in apply_setup():
+                        print(line)
+                elif "--apply-prefs" in sys.argv:  # (Remove ReaPersona: your own preferences back, nothing else from pending/. Review 2026-11-18)
+                    for line in apply_prefs():
+                        print(line)
+                if "--remove" in sys.argv:
+                    for line in remove_window_set():
                         print(line)
                 run(remove="--remove" in sys.argv, no_midi="--no-midi" in sys.argv)  # (--remove: Settings > Remove ReaPersona, review 5.9.4)
         except BaseException as e:  # (SystemExit included: whatever happened is written down for the picker)

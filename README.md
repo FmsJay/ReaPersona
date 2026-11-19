@@ -38,7 +38,7 @@ Switching away puts back everything a persona changed, so **My REAPER** is alway
 
 ## Setup, in one place
 
-The first time, ReaPersona asks which DAW you're coming from and uses its persona straight away. The window has six pages: **Home** (setup), **Personas** (favourites, DAWs, your personas), **Shortcuts**, **Mouse**, **Layout**, **Themes** (yours, get more, adjust, build one), **Colours**, **Project** (defaults), **REAPER** (its options, an area per tab), **Settings** (sync, personas, scrolling & zoom, look, updates, remove) and **Help**. It works as a narrow window too; it always floats, so a persona that docks windows can't take it into a docker.
+The first time, ReaPersona asks which DAW you're coming from and uses its persona straight away. The window has these pages: **Home** (setup), **Personas** (favourites, DAWs, your personas), **Shortcuts**, **Mouse**, **Layout**, **Themes** (yours, get more, adjust, build one), **Colours**, **Project** (defaults), **REAPER** (its options, an area per tab), **Settings** (sync, personas, scrolling & zoom, look, updates, remove) and **Help**. It works as a narrow window too; it always floats, so a persona that docks windows can't take it into a docker.
 
 **Home** lists everything ReaPersona can use, whether you have it, and a button for each:
 
@@ -70,7 +70,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
 - **Each DAW's plug-ins in REAPER:** a DAW's page lists its stock plug-ins with REAPER's equivalent for each, and can add a "<DAW> -> REAPER" folder of them to REAPER's FX browser (shown after REAPER's next restart).
 - **Other windows:** the Actions list, Undo History, Region/Marker Manager, Track Manager, Routing Matrix and REAPER's other windows, open or closed, docked or in their own window with their place and size, in any persona and My REAPER's look. Taking one out of a docker uses a window set of ReaPersona's, added at REAPER's next restart.
 - **Favourites:** the star on any DAW's or persona's card puts it on Personas > Favourites. Setting up ReaPersona stars My REAPER and the DAW you pick.
-- **Make your own persona from the tabs:** *New persona* (or *Edit* on any persona), then choose each part where it lives: its shortcuts (Shortcuts), its mouse (Mouse), each part of its layout (Layout: the mixer from one DAW, the transport from another...), its theme (Themes), its colour look (Colours), what a new project gets (Project) and groups of REAPER settings (Settings > REAPER tweaks, *In my persona*). A bar over every tab shows it, with *Try it* and *Save*.
+- **Make your own persona from the tabs:** *New persona* (or *Edit* on any persona), then choose each part where it lives: its shortcuts (Shortcuts), its mouse (Mouse), each part of its layout (Layout: the mixer from one DAW, the transport from another...), its theme (Themes), its colour look (Colours), what a new project gets (Project) and groups of REAPER settings (REAPER tab, *In my persona*). A bar over every tab shows it, with *Try it* and *Save*.
   - Each part comes from whichever persona you pick for it, or stays as yours; untick any single line (a key, a mouse drag, a layout setting) to leave just that out.
   - One DAW's shortcuts are ready straight away. Shortcuts from several DAWs get a layer of their own, installed with one click (REAPER restarts).
   - Or make one from every tab: *New persona*, then *Use in my persona* on a DAW (or just its keys, mouse or mixer), a theme, a colour look or a group of REAPER tweaks. A bar at the top of every tab shows what's in it, with *Save*.
@@ -82,7 +82,7 @@ The first time, ReaPersona asks which DAW you're coming from and uses its person
   - turns your own Cubase/Nuendo key commands into a persona;
   - makes a ReaPersona theme from an Ableton Live theme (`.ask`).
 - **What a persona may change:** switch off the parts you want to keep as they are, whatever persona you use: mixer docking, mixer layout, transport, Media Explorer, toolbar, mouse, snap/ripple.
-- **REAPER preferences** (REAPER > Preferences): fades and crossfades, zoom centres, new track and send volume, automation mode, the prompt after recording and solo dimming, in any persona; they go in at REAPER's next restart.
+- **REAPER preferences** (REAPER > Preferences): fades and crossfades, zoom centres, new track and send volume, automation mode, the prompt after recording and solo dimming, in any persona; they go in when ReaPersona restarts REAPER (Restart REAPER now), and putting them in needs Python 3 on that computer.
 - **REAPER** (its own tab, an area per sub-tab): about 60 of REAPER's and SWS's options in groups, switched live: playback and scrolling, editing, recording (count-in, recording over items, lanes), view, colours and icons (SWS auto-colour, auto icons and layouts), automation, monitoring and mixer. *In my persona* makes a group, as you set it here, part of the persona you're making.
 - **Theme adjuster:** pops out into its own window; REAPER's own Theme Adjuster is one click away.
 

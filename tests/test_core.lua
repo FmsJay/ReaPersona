@@ -1136,7 +1136,7 @@ do -- 29. REAPER's preferences in a persona (5.35)
   assert(core.pref_part("defautomode", 512 + 2) == 2 and core.pref_full("defautomode", 4, 512 + 2) == 512 + 4, "arm new envelopes kept")
   assert(core.pref_full("promptendrec", 0, 3) == 2 and core.pref_part("promptendrec", 3) == 1, "the punch-out prompt kept")
   assert(core.pref_full("deffadelen", 0.02, 0.01) == 0.02 and core.pref_part("deffadelen", 0.01) == 0.01)
-  assert(not core.pref_ok("deffadeshape", 7) and core.pref_ok("deffadeshape", 6) and not core.pref_ok("solodimdb10", 0) and core.pref_info("solodimen") == nil)
+  assert(core.pref_ok("defxfadeshape", 7) and not core.pref_ok("deffadeshape", 8) and not core.pref_ok("solodimdb10", 0) and core.pref_info("solodimen") == nil)
 end
 do -- 30. render settings in the project part (5.35)
   local r = core.safe_render({ format = "ZXZhdxgAAQ==", srate = 48000, channels = 2, pattern = "$project-$track" })
@@ -1172,6 +1172,33 @@ do -- 32. "<DAW> -> REAPER" FX folders (5.36)
   assert(not out:find("Logic Pro", 1, true) and not out:find("[Folder2]", 1, true) and out:find("NbFolders=2", 1, true) and out:find("Name1=StudioSync (everyone has)", 1, true), "taken out, the rest kept")
   assert(core.fx_folders_ini(ini, "Nope -> REAPER", nil) == ini, "nothing to take out: unchanged")
   assert(core.fx_folders_ini("", "Ableton Live -> REAPER", { { ident = "a", type = 2 } }):find("[Folders]\nId0=0\nName0=Ableton Live -> REAPER\nNbFolders=1", 1, true), "a computer with no folders yet")
+end
+do -- 33. the 2026-11-18 review's fixes
+  -- a mouse entry can't put an action line into the put-back list (its context went in as written, split on ";;")
+  local evil = core.safe_feel({ { "mouse", "MM_CTX_ITEM;;s|_RSxxxx|", 0, "1 m", "x" }, { "mouse", "MM_CTX_ITEM", 0, "1 m\n", "x" }, { "mouse", "MM_CTX_ITEM", 0, "13 m", "fine" } })
+  assert(#evil == 1 and evil[1][2] == "MM_CTX_ITEM" and evil[1][4] == "13 m", "only the plain one")
+  assert(#core.safe_feel({ { "mouse", "mac:MM_CTX_TRACK", 4, "2 m", "Mac" } }) == 1, "a Mac-only context is fine")
+  -- a shared file's keys: no line breaks into reaper-kb.ini
+  local keys = core.safe_keys({ { "Ctrl+A", 40001, "Select all\nACT 0 0 \"x\"" }, { "B\n", 1, "x" }, { "Ctrl+B", "_RS1\nKEY", "x" }, { "Ctrl+C", "_RSabc", "fine" } })
+  assert(#keys == 2 and keys[1][3] == "Select all ACT 0 0 \"x\"" and keys[2][2] == "_RSabc", "labels flattened, bad keys and commands out")
+  -- a synced preference is one plain key=value line
+  assert(core.pref_synced("deffadelen", "0.01") and not core.pref_synced("deffadelen", "0.01\n[Python]") and not core.pref_synced("a\nb", "1") and not core.pref_synced("x=y", "1"))
+  -- a window set of yours with no tool windows in it isn't free; ReaPersona's own comes out on Remove, nothing else
+  local sets = "[screensets]\nnb=10\n[sset9]\nname=Mine, just the mixer\nmixer_flag1=3\n[sset8]\n"
+  local slot, free = core.undock_slot_in(sets)
+  assert(slot == nil and free == 9, "set #10 is yours: #9, the empty one")
+  local with = "[screensets]\r\nnb=10\r\n[sset8]\r\nname=Mine\r\n[sset9]\r\nname=" .. core.UNDOCK_SET .. "\r\nmask=-3618\r\nposlist0_id=actions\r\n[sset7]\r\nname=Other\r\n"
+  assert(core.without_window_set(with) == "[screensets]\r\nnb=10\r\n[sset8]\r\nname=Mine\r\n[sset7]\r\nname=Other\r\n", core.without_window_set(with))
+  assert(core.pending_words({ "prefs.json", "reaper-kb.ini" }) == "REAPER preferences, shortcuts from your other computers")
+  -- Edit on a saved setup keeps its project part and theme settings
+  local bl = core.blocks_of({ id = "pro_tools", project = { srate = 48000, bpm = 120, render = { format = "ZXZhdw==", srate = 0, channels = 2 } }, themeset = { theme = "T.ReaperTheme", params = { a = 1 } } })
+  local pj, ts = core.draft_get(bl, "project"), core.draft_get(bl, "themeset")
+  assert(pj and pj.srate == 48000 and pj.bpm == 120 and pj.render and ts and ts.set.params.a == 1, "kept")
+  -- a preference already queued for the restart counts as what REAPER will have
+  os.execute(win and ('mkdir "' .. (tmp .. "/pending"):gsub("/", "\\") .. '"') or ("mkdir -p '" .. tmp .. "/pending'"))
+  write(tmp .. "/pending/prefs.json", '{"deffadelen": 0.03}')
+  assert(core.pref_effective("deffadelen") == 0.03, "the queued one")
+  os.remove(tmp .. "/pending/prefs.json")
 end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
