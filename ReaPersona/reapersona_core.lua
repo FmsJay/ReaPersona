@@ -742,6 +742,94 @@ end
 local function hexs(s) return (s:gsub(".", function(ch) return string.format("%02x", ch:byte()) end)) end
 local function unhexs(s) return (s:gsub("%x%x", function(h) return string.char(tonumber(h, 16)) end)) end
 
+-- ---------------------------------------------------------------- which docker a window goes into (5.43; James: "the layout editor should
+-- be able to 'add a window' or dock based on your custom docks, other docks, and any windows that can float or be docked ... (would include
+-- studiosync and other things like that)")
+-- ["dockpref", { [ident] = docker 0-15 }, what]: reaper.ini's [REAPERdockpref] keeps, for every window REAPER has docked, the docker it
+-- goes into next time (ident=fraction docker). Dock_UpdateDockID changes that for any of them: REAPER's own windows and toolbars, a gfx
+-- script's window (its name) and a ReaImGui one ("reaimgui:<its settings file>"). A script docks its own window, so for those ReaPersona
+-- only picks the docker, used the next time the script docks it; the mixer and Media Explorer, open and docked now, move at once.
+do
+  local names = {} -- (dock_window_name: a ReaImGui script's settings file is read once a session)
+  local POS_WORD = { [0] = "bottom", [1] = "left", [2] = "top", [3] = "right", [4] = "floating" }
+  function M.dock_ident_ok(s) -- (pure) a window's name as a put-back list and a shared file can carry it: plain characters, no | or ;
+    return type(s) == "string" and #s > 0 and #s <= 128 and s:match("^[%w %._:%-%(%)]+$") ~= nil
+  end
+  function M.dock_prefs(ini) -- (pure) -> { { ident, docker, frac } } as [REAPERdockpref] lists them
+    local out = {}
+    for line in ((M.ini_section(ini or "", "REAPERdockpref") or "") .. "\n"):gmatch("([^\r\n]*)\r?\n") do
+      local id, frac, d = line:match("^(.-)=(%S+)%s+(%d+)%s*$")
+      d = math.tointeger(tonumber(d))
+      if id and id ~= "" and d and d <= 15 then out[#out + 1] = { ident = id, docker = d, frac = tonumber(frac) } end
+    end
+    return out
+  end
+  function M.dockers(ini) -- -> the 16 dockers: { n = 0-15, pos = 0-4 (bottom, left, top, right, floating), name = "Docker 3: left", used = true when a window goes there }
+    ini = ini or ""
+    local main = M.ini_section(ini, "REAPER") or M.ini_section(ini, "reaper") or ""
+    local used, out = {}, {}
+    for _, p in ipairs(M.dock_prefs(ini)) do used[p.docker] = true end
+    for n = 0, 15 do
+      local pos = reaper.DockGetPosition and reaper.DockGetPosition(n)
+      if type(pos) ~= "number" or pos < 0 then -- (no live answer: reaper.ini's dockermodeN, 32768 a floating docker, else its side; none: bottom, as REAPER starts one)
+        local mode = math.tointeger(tonumber(main:match("\ndockermode" .. n .. "=(%d+)") or ""))
+        pos = mode and ((mode & 32768) ~= 0 and 4 or (mode & 3)) or 0
+      end
+      out[#out + 1] = { n = n, pos = pos, name = "Docker " .. (n + 1) .. ": " .. (POS_WORD[pos] or "bottom"), used = used[n] or nil } -- (numbered from 1, as REAPER's menus do)
+    end
+    return out
+  end
+  function M.dock_is_script(ident) return ident:match("^reaimgui:") ~= nil or ident:match("%.[lL][uU][aA]$") ~= nil or ident:match("%.eel$") ~= nil or ident:match("%.py$") ~= nil end
+  function M.dock_window_name(ident) -- -> a name to show: "Mixer", "Toolbar 26", StudioSync's window title, a script's name
+    if names[ident] then return names[ident] end
+    local n
+    for _, w in pairs(WINDOWS) do if w.ident == ident then n = w.name end end
+    for _, w in ipairs(M.TOOL_WINDOWS) do if w[1] == ident then n = w[4] end end
+    if ident == "transport" then n = "Transport"
+    elseif ident == "toolbar" then n = "Main toolbar"
+    elseif ident:match("^toolbar:%d+$") then n = "Toolbar " .. ident:match("%d+")
+    elseif ident:match("^reaimgui:") then -- (its context's settings file names the windows: [Window][<title>]; ImGui's own debug window left out)
+      local titles, seen = {}, {}
+      for t in ((M.read(res .. "/ReaImGui/" .. ident:sub(10) .. ".ini") or "") .. "\n"):gmatch("%[Window%]%[([^\r\n]-)%]%s*\r?\n") do
+        local shown = t:match("^(.-)##") or t -- (after ## is ImGui's id, not shown)
+        if shown ~= "" and not t:match("^Debug##") and not t:match("^WindowOverViewport") and not seen[shown] then seen[shown] = true; titles[#titles + 1] = shown end
+      end
+      n = #titles > 0 and table.concat(titles, " / ") or ("A script's window (" .. ident:sub(10) .. ")")
+    elseif not n and M.dock_is_script(ident) then n = ident:gsub("%.%a+$", "") end
+    names[ident] = n or ident
+    return names[ident]
+  end
+  function M.safe_dockpref(t) -- (pure) only plain window names and dockers 0-15; nil when there's none
+    if type(t) ~= "table" then return nil end
+    local out, any = {}, false
+    for k, v in pairs(t) do
+      local d = math.tointeger(tonumber(v))
+      if M.dock_ident_ok(k) and d and d >= 0 and d <= 15 then out[k] = d; any = true end
+    end
+    return any and out or nil
+  end
+  function M.dockpref_label(t) -- "Window dockers: StudioSync in Docker 3, Toolbar 26 in Docker 16"
+    local list = {}
+    for k, d in pairs(t or {}) do list[#list + 1] = M.dock_window_name(k) .. " in Docker " .. (d + 1) end
+    table.sort(list)
+    return "Window dockers: " .. table.concat(list, ", ")
+  end
+  function M.dock_docker_now(ident) -- the docker a window goes into now: REAPER's answer, else reaper.ini's; or nil
+    local d = reaper.GetConfigWantsDock and math.tointeger(tonumber(reaper.GetConfigWantsDock(ident)))
+    if d and d >= 0 and d <= 15 then return d end
+    for _, p in ipairs(M.dock_prefs(M.read(res .. "/reaper.ini"))) do if p.ident == ident then return p.docker end end -- (shortcut: as REAPER last saved it)
+  end
+  function M.dock_now(ident, d) -- the mixer or Media Explorer, open and docked in another docker now: moved there at once. -> true when it can be
+    local W = WINDOWS[ident]
+    if not (W and reaper.JS_Window_Find and reaper.GetToggleCommandState(W.show) == 1) then return false end
+    local h = reaper.JS_Window_Find(W.title, true)
+    local now = h and reaper.DockIsChildOfDock(h)
+    if not (now and now >= 0) then return false end -- (floating or closed: it goes there the next time it docks)
+    if now ~= d then move_window(ident, { shown = true, docker = d }) end
+    return true
+  end
+end
+
 -- ---------------------------------------------------------------- REAPER's preferences in a persona (5.35)
 -- ["pref", name, value, what]: a preference REAPER has no action for. REAPER reads them only as it starts, and ReaPersona never writes
 -- one into a running REAPER (a wrong-sized write crashed the laptop, 5.11.1), so they wait in pending/prefs.json for REAPER's next
@@ -829,6 +917,9 @@ local function restore_feel(windows_left) -- (windows_left: a window's original 
       if tonumber(b) then want_pref(a, tonumber(b)) end -- (this setting's part, the other bits as REAPER has them: review 2026-11-18)
     elseif kind == "w" and a ~= "" then -- (every other window, as it was before the persona: 5.34)
       M.apply_windows(M.json_decode(unhexs(a)), true)
+    elseif kind == "k" then -- (the docker a window goes into, yours back: 5.43)
+      local ident, d = unhexs(a), math.tointeger(tonumber(b))
+      if M.dock_ident_ok(ident) and d and d >= 0 and d <= 15 then reaper.Dock_UpdateDockID(ident, d); M.dock_now(ident, d) end
     elseif (kind == "t" or kind == "s" or kind == "c" or (kind == "r" and a ~= "none")) and not M.feel_ok()[a] then
       M.log("put back: not one of ReaPersona's settings, left: " .. list[n]) -- (review 2: whatever reached this list can't run other actions)
     elseif kind == "t" then
@@ -873,6 +964,7 @@ M.ASPECTS = {
   { "editor", "Dock the MIDI editor in the main window, or let it float", true, "MIDI editor docking" },
   { "windows", "Every other window: which are open, docked or in their own window, and where (Actions list, Undo History, Region Manager, Routing Matrix...)", true, "Other windows" },
   { "prefs", "REAPER's preferences: fades and crossfades, zoom, new tracks, recording and solo (they go in when REAPER restarts)", true, "REAPER preferences" },
+  { "dockpref", "Which docker a window goes into: toolbars, REAPER's windows and script windows such as StudioSync (a script's window moves the next time it docks)", true, "Window dockers" },
 }
 function M.aspect_on(a)
   local v = reaper.GetExtState(M.SECTION, "aspect " .. a)
@@ -884,6 +976,7 @@ function M.aspect_of(f)
   if f[1] == "midi_dock" then return "editor" end
   if f[1] == "windows" then return "windows" end
   if f[1] == "pref" then return "prefs" end
+  if f[1] == "dockpref" then return "dockpref" end
   if f[1] == "dock" then return f[2] == "mixer" and "mixer_dock" or "browser" elseif f[1] == "radio" then return "transport" elseif f[1] == "switch" then return "toolbar"
   elseif f[1] == "mouse" then return "mouse"
   elseif f[1] == "toggle" then
@@ -977,6 +1070,17 @@ local function apply_feel(st, windows_left, as_base) -- (as_base: your own look 
         end)
       end
       M.apply_windows(f[2])
+    elseif f[1] == "dockpref" and reaper.Dock_UpdateDockID and M.safe_dockpref(f[2]) then -- (which docker each window goes into: 5.43)
+      local want, ids = M.safe_dockpref(f[2]), {}
+      for k in pairs(want) do ids[#ids + 1] = k end
+      table.sort(ids) -- (the same order every time, so the put-back list reads the same)
+      for _, k in ipairs(ids) do
+        local was = M.dock_docker_now(k)
+        -- (shortcut: a window with no docker of its own yet keeps the persona's after a switch away; REAPER can't forget one)
+        if not as_base and was and was ~= want[k] then list[#list + 1] = "k|" .. hexs(k) .. "|" .. was end
+        reaper.Dock_UpdateDockID(k, want[k])
+        if not moves[k] then M.dock_now(k, want[k]) end -- (one this persona's layout docks already: the layout's move, not two)
+      end
     elseif f[1] == "midi_dock" then -- ["midi_dock", 1 docked / 0 floating, what]
       list[#list + 1] = "e|" .. (M.midi_docked() and 1 or 0) .. "|"
       M.want_midi_dock(f[2] == 1)
@@ -2246,6 +2350,7 @@ local function feel_slot(f)
   elseif f[1] == "dock" then return "dock " .. f[2]
   elseif f[1] == "midi_dock" then return "midi_dock"
   elseif f[1] == "windows" then return "windows"
+  elseif f[1] == "dockpref" then return "dockpref"
   elseif f[1] == "pref" then return "pref " .. tostring(f[2])
   elseif f[1] == "choice" then return "choice " .. table.concat(f[2], ",")
   elseif f[1] == "mouse" then return "mouse " .. f[2] .. " " .. f[3]
@@ -2579,6 +2684,10 @@ function M.safe_feel(list) -- a shared file's feel, keeping only commands ReaPer
       local w = M.safe_windows(f[2])
       good = w ~= nil
       if good then f = { "windows", w, M.windows_label(w) } end
+    elseif good and f[1] == "dockpref" then -- (plain window names only: they go into the put-back list)
+      local d = M.safe_dockpref(f[2])
+      good = d ~= nil
+      if good then f = { "dockpref", d, M.dockpref_label(d) } end
     elseif good then good = f[1] == "dock" or f[1] == "midi_dock" end
     if good then out[#out + 1] = f end
   end
@@ -2659,6 +2768,9 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
   elseif b.kind == "feel" and b.aspect == "windows" and type(b.items) == "table" then -- (5.34: the windows as you set them on Layout)
     local w = M.safe_windows(b.items)
     if w then feel({ "windows", w, M.windows_label(w) }) end
+  elseif b.kind == "feel" and b.aspect == "dockpref" and type(b.items) == "table" then -- (5.43: the dockers as you set them on Layout)
+    local d = M.safe_dockpref(b.items)
+    if d then feel({ "dockpref", d, M.dockpref_label(d) }) end
   elseif b.kind == "feel" and st then
     for _, f in ipairs(st.feel or {}) do if M.aspect_of(f) == b.aspect then feel(f) end end
   elseif b.kind == "settings" then

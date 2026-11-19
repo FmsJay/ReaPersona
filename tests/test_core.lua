@@ -2072,6 +2072,57 @@ do -- 39. Round 3 review (2026-11-19). First the code health reviewer's probes (
   write(tmp .. "/install_cancelled", "x") -- (the staged step from above is dropped by the next stage_install; this file isn't read here)
   os.remove(tmp .. "/install_cancelled")
 end
+do -- 40. which docker a window goes into (5.43): reaper.ini's dock preferences read, a persona's put in and taken back out
+  local ini = "[REAPER]\r\ndockermode1=1\r\ndockermode2=2\r\ndockermode15=32768\r\n[REAPERdockpref]\r\ntoolbar:26=-0.85714287 15\r\ntransport=0.50000000 1\r\n" ..
+    "mixer=0.02609293 0\r\nexplorer=0.85531396 0\r\nBirdBird_Global Sampler.lua=0.44080263 2\r\nreaimgui:16B0B3D8=0.50000000 3\r\n[other]\r\nx=1 4\r\n"
+  local p = core.dock_prefs(ini)
+  assert(#p == 6 and p[1].ident == "toolbar:26" and p[1].docker == 15 and p[1].frac < 0, "every line of [REAPERdockpref], nothing after it")
+  assert(p[5].ident == "BirdBird_Global Sampler.lua" and p[5].docker == 2 and p[6].ident == "reaimgui:16B0B3D8" and p[6].docker == 3)
+  local ds = core.dockers(ini)
+  assert(#ds == 16 and ds[2].name == "Docker 2: left" and ds[3].name == "Docker 3: top" and ds[16].name == "Docker 16: floating", "named from 1, by dockermode")
+  assert(ds[1].used and ds[3].used and ds[4].used and ds[16].used and not ds[5].used and ds[5].name == "Docker 5: bottom", "which hold a window")
+  os.execute(win and ('mkdir "' .. (tmp .. "/ReaImGui"):gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. tmp .. "/ReaImGui'"))
+  write(tmp .. "/ReaImGui/16B0B3D8.ini", "[Window][Debug##Default]\r\nPos=60,60\r\n\r\n[Window][StudioSync##main]\r\nPos=0,0\r\nDockId=-4\r\n\r\n[Window][StudioSync##two]\r\n\r\n[Docking][Data]\r\n")
+  assert(core.dock_window_name("reaimgui:16B0B3D8") == "StudioSync", "a ReaImGui window by its title: " .. core.dock_window_name("reaimgui:16B0B3D8"))
+  assert(core.dock_window_name("reaimgui:00FF00FF") == "A script's window (00FF00FF)")
+  assert(core.dock_window_name("toolbar:26") == "Toolbar 26" and core.dock_window_name("toolbar") == "Main toolbar" and core.dock_window_name("mixer") == "Mixer")
+  assert(core.dock_window_name("actions") == "Actions list" and core.dock_window_name("BirdBird_Global Sampler.lua") == "BirdBird_Global Sampler" and core.dock_window_name("odd") == "odd")
+  assert(core.dock_is_script("reaimgui:16B0B3D8") and core.dock_is_script("x.lua") and not core.dock_is_script("toolbar:26"))
+  -- in a shared file: plain names and dockers 0-15 only
+  local kept = core.safe_feel({ { "dockpref", { ["reaimgui:16B0B3D8"] = 3, ["bad|one"] = 2, ["x;y"] = 1, toolbar = 16, mixer = -1, [string.rep("a", 129)] = 1, transport = 1.5 }, "x" },
+    { "dockpref", { ["a|b"] = 1 }, "y" }, { "dockpref", "nope", "z" } })
+  local n = 0
+  for _ in pairs(kept[1] and kept[1][2] or {}) do n = n + 1 end
+  assert(#kept == 1 and n == 1 and kept[1][2]["reaimgui:16B0B3D8"] == 3 and kept[1][3] == "Window dockers: StudioSync in Docker 4", "only the good one: " .. tostring(kept[1] and kept[1][3]))
+  assert(not core.dock_ident_ok("a|b") and not core.dock_ident_ok("") and core.dock_ident_ok("Track Tags (spk77).lua"))
+  -- as a block of your own on Layout
+  local st = assert(core.build_style({ { kind = "feel", aspect = "dockpref", items = { ["toolbar:26"] = 2 } } }, "Docks", "built_dk"))
+  local got
+  for _, f in ipairs(st.feel) do if f[1] == "dockpref" then got = f end end
+  assert(got and got[2]["toolbar:26"] == 2 and got[3] == "Window dockers: Toolbar 26 in Docker 3", "the dockers block into the persona")
+  assert(core.aspect_of({ "dockpref", {} }) == "dockpref" and core.block_title({ kind = "feel", aspect = "dockpref", items = {} }) == "Your window dockers")
+  -- in use and back: REAPER's docker before goes into the put-back list (as hex), and comes back on the switch away
+  local hex = function(s) return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end)) end
+  local du, gw = reaper.Dock_UpdateDockID, reaper.GetConfigWantsDock
+  local prefs = { ["reaimgui:16B0B3D8"] = 3, ["toolbar:26"] = 15 }
+  reaper.Dock_UpdateDockID = function(id, d) prefs[id] = d end
+  reaper.GetConfigWantsDock = function(id) return prefs[id] or -1 end
+  write(tmp .. "/reaper.ini", ini) -- (transport isn't in REAPER's answer here: reaper.ini's is used)
+  ext["ReaPersona/style"], ext["ReaPersona/orig"] = "my_reaper", ""
+  core.drain()
+  core.use({ id = "built_dk", name = "Docks", feel = { { "dockpref", { ["reaimgui:16B0B3D8"] = 1, ["toolbar:26"] = 15, transport = 2, ["New Script.lua"] = 4 }, "d" } }, keys = {}, alt = 0 })
+  core.drain()
+  assert(prefs["reaimgui:16B0B3D8"] == 1 and prefs.transport == 2 and prefs["New Script.lua"] == 4, "in the persona's dockers")
+  local orig = ext["ReaPersona/orig"]
+  assert(orig:find("k|" .. hex("reaimgui:16B0B3D8") .. "|3", 1, true) and orig:find("k|" .. hex("transport") .. "|1", 1, true), "kept to put back: " .. orig)
+  assert(not orig:find("k|" .. hex("toolbar:26"), 1, true) and not orig:find(hex("New Script.lua"), 1, true), "not one already there, nor one that had none")
+  core.use(core.by_id("my_reaper"))
+  core.drain()
+  assert(prefs["reaimgui:16B0B3D8"] == 3 and prefs.transport == 1 and prefs["toolbar:26"] == 15, "yours back")
+  reaper.Dock_UpdateDockID, reaper.GetConfigWantsDock = du, gw
+  ext["ReaPersona/orig"] = ""
+  os.remove(tmp .. "/reaper.ini")
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")

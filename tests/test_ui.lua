@@ -342,6 +342,21 @@ local function run()
   assert(fixed == 1, "opening the window calls core.fix_current once")
   assert(not R2.core.is_trial(), "and the leftover preview is ended")
   assert(R2.toast:find("A preview was still on", 1, true), "and the window says so: " .. tostring(R2.toast))
+
+  -- 10. Layout > More windows and dockers (5.43): the card draws from reaper.ini's dockers, a window added is a dockpref block in the
+  -- persona being made, and "As it is" on the last one takes the block out.
+  write(tmp .. "/reaper.ini", "[REAPER]\ndockermode3=1\n[REAPERdockpref]\nreaimgui:16B0B3D8=0.5 3\ntoolbar:26=-0.85 15\n")
+  R.bld_new(); mb_answer = 6; R.bld_new(); mb_answer = 1
+  T = T + 5; texts = {}; frame("Layout")
+  assert(texts["Pick the docker a window goes into: toolbars, REAPER's windows, and script windows such as StudioSync. Add a window, then choose its docker."], "the dockers card draws")
+  R.dockpref_set("reaimgui:16B0B3D8", 1)
+  local db = core.draft_get(bld.blocks, "feel dockpref")
+  assert(db and db.items["reaimgui:16B0B3D8"] == 1 and bld.active, "a window added is in the persona being made")
+  local entry = core.build_preview({ db })[1][1]
+  assert(entry and entry.entry[1] == "dockpref" and entry.label:find("in Docker 2", 1, true), "the draft shows it: " .. tostring(entry and entry.label))
+  frame("Layout") -- (with a row now)
+  R.dockpref_set("reaimgui:16B0B3D8", nil)
+  assert(not core.draft_get(bld.blocks, "feel dockpref"), "As it is on the last window takes the block out")
 end
 
 local ok, err = xpcall(run, debug.traceback)

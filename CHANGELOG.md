@@ -1,5 +1,14 @@
 # Changelog
 
+## 5.43.0
+- **Layout > More windows and dockers** (James): a persona can now say which docker any dockable window goes into. It lists your dockers
+  and what REAPER keeps in each; **Add a window** offers every window REAPER has docked (toolbars, the transport, the mixer, script windows
+  such as StudioSync, by their own names) plus REAPER's other windows, and each row gets a docker ("As it is" takes it out). It goes into the
+  persona you're making like the other Layout parts (the bar at the top shows it, Load from takes another persona's), and your own dockers
+  come back when you switch away. The mixer and Media Explorer move at once when they're open in a docker; a script's window moves the next
+  time its script docks it, and other windows the next time they dock. Settings > Personas has a switch for it, like the other parts.
+  Not yet: changing where a docker itself sits, and docking a floating script window from outside.
+
 ## 5.42.0
 Fixes from review round 3 (fresh reviewers on 5.41.0; install and update came back solid; reports in reapersona-round3/), and three from James.
 - **Mouse & trackpad** shows both ways to add your own at once (a wheel or trackpad move, and a drag or click), each with its own Ctrl/Alt/
