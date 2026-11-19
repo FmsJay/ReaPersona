@@ -1568,6 +1568,63 @@ function M.new_block(kind, a, b) -- every part on; a settings block starts as RE
   elseif kind == "colours" then return { kind = "colours", set = M.colours_now() or {} }
   elseif kind == "project" then return { kind = "project", srate = 0, tracks = "", tracks_name = "", wset = 0 } end
 end
+-- The layout designer (5.32; James: "show an interactive panel/square that lets you drag different items (mixer, launcher, transport) where you
+-- want it ... multiple items in the same space as there are tabs in the docks ... which order the tabs would be in"). A layout block holds
+-- where each window goes: { [window] = { zone, order } }. Only windows ReaPersona can also put back go in it: the mixer and the Media
+-- Explorer dock and undock, the transport has its four places, the MIDI editor docks or floats. (REAPER's other windows can be docked by a
+-- script but not undocked again, so a persona couldn't give you yours back.) Windows in one docker are tabs, docked in this order.
+M.LAYOUT_WINDOWS = {
+  { "mixer", "Mixer", { "d_top", "d_left", "d_right", "d_bottom", "float", "hidden" } },
+  { "explorer", "Media Explorer", { "d_top", "d_left", "d_right", "d_bottom", "float", "hidden" } },
+  { "transport", "Transport", { "t_top", "t_ruler", "t_below", "t_bottom" } },
+  { "midi", "MIDI editor", { "d_bottom", "float" } },
+}
+local TRANSPORT_AT = { t_top = 41606, t_ruler = 41604, t_below = 41603, t_bottom = 41605 }
+local TRANSPORT_SET = { 41603, 41604, 41605, 41606, 41608 }
+local SIDE_OF = { d_top = "top", d_left = "left", d_right = "right", d_bottom = "bottom" }
+local ZONE_WORDS = { d_top = "docked at the top", d_left = "docked on the left", d_right = "docked on the right", d_bottom = "docked at the bottom",
+  float = "in its own window", hidden = "closed", t_top = "at the top of the window", t_ruler = "above the ruler", t_below = "below the arrange view",
+  t_bottom = "at the bottom of the window" }
+M.ZONE_WORDS = ZONE_WORDS
+local function zone_ok(w, z) for _, x in ipairs(M.LAYOUT_WINDOWS) do if x[1] == w then for _, y in ipairs(x[3]) do if y == z then return true end end end end return false end
+M.zone_ok = zone_ok
+function M.layout_entries(items) -- (pure) a layout as a persona's feel, docked windows in tab order
+  local list = {}
+  for _, x in ipairs(M.LAYOUT_WINDOWS) do
+    local it = type(items) == "table" and items[x[1]]
+    if type(it) == "table" and zone_ok(x[1], it.zone) then list[#list + 1] = { w = x[1], name = x[2], zone = it.zone, order = tonumber(it.order) or 0, n = #list } end
+  end
+  table.sort(list, function(a, b) if a.zone ~= b.zone then return a.zone < b.zone end if a.order ~= b.order then return a.order < b.order end return a.n < b.n end)
+  local out = {}
+  for _, it in ipairs(list) do
+    local words = it.name .. ": " .. ZONE_WORDS[it.zone]
+    if it.w == "transport" then out[#out + 1] = { "radio", TRANSPORT_SET, TRANSPORT_AT[it.zone], words }
+    elseif it.w == "midi" then out[#out + 1] = { "midi_dock", it.zone == "float" and 0 or 1, words }
+    elseif it.zone == "hidden" then
+      if it.w == "mixer" then out[#out + 1] = { "toggle", 40078, 0, words } else out[#out + 1] = { "dock", it.w, "float", 0, words } end
+    else out[#out + 1] = { "dock", it.w, SIDE_OF[it.zone] or "float", 1, words } end
+  end
+  return out
+end
+function M.layout_from_entries(entries) -- (pure) a persona's feel lines as a layout to start the designer from; what it doesn't set, REAPER's usual
+  local items = { mixer = { zone = "d_bottom", order = 1 }, explorer = { zone = "hidden", order = 1 }, transport = { zone = "t_below", order = 1 }, midi = { zone = "float", order = 1 } }
+  local docked, shown
+  for _, f in ipairs(entries or {}) do
+    if f[1] == "dock" and (f[2] == "mixer" or f[2] == "explorer") then
+      local z = f[3] == "float" and (tonumber(f[4]) == 1 and "float" or "hidden") or ("d_" .. tostring(f[3]))
+      if zone_ok(f[2], z) then items[f[2]] = { zone = z, order = 1, set = true } end
+    elseif f[1] == "radio" and type(f[2]) == "table" and f[2][1] == 41603 then
+      for z, c in pairs(TRANSPORT_AT) do if c == f[3] then items.transport = { zone = z, order = 1 } end end
+    elseif f[1] == "midi_dock" then items.midi = { zone = tonumber(f[2]) == 1 and "d_bottom" or "float", order = 1 }
+    elseif f[1] == "toggle" and f[2] == 40083 then docked = tonumber(f[3]) == 1
+    elseif f[1] == "toggle" and f[2] == 40078 then shown = tonumber(f[3]) == 1 end
+  end
+  if not items.mixer.set then -- (a persona that only toggles the mixer: closed, docked or in its own window)
+    if shown == false then items.mixer = { zone = "hidden", order = 1 } elseif docked == false then items.mixer = { zone = "float", order = 1 } end
+  end
+  for _, it in pairs(items) do it.set = nil end
+  return items
+end
 -- A persona made from the tabs (5.27; James: "all the blocks should move and just be based on the tabs so you can choose more granularly ...
 -- Blocks are built automatically from all settings, then constructed into the persona. More tabs for each type of block"). The persona being
 -- made holds at most one block per slot: the shortcuts, the mouse, each part of the layout (mixer, transport, browser, toolbar, MIDI editor,
@@ -1579,7 +1636,7 @@ function M.block_slot(b) -- (pure) -> the slot a block fills
     return "daw " .. tostring(b.id) -- (a whole DAW, as personas built before 5.27 have: split by M.split_blocks)
   elseif b.kind == "feel" then return "feel " .. tostring(b.aspect)
   elseif b.kind == "settings" then return "settings " .. tostring(b.group) end
-  return b.kind -- (mouse, theme, colour, colours, project: one each)
+  return b.kind -- (mouse, theme, colour, colours, project, layout: one each)
 end
 function M.draft_add(blocks, b) -- the block into its slot (replacing what was there). -> the list, true when one was replaced (pure)
   local slot, replaced = M.block_slot(b), false
@@ -1611,7 +1668,7 @@ function M.split_blocks(blocks) -- (pure but for M.by_id)
   end
   return out
 end
-local SLOT_ORDER = { keys = 1, mouse = 2, feel = 3, settings = 4, theme = 5, colour = 6, colours = 7, project = 8 }
+local SLOT_ORDER = { keys = 1, mouse = 2, feel = 3, layout = 3, settings = 4, theme = 5, colour = 6, colours = 7, project = 8 } -- ("layout" after "feel ...": the designer wins)
 function M.draft_order(blocks) -- (pure) the order they're built in: the shortcuts first, then the mouse, the layout, REAPER settings (over a DAW's snap and ripple), the look, the project
   local out = {}
   for i, b in ipairs(blocks) do out[i] = b end
@@ -1658,7 +1715,8 @@ function M.block_title(b)
   elseif b.kind == "theme" then return "Theme: " .. tostring(b.file):gsub("%.ReaperTheme%a*$", "")
   elseif b.kind == "colour" then return "Colour " .. tostring(b.hex)
   elseif b.kind == "colours" then return M.colours_label(b.set)
-  elseif b.kind == "project" then return "Project" .. ((b.name or "") ~= "" and (": " .. b.name) or "") end
+  elseif b.kind == "project" then return "Project" .. ((b.name or "") ~= "" and (": " .. b.name) or "")
+  elseif b.kind == "layout" then return "Layout: your own" end
   return "?"
 end
 function M.safe_feel(list) -- a shared file's feel, keeping only commands ReaPersona's own personas and settings use (a file can't run others)
@@ -1748,6 +1806,8 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
       if type(item[1]) == "table" and item[1][v] then feel({ "choice", item[1], item[1][v], item[2] .. ": " .. item[3][v] })
       elseif type(item[1]) ~= "table" and v >= 0 then feel({ "toggle", item[1], v, item[2] .. ": " .. (v == 1 and "on" or "off") }) end
     end
+  elseif b.kind == "layout" then
+    for _, f in ipairs(M.layout_entries(b.items)) do feel(f) end
   elseif b.kind == "theme" and b.file then out[1] = { slot = "theme", kind = "theme", label = b.file, value = b.file }
   elseif b.kind == "colour" and b.hex then out[1] = { slot = "accent", kind = "accent", label = "Colour " .. b.hex, value = b.hex }
   elseif b.kind == "colours" and M.safe_colours(b.set) then

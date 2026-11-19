@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.32.0
+- **A layout designer.** Layout now opens with *Arrange your layout*: a picture of REAPER's window with its four docks (top, left, right, bottom), the transport's four places (top of the window, above the ruler, below the arrange view, bottom of the window), and *In its own window* and *Closed*. Drag the Mixer, the Media Explorer, the Transport and the MIDI editor where you want them. Windows in one dock are tabs in the order shown; drop one onto another to put it before it. It starts from the persona's own layout (or REAPER as it is now), *Back to the persona's own* undoes your arrangement, and the parts it sets show as set by it below.
+- Only windows ReaPersona can also put back are in it: REAPER's other windows (the Actions list, the Region/Marker Manager, the Track Manager, the Navigator...) can be docked by a script but not undocked again, so a persona couldn't give you your layout back.
+- Tabs are docked in the order shown; a window that's already in the right dock keeps its place among the tabs.
+
 ## 5.31.0
 - **A mouse and trackpad editor.** Mouse & trackpad now has *Your persona's mouse and trackpad*: load any persona's mouse, then see its mouse wheel, trackpad swipe and drags and clicks by REAPER's own names (Media item left drag + Alt...), leave any out, change what one does (another behaviour known for that spot, REAPER's default, or any action), undo a change, or remove one you added. *Add your own*: a wheel or trackpad binding with any modifiers and action, or a drag or click on any of REAPER's 88 mouse contexts.
 - **Every mouse action.** Everything the mouse does in REAPER now, its defaults included, and every persona's mouse, grouped by where you click or drag (items, tracks and mixer, MIDI editor, envelopes, ruler and markers, razor edits, arrange view, lanes), each to add to your persona. REAPER lists them with Help > Mouse modifier keys and action shortcuts: *Read REAPER's list* has it write the list (it opens in your browser too) and ReaPersona reads it.

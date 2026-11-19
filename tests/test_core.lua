@@ -1043,6 +1043,37 @@ do
   for _, e in ipairs(core.build_preview({ b })[1]) do if e.slot == line.slot then changed = e end end
   assert(changed and changed.entry[4] == "4 m" and changed.changed, "a line changed")
 end
+-- 26. The layout designer (5.32): a layout as a persona's lines (docked windows in tab order), a persona's lines as a layout, only windows
+-- and places ReaPersona can put back, and the layout block over the parts it covers.
+do
+  local items = { explorer = { zone = "d_bottom", order = 1 }, mixer = { zone = "d_bottom", order = 2 }, transport = { zone = "t_top", order = 1 },
+    midi = { zone = "float", order = 1 }, navigator = { zone = "d_left", order = 1 } }
+  local e = core.layout_entries(items)
+  local docks, radio, midi = {}, nil, nil
+  for _, f in ipairs(e) do
+    if f[1] == "dock" then docks[#docks + 1] = f[2] .. ":" .. f[3] end
+    if f[1] == "radio" then radio = f[3] end
+    if f[1] == "midi_dock" then midi = f[2] end
+  end
+  assert(table.concat(docks, ",") == "explorer:bottom,mixer:bottom", "two tabs in the bottom dock, docked in their order")
+  assert(radio == 41606 and midi == 0 and #e == 4, "the transport at the top, the MIDI editor floating, nothing for a window ReaPersona can't put back")
+  local bad = core.layout_entries({ transport = { zone = "d_left" }, mixer = { zone = "nowhere" } })
+  assert(#bad == 0, "only places each window can go")
+  local hidden = core.layout_entries({ mixer = { zone = "hidden" }, explorer = { zone = "hidden" } })
+  assert(hidden[1][1] == "toggle" and hidden[1][2] == 40078 and hidden[1][3] == 0 and hidden[2][1] == "dock" and hidden[2][3] == "float" and hidden[2][4] == 0, "closed: the mixer hidden, the Media Explorer closed")
+  -- back again: a persona's lines as the layout the designer starts from
+  local back = core.layout_from_entries(e)
+  assert(back.explorer.zone == "d_bottom" and back.mixer.zone == "d_bottom" and back.transport.zone == "t_top" and back.midi.zone == "float")
+  local pt = core.layout_from_entries(core.by_id("pro_tools").feel)
+  assert(pt.mixer.zone == "float" or pt.mixer.zone == "hidden", "Pro Tools keeps its mix window apart")
+  -- in a persona: the layout block sets those lines and wins over a DAW's parts for them
+  local blocks = { core.new_block("feel", "pro_tools", "transport"), { kind = "layout", items = { transport = { zone = "t_bottom", order = 1 } } } }
+  local st = assert(core.build_style(core.draft_order(blocks), "Laid out", "built_try"))
+  local got
+  for _, f in ipairs(st.feel) do if f[1] == "radio" and f[2][1] == 41603 then got = f[3] end end
+  assert(got == 41605, "the designer's transport wins")
+  assert(core.block_slot({ kind = "layout" }) == "layout" and core.block_title({ kind = "layout" }) == "Layout: your own")
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")
