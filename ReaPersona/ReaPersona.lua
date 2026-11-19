@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.28.0
+-- @version 5.29.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -307,7 +307,14 @@ local function use(st)
   -- mid-trial kept the trial theme as My REAPER's own. Review, 5.9.3)
   if trying and trying.back then reaper.OpenColorThemeFile(themes_dir .. trying.back) end
   trying = nil
+  local needs = core.needs_layer(st)
   core.use(st)
+  if needs then -- (5.29: REAPER has 16 shortcut layers; a persona gets one the first time it's used here)
+    if reaper.MB(st.name .. "'s shortcuts aren't installed on this computer yet: REAPER has only 16 shortcut layers, so ReaPersona gives them to the personas you use.\n\n" ..
+        "Install them now? REAPER closes (it asks first if anything is unsaved) and opens again, about 10 seconds. Until then its look and layout are on, with your own keys.", "ReaPersona: " .. st.name, 4) == 6 then
+      install_shortcuts(false, st.id, true)
+    end
+  end
   local setup = core.last_project_setup or {}
   local miss = {}
   for _, s in ipairs(core.starts_missing or {}) do miss[#miss + 1] = s[1] end
@@ -540,7 +547,11 @@ local function detail(sel, alt)
       local taken = core.mac_taken(sel.keys)
       if #taken > 0 then muted("macOS keeps these for itself, so they don't reach REAPER unless you turn them off in System Settings > Keyboard > Keyboard Shortcuts: " .. table.concat(taken, ", ") .. ".") end
     end
-    if (sel.alt or 0) > 0 and not installed[sel.alt] then
+    if core.needs_layer(sel) then
+      ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.YELLOW)
+      ImGui.TextWrapped(ctx, "Its shortcuts get a shortcut layer the first time you use it here (REAPER restarts once). REAPER has 16 layers, so ReaPersona gives them only to the personas you use: your favourites, the one in use and your own.")
+      ImGui.PopStyleColor(ctx)
+    elseif (sel.alt or 0) > 0 and not installed[sel.alt] then
       ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.YELLOW)
       ImGui.TextWrapped(ctx, "Its shortcuts aren't installed yet: Home > Shortcut layers > Install and restart.")
       ImGui.PopStyleColor(ctx)
@@ -1668,10 +1679,12 @@ end
 -- REAPER reads its keymap only when it starts: install_shortcuts.py waits for REAPER to close, installs, and starts it again. Without
 -- Python the same install is planned here and a swap step puts it in: a batch file on Windows (5.14), a /bin/sh script on a Mac or
 -- Linux (5.16; until then a Mac without Python got a keymap to import by hand, and no toolbars). core.stage_install.
-function install_shortcuts(remove) -- (remove: Remove ReaPersona, which has asked already: the lines come out instead)
+function install_shortcuts(remove, extra, asked) -- (remove: Remove ReaPersona, which has asked already: the lines come out instead. extra: a persona that
+  -- needs its layer now; asked: the question was already put)
   if not remove then
-    if reaper.MB("REAPER closes (it asks first if anything is unsaved), the shortcuts install, and REAPER opens again: about 10 seconds.\n\n" ..
+    if not asked and reaper.MB("REAPER closes (it asks first if anything is unsaved), the shortcuts install, and REAPER opens again: about 10 seconds.\n\n" ..
       "A backup of your keymap is made first.", "ReaPersona: install shortcuts", 1) ~= 1 then return end
+    core.prepare_layers(extra) -- (5.29: layers for the personas this computer uses; shared where the keys are the same)
     if core.scripts_missing() > 0 then core.ensure_scripts() end -- (the scripts the keys run have to be registered first)
     if not reaper.file_exists(here .. "/midi_defaults.json") then core.midi_defaults() end
   end
@@ -1827,7 +1840,11 @@ local function setup_page()
       local rp = reaper.ReaPack_BrowsePackages ~= nil
       setup_row("rp", rp, "ReaPack", "Installs the smooth playhead and keeps ReaPersona up to date.", not rp and "Get it" or nil, function() core.open_url("https://reapack.com/") end)
       local have, want = shortcuts_state()
-      setup_row("keys", have == want, "Shortcut layers: " .. have .. " of " .. want .. " personas installed", "Each persona's keys. REAPER restarts to load them (about 10 seconds).", have < want and "Install and restart" or "Reinstall", install_shortcuts)
+      local layers_used = {}
+      for _, st in ipairs(styles) do if (st.alt or 0) > 0 then layers_used[st.alt] = true end end
+      local nl = 0; for _ in pairs(layers_used) do nl = nl + 1 end
+      setup_row("keys", have == want, "Shortcut layers: " .. have .. " of " .. want .. " personas installed (" .. nl .. " of REAPER's 16 layers in use)",
+        "Each persona's keys. REAPER restarts to load them (about 10 seconds). REAPER has 16 layers, so ReaPersona gives them to the personas you use (favourites, the one in use, your own); a persona without one gets it the first time it's used, and personas with the same keys share one.", have < want and "Install and restart" or "Reinstall", install_shortcuts)
       setup_row("start", core.startup_on(), "Brings your persona back when REAPER starts", "One block in Scripts/__startup.lua.", not core.startup_on() and "Add it" or nil,
         function() local ok, why = core.add_startup(); say(ok and "Startup line added." or tostring(why)) end)
       local ext_keys = {}

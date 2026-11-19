@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.29.0
+- **Shortcut layers only for the personas you use.** REAPER has exactly 16 alternate shortcut layers (Main alt-1 to alt-16) and nothing can add more. Every DAW persona used to keep its own, 15 of the 16, which left almost none for personas of your own. Now each computer gives layers only to the personas it uses: your favourites, the one in use and the last one, and whatever your own personas and saved setups build on. Personas with the same keys share one (Pro Tools and Pro Tools Intro). A persona without a layer gets one the first time you use it: it asks, and REAPER restarts once. Home shows how many of the 16 are in use. Each computer keeps its own layers.json; until the next shortcut install, every DAW keeps the layer it had, so nothing changes by itself.
+- **Layers with a few other tools' keys in them count as free.** StudioSync puts its Undo and Redo in every layer, so one such line used to mark a whole DAW layer as yours and unusable. A layer is yours only when most of it is your own keys; layers with a few others are used after clean ones. On the laptop this takes the next install from all 16 layers to 2.
+
 ## 5.28.0
 - **My REAPER can be edited and saved over.** *Edit* on My REAPER opens its real look (its layout, mouse, theme and colours) on the tabs; *Save changes* makes the result its look on every computer. Its shortcuts are your own keymap, so another persona's keys don't go into it.
 - **Earlier versions.** Every save over a persona of yours, and over My REAPER's look, keeps the version before (the newest 20, on this computer). *Earlier versions* on its page puts one back, keeping the one you had too.

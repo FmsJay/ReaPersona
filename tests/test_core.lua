@@ -925,6 +925,36 @@ do
   assert(#core.versions("my_reaper") == 1 and core.versions("my_reaper")[1].data.theme == "A.ReaperThemeZip", "the look before is kept")
   ext["ReaPersona/my look"] = nil
 end
+-- 23. Shortcut layers (5.29): only for the personas used, the same keys share one, one that had a layer keeps it, yours are never taken.
+do
+  local S = {}
+  for _, id in ipairs({ "pro_tools", "pro_tools_intro", "logic", "ableton", "cubase", "nuendo", "base_reaper" }) do
+    local st = core.by_id(id); S[#S + 1] = { id = id, default_alt = st.default_alt or st.alt, keys = st.keys }
+  end
+  local m = core.plan_layers(S, { pro_tools_intro = true, logic = true }, {}, {})
+  assert(m.pro_tools_intro and m.pro_tools == m.pro_tools_intro, "Pro Tools and Pro Tools Intro have the same keys: one layer")
+  assert(m.logic == 2 and m.ableton == nil and m.cubase == nil, "only what's used; the number it ships with when free")
+  local m2 = core.plan_layers(S, { logic = true, ableton = true }, { logic = 9 }, { [3] = true })
+  assert(m2.logic == 9, "one that had a layer keeps it (no reinstall)")
+  assert(m2.ableton ~= 3 and m2.ableton ~= 9 and m2.ableton >= 1 and m2.ableton <= 16, "a layer of yours is never taken")
+  local full = {}; for n = 1, 16 do full[n] = true end
+  assert(core.plan_layers(S, { logic = true }, {}, full).logic == nil, "none free: none given")
+  local m3 = core.plan_layers(S, { ableton = true }, {}, { [3] = true }, { [1] = true, [2] = true })
+  assert(m3.ableton == 4, "a clean layer before one with other tools' keys in it")
+  -- applied: a persona with no layer here has none, and remembers the one it ships with
+  local A = { { id = "x", alt = 5, keys = {} }, { id = "y", alt = 6, keys = {} }, { id = "mine", alt = 7, user = true } }
+  core.apply_layer_map(A, { x = 11 })
+  assert(A[1].alt == 11 and A[1].default_alt == 5 and A[2].alt == 0 and A[2].default_alt == 6 and A[3].alt == 7)
+  assert(core.needs_layer(A[2]) and not core.needs_layer(A[1]) and not core.needs_layer(A[3]))
+  -- what this computer needs: favourites, the one in use, what your own build on
+  local has = reaper.HasExtState
+  reaper.HasExtState = function(s, key) return ext[s .. "/" .. key] ~= nil end
+  ext["ReaPersona/favourites"] = "cubase"; ext["ReaPersona/style"] = "my_reaper"
+  local w = core.layers_wanted("bitwig")
+  assert(w.cubase and w.bitwig and w.my_reaper and not w.reason)
+  reaper.HasExtState = has
+  ext["ReaPersona/favourites"], ext["ReaPersona/style"] = nil, nil
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")

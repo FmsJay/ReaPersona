@@ -108,6 +108,12 @@ def main_command(lines, spec, fallback):
 
 def load_styles():
     styles = json.load(open(os.path.join(HERE, "styles.json"), encoding="utf-8"))["styles"]
+    lm = os.path.join(HERE, "layers.json")  # (5.29: this computer's layers, which ReaPersona writes before an install; none yet: the numbers they ship with)
+    if os.path.exists(lm):
+        layer = json.load(open(lm, encoding="utf-8")).get("map", {})
+        for st in styles:
+            if int(st.get("alt") or 0) > 0:
+                st["alt"] = int(layer.get(st["id"]) or 0)
     user = os.path.join(HERE, "user_styles.json")
     if os.path.exists(user):
         styles += json.load(open(user, encoding="utf-8")).get("styles", [])

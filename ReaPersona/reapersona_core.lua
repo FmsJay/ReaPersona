@@ -149,6 +149,24 @@ local USERS = M.here .. "/user_styles.json"
 local function load(p) local d = M.load_json(p); return d and d.styles or {} end
 M.styles_json = M.load_json(M.here .. "/styles.json") or {} -- (parsed once: the styles, the theme catalog and the theme recipes)
 M.styles = M.styles_json.styles or {}
+-- Shortcut layers (5.29; James: "Why is that limited and can we have reapersona disable it"). REAPER has exactly 16 alternate shortcut
+-- sections (Main alt-1 to alt-16) and nothing can add more. Every DAW persona used to keep the layer styles.json gives it, 15 of the 16, so
+-- personas of your own had almost none. Now each computer gives layers only to the personas it uses (favourites, the one in use, the last
+-- one, and whatever your own personas build on), personas with the same keys share one (Pro Tools and Pro Tools Intro), and a persona
+-- without a layer gets one the first time it's used (REAPER restarts once). The numbers live in layers.json, each computer's own; with no
+-- layers.json yet, every DAW keeps the number it ships with, so nothing changes until the next shortcut install.
+local LAYERS = M.here .. "/layers.json"
+function M.layer_map() local d = M.load_json(LAYERS); return type(d.map) == "table" and d.map or nil end
+function M.apply_layer_map(styles, map) -- (pure) built-in personas' layers from the map (0: none on this computer yet)
+  for _, st in ipairs(styles) do
+    if not st.user and not st.preset then
+      st.default_alt = st.default_alt or st.alt
+      if map and (st.default_alt or 0) > 0 then st.alt = tonumber(map[st.id]) or 0 end
+    end
+  end
+  return styles
+end
+M.apply_layer_map(M.styles, M.layer_map())
 for _, st in ipairs(load(USERS)) do st.user = true; M.styles[#M.styles + 1] = st end -- (imported/shared styles)
 function M.new_id(prefix) -- a style/preset id nothing has yet
   local n, id = 0, prefix .. os.time()
@@ -567,6 +585,7 @@ function M.preset_style(p)
   end
   return st
 end
+local load_presets_ref -- (set below: prepare_layers reloads presets, which take their base's layer)
 local function load_presets()
   local d = M.load_json(PRESETS)
   local list = d and d.presets or {}
@@ -575,6 +594,84 @@ local function load_presets()
   return list
 end
 load_presets()
+load_presets_ref = load_presets
+local function keys_sig(st) local out = {}; for _, k in ipairs(st.keys or {}) do out[#out + 1] = tostring(k[1]) .. "|" .. tostring(k[2]) end; table.sort(out); return table.concat(out, "\n") end
+function M.plan_layers(styles, wanted, old, taken, avoid) -- (pure) -> { [id] = layer } for the built-in personas this computer uses
+  -- (avoid: layers with a few keys of other tools' in them, StudioSync's Undo say: used only when no clean one is free)
+  local groups, order = {}, {}
+  for _, st in ipairs(styles) do
+    if not st.user and not st.preset and (st.default_alt or 0) > 0 then
+      local sig = keys_sig(st)
+      if not groups[sig] then groups[sig] = {}; order[#order + 1] = sig end
+      table.insert(groups[sig], st)
+    end
+  end
+  local used, map, todo = {}, {}, {}
+  for a in pairs(taken or {}) do used[a] = true end
+  for _, sig in ipairs(order) do -- (a persona that had a layer keeps it: no reinstall for the ones you already use)
+    local g, want, keep = groups[sig], false, nil
+    for _, st in ipairs(g) do if wanted[st.id] then want = true end end
+    if want then
+      for _, st in ipairs(g) do local a = tonumber((old or {})[st.id]); if a and a >= 1 and a <= 16 and not used[a] then keep = a; break end end
+      if keep then used[keep] = true; for _, st in ipairs(g) do map[st.id] = keep end else todo[#todo + 1] = g end
+    end
+  end
+  for _, g in ipairs(todo) do -- (a new one: the number it ships with if that's free, else the first clean free one, else any free one)
+    local a
+    for _, st in ipairs(g) do if not used[st.default_alt] then a = st.default_alt; break end end
+    if not a then for n = 1, 16 do if not used[n] and not (avoid or {})[n] then a = n; break end end end
+    if not a then for n = 1, 16 do if not used[n] then a = n; break end end end
+    if a then used[a] = true; for _, st in ipairs(g) do map[st.id] = a end end
+  end
+  return map
+end
+function M.layers_wanted(extra) -- -> { [id] = true }: the personas whose keys this computer needs
+  local w = {}
+  local function add(id)
+    local st = id and id ~= "" and M.by_id(id)
+    if not st or w[st.id] then return end
+    w[st.id] = true
+    if st.preset then add(st.base) end
+    if st.keys_from then add(st.keys_from) end
+  end
+  for _, id in ipairs(M.favourites()) do add(id) end
+  add(reaper.GetExtState(M.SECTION, "style")); add(reaper.GetExtState(M.SECTION, "last style"))
+  for _, st in ipairs(M.styles) do if st.user then add(st.id) end end
+  for _, st in ipairs(M.presets) do add(st.id) end
+  if type(extra) == "table" then for _, id in ipairs(extra) do add(id) end else add(extra) end
+  return w
+end
+function M.layers_taken() -- -> layers no DAW may have (your own personas' own, and layers that are mostly keys you set yourself),
+  -- and layers to use last (a few keys of other tools' among ReaPersona's: StudioSync puts its Undo in every layer)
+  local used, mine, ours, theirs, avoid = {}, {}, {}, {}, {}
+  for _, s in ipairs(M.styles) do if s.user and not s.keys_from and (s.alt or 0) > 0 then used[s.alt] = true end end
+  for _, l in ipairs((M.load_json(M.here .. "/installed.json") or {}).lines or {}) do mine[l] = true end
+  for line in (M.read(res .. "/reaper-kb.ini") or ""):gmatch("[^\r\n]+") do
+    local f, k, cmd, sec = line:match("^KEY (%d+) (%d+) (%S+) (%d+)")
+    local a = tonumber(sec)
+    if a and a >= 1 and a <= 16 then
+      if mine[f .. " " .. k .. " " .. cmd .. " " .. sec] or line:find("# ReaPersona", 1, true) then ours[a] = (ours[a] or 0) + 1 else theirs[a] = (theirs[a] or 0) + 1 end
+    end
+  end
+  for a, n in pairs(theirs) do if n > (ours[a] or 0) then used[a] = true else avoid[a] = true end end
+  return used, avoid
+end
+function M.prepare_layers(extra) -- before a shortcut install: which personas get a layer (kept in layers.json), used from now on. -> the map
+  local old = M.layer_map()
+  if not old then old = {}; for _, st in ipairs(M.styles) do if not st.user and not st.preset and (st.default_alt or 0) > 0 then old[st.id] = st.default_alt end end end
+  local taken, avoid = M.layers_taken()
+  local map = M.plan_layers(M.styles, M.layers_wanted(extra), old, taken, avoid)
+  M.save_json(LAYERS, { map = setmetatable(map, M.OBJECT) })
+  M.apply_layer_map(M.styles, map)
+  for _, st in ipairs(M.styles) do if st.keys_from then M.resolve_keys(st) end end
+  load_presets_ref()
+  return map
+end
+function M.needs_layer(st) -- its keys need a layer this computer hasn't given it yet
+  if not st then return false end
+  local src = st.preset and M.by_id(st.base) or (st.keys_from and M.by_id(st.keys_from)) or st
+  return src ~= nil and not src.user and (src.default_alt or 0) > 0 and (src.alt or 0) == 0
+end
 function M.project_now(whole) -- this project as a workflow's project part: its sample rate and its tracks (FX and routing, no items);
   -- whole: the whole project as a template too (its recording and render settings, tempo, markers...: 5.13)
   local text, n = M.selected_tracks_text()
@@ -1296,15 +1393,12 @@ function M.import_theme(path, as_name) -- copy a downloaded theme into ColorThem
 end
 M.recent_themes = {} -- (themes added this session: the theme list shows them first, marked new)
 local function copy(v) if type(v) ~= "table" then return v end local t = {}; for k, x in pairs(v) do t[k] = copy(x) end return t end
-local function free_alt() -- a shortcut layer no style uses and that holds none of your own keys
-  local used, mine = {}, {}
+local function free_alt() -- a shortcut layer no persona uses and that isn't mostly keys of your own (a clean one first. 5.29)
+  local taken, avoid = M.layers_taken()
+  local used = {}
+  for a in pairs(taken) do used[a] = true end
   for _, s in ipairs(M.styles) do used[s.alt or 0] = true end
-  for _, l in ipairs((M.load_json(M.here .. "/installed.json") or {}).lines or {}) do mine[l] = true end -- (lines ReaPersona wrote)
-  for line in (M.read(res .. "/reaper-kb.ini") or ""):gmatch("[^\r\n]+") do
-    local f, k, cmd, sec = line:match("^KEY (%d+) (%d+) (%S+) (%d+)")
-    local a = tonumber(sec)
-    if a and a >= 1 and a <= 16 and not mine[f .. " " .. k .. " " .. cmd .. " " .. sec] and not line:find("# ReaPersona", 1, true) then used[a] = true end
-  end
+  for a = 1, 16 do if not used[a] and not avoid[a] then return a end end
   for a = 1, 16 do if not used[a] then return a end end
 end
 -- A persona of yours keeps a layer of its own. One a later version gave a new DAW (Audacity took alt-11 in 5.3.0, Audition alt-12 in
@@ -2629,7 +2723,7 @@ function M.stage_install(o)
   if not o.remove and (type(styles.styles) ~= "table" or #styles.styles == 0) then -- (install_shortcuts.py stops here too: no personas would remove them all)
     return nil, "styles.json is missing or has no personas, so nothing was installed"
   end
-  styles = styles.styles or {}
+  styles = M.apply_layer_map(styles.styles or {}, M.layer_map()) -- (this computer's layers: 5.29)
   for _, s in ipairs(user.styles or {}) do styles[#styles + 1] = s end
   local defaults = reaper.file_exists(M.here .. "/midi_defaults.json") and M.load_json(M.here .. "/midi_defaults.json") or nil
   local status, moves, deletes = {}, {}, {}
