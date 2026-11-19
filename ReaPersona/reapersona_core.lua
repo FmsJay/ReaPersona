@@ -2018,7 +2018,16 @@ function M.own_layer(st)
   if not ok then st.keys, st.midi_keys, st.alt, st.keys_from = table.unpack(was) end
   return ok, why
 end
+function M.custom_name(base) -- (pure but for M.styles) "Pro Tools - custom", then "Pro Tools - custom 2"... (James: "if no name given '[daw name] - custom'")
+  local taken = {}
+  for _, list in ipairs({ M.styles, M.presets }) do for _, st in ipairs(list) do taken[st.name] = true end end
+  local name, n = base .. " - custom", 1
+  while taken[name] do n = n + 1; name = base .. " - custom " .. n end
+  return name
+end
 function M.save_built(blocks, name, id) -- -> the persona, true when its shortcuts need installing; or nil + why
+  local old = id and M.by_id(id)
+  if old and not (old.kind == "built" and old.user) then id = nil end -- (never over a DAW, My REAPER, Base REAPER or a saved setup: a new persona of yours. 5.27.1)
   local st, install = M.build_style(blocks, name, id)
   if not st then return nil, install end
   local ok, why = save_user_style(st)

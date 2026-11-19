@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.27.0
+-- @version 5.27.1
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -1998,15 +1998,23 @@ end
 -- one block per slot (core.block_slot); each tab chooses what fills its slots, line by line: Shortcuts, Mouse, Layout, Themes, Colours,
 -- Project and Settings > REAPER tweaks. The bar over every tab shows it, names it and saves it. Edit on any persona's page starts from that one.
 local bld = { blocks = {}, name = "", id = nil, msg = "", colour = nil, back = nil, active = false }
-function bld_load(st) -- edit a persona: one you built is saved over itself; any other is saved as yours
+function bld_load(st) -- edit a persona: one you built is saved over itself; any other (a DAW, My REAPER, a saved setup) is saved as a new one of yours
+  local mine = st.blocks and st.user and st.kind == "built"
   bld.blocks = core.blocks_of(st)
-  bld.name, bld.id, bld.msg, bld.active = st.blocks and st.name or (st.name .. " (mine)"), st.blocks and st.id or nil, "", true
+  bld.name, bld.id, bld.msg, bld.active = mine and st.name or "", mine and st.id or nil, "", true
+  bld.from = not mine and st.name or nil -- (unnamed, it's saved as "<this> - custom")
   local c = core.draft_get(bld.blocks, "colour")
   bld.colour = c and tonumber((c.hex or ""):gsub("#", ""), 16) or nil
-  say("Editing " .. st.name .. ": change its shortcuts, mouse, layout, theme, colours, project or REAPER settings on their tabs. Save it from the bar at the top.")
+  say("Editing " .. st.name .. ": change its shortcuts, mouse, layout, theme, colours, project or REAPER settings on their tabs. " ..
+    (mine and "Save changes from the bar at the top." or ("Save from the bar at the top makes a new persona (" .. st.name .. " stays as it is).")))
+end
+local function bld_default_name() -- the name it gets when you don't give one
+  local keys = core.draft_get(bld.blocks, "keys")
+  local from = bld.from or (keys and keys.id ~= "my_reaper" and (core.by_id(keys.id) or {}).name)
+  return core.custom_name(from or "My REAPER")
 end
 function bld_new() -- an empty persona to make from the tabs
-  bld.blocks, bld.name, bld.id, bld.msg, bld.active, bld.colour = {}, "", nil, "", true, nil
+  bld.blocks, bld.name, bld.id, bld.msg, bld.active, bld.colour, bld.from = {}, "", nil, "", true, nil, nil
   say("Making a new persona: choose its shortcuts, mouse, layout, theme, colours and so on on their tabs. The bar at the top shows it; name it and Save there.")
 end
 function in_persona(b, what) -- a block into its slot of the persona being made
@@ -2044,6 +2052,7 @@ local function bld_blocks() -- what's saved: built in a fixed order, with your o
   return blocks
 end
 local function bld_save() -- -> the saved persona, or nil (bld.msg says why)
+  if bld.name:match("^%s*$") then bld.name = bld_default_name() end -- (never over a DAW: a new persona, "<DAW> - custom" unless you name it)
   local st, install = core.save_built(bld_blocks(), bld.name, bld.id)
   if st then
     bld.id, selected, ensure_new = st.id, st.id, true
@@ -2060,19 +2069,19 @@ local function draft_strip() -- the persona being made, over every tab
   for _, b in ipairs(core.draft_order(bld.blocks)) do if b.kind ~= "colour" then titles[#titles + 1] = core.block_title(b) end end
   if card("draft strip") then
     ImGui.AlignTextToFramePadding(ctx)
-    ImGui.TextColored(ctx, C.ACCENT, bld.id and ("Editing " .. bld.name) or ("Making " .. (bld.name ~= "" and bld.name or "a new persona")))
+    ImGui.TextColored(ctx, C.ACCENT, bld.id and ("Editing " .. bld.name) or ("Making " .. (bld.name ~= "" and bld.name or bld_default_name())))
     ImGui.SameLine(ctx)
     ImGui.TextWrapped(ctx, #titles > 0 and table.concat(titles, "  ·  ") or "Nothing chosen yet: pick its shortcuts, mouse, layout, theme, colours or project on their tabs (your own setup fills in the rest).")
     ImGui.SetNextItemWidth(ctx, 220 * UI)
-    local _, n = ImGui.InputTextWithHint(ctx, "##stripname", "Name it", bld.name); bld.name = n
+    local _, n = ImGui.InputTextWithHint(ctx, "##stripname", bld_default_name(), bld.name); bld.name = n
+    ImGui.SetItemTooltip(ctx, "Its name. Left empty, it's saved as the name shown here.")
     ImGui.SameLine(ctx)
     local ch, col = ImGui.ColorEdit3(ctx, "##stripcol", bld.colour or 0x3A86FF, ImGui.ColorEditFlags_NoInputs)
     if ch then bld.colour = col; core.draft_add(bld.blocks, core.new_block("colour", string.format("#%06X", col))) end
     ImGui.SetItemTooltip(ctx, "Its colour in ReaPersona: its card, buttons and badge.")
     ImGui.SameLine(ctx)
-    ImGui.BeginDisabled(ctx, bld.name == "")
-    if primary(bld.id and "Save changes##strip" or "Save##strip") then bld_save() end
-    ImGui.EndDisabled(ctx)
+    if primary(bld.id and "Save changes##strip" or "Save as new##strip") then bld_save() end
+    ImGui.SetItemTooltip(ctx, bld.id and ("Saves over " .. bld.name .. ", which you made.") or "A new persona of yours: the DAWs and personas it came from stay as they are.")
     ImGui.SameLine(ctx)
     if ImGui.Button(ctx, "Try it##strip") then
       local st, install = core.build_style(bld_blocks(), bld.name ~= "" and bld.name or "Your persona", "built_try")
@@ -2089,7 +2098,7 @@ local function draft_strip() -- the persona being made, over every tab
       ImGui.SetItemTooltip(ctx, "Back to " .. ((core.by_id(bld.back) or {}).name or "the persona you had") .. ", exactly as it was.")
     end
     ImGui.SameLine(ctx)
-    if ImGui.Button(ctx, "Stop##strip") then bld.blocks, bld.name, bld.id, bld.msg, bld.active, bld.colour = {}, "", nil, "", false, nil end
+    if ImGui.Button(ctx, "Stop##strip") then bld.blocks, bld.name, bld.id, bld.msg, bld.active, bld.colour, bld.from = {}, "", nil, "", false, nil, nil end
     ImGui.SetItemTooltip(ctx, "Stop making it: nothing is saved, and personas you have stay as they are.")
     if bld.msg ~= "" then muted(bld.msg) end
     card_end()

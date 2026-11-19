@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.27.1
+- **A DAW persona is never saved over.** Editing a DAW, My REAPER, Base REAPER or a saved setup always saves a new persona of yours (*Save as new*); only one you made yourself is saved over (*Save changes*). Leave the name empty and it's saved as "<DAW> - custom" ("Pro Tools - custom", then "Pro Tools - custom 2"...), shown in the name box until you type one. The engine refuses too: a save aimed at a persona you didn't make becomes a new one.
+
 ## 5.27.0
 - **Personas: Favourites, DAWs and Your personas.** Click the star on any DAW's or persona's card (top left), or *Add to favourites* on its page, to keep it on Personas > Favourites. Setting up ReaPersona stars My REAPER and the DAW you pick; until you star anything, Favourites shows My REAPER and the persona in use. Favourites go to your other computers with your settings. DAWs now lists REAPER's own and the DAW personas; Your personas lists every persona you saved or made.
 - **A tab for each part of a persona, chosen line by line.** The Persona Builder is gone: a persona is built from what you choose on the tabs. **Shortcuts** (whose keys, untick any), **Mouse** (whose wheel, drags and clicks), **Layout** (the mixer, its layout, the transport, the Media Explorer, the toolbar, MIDI editor docking, and snap and ripple, each from any persona), **Themes**, **Colours** (*In my persona*, following what's set there), **Project** (what a new project gets, or start from a workflow) and **Settings > REAPER tweaks** (*In my persona* on any group, following what's set there). Anything you don't choose stays as your own setup. Each part comes from one persona; lines for the other system (Mac or Windows) aren't listed.

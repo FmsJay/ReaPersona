@@ -892,6 +892,17 @@ do
   reaper.HasExtState = has
   ext["ReaPersona/style"], ext["ReaPersona/favourites"] = nil, nil
 end
+-- 21. Never over a built-in (5.27.1): saving with a DAW's id makes a new persona and leaves the DAW alone; unnamed, "<DAW> - custom".
+do
+  assert(core.custom_name("Pro Tools") == "Pro Tools - custom")
+  local pt = core.by_id("pro_tools")
+  local st = assert(core.save_built({ core.keys_block("pro_tools") }, core.custom_name("Pro Tools"), "pro_tools"))
+  assert(st.id ~= "pro_tools" and core.by_id("pro_tools") == pt and not pt.user, "the DAW stays as it ships; the save is a persona of yours")
+  assert(core.custom_name("Pro Tools") == "Pro Tools - custom 2", "a second one gets a number")
+  local again = assert(core.save_built({ core.keys_block("logic") }, "Renamed", st.id))
+  assert(again.id == st.id, "one you built is saved over")
+  for n = #core.styles, 1, -1 do if core.styles[n].id == st.id then table.remove(core.styles, n) end end
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")
