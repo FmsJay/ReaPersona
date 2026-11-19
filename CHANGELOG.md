@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.45.1
+- **One My REAPER** (James): "Save what I'm using" on My REAPER offers "My REAPER alt" (not "My REAPER (mine)", which read as
+  a second My REAPER), and a name another persona already has saves nothing and says why.
+
 ## 5.45.0
 James's notes from 11-19.
 - **Save over a persona:** a "Save over..." list next to Save puts what you've made over one of your own personas or My REAPER, after a

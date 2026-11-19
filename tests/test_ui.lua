@@ -621,6 +621,20 @@ local function run()
   assert(mouse_hid or #adds == mouse_common, "and anything left out is counted")
   rawset(ImGui, "SmallButton", real_small)
   reaper.SetExtState(R.SECTION, "every action", "0", true)
+
+  -- 14. James, 2026-11-19: one My REAPER. Saving what you use on My REAPER offers an alt, and a name a persona has saves nothing
+  local gui, offered, typed = reaper.GetUserInputs, nil, nil
+  reaper.GetUserInputs = function(_, _, _, default) offered = default; return true, typed or default end
+  local rsp = core.save_preset
+  local saved_as
+  core.save_preset = function(name) saved_as = name; return { id = "preset_t", name = name } end
+  set_style("my_reaper")
+  typed = "my reaper"; R.save_preset_prompt()
+  assert(offered:find("^My REAPER alt") and not offered:find("(mine)", 1, true), "on My REAPER the copy is an alt: " .. tostring(offered))
+  assert(not saved_as and said():find("already in it", 1, true), "typing My REAPER saves no second one: " .. tostring(said()))
+  typed = nil; R.save_preset_prompt()
+  assert(saved_as == offered, "the alt name saves")
+  core.save_preset, reaper.GetUserInputs = rsp, gui
 end
 
 local ok, err = xpcall(run, debug.traceback)

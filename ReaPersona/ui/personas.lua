@@ -153,9 +153,22 @@ function save_preset_prompt()
   if core.is_trial() then -- (a preview isn't a persona of its own: saved, it named one that's gone. Review 2026-11-19)
     return say("REAPER is showing the persona you're making: Save it from the bar at the top, or Go back there first to save what you had.")
   end
-  local ok, name = reaper.GetUserInputs("Save as a persona", 1, "Name,extrawidth=160,separator=\n", (cur.preset and cur.name or (cur.name .. " (mine)")))
+  local function taken(n) for _, s in ipairs(styles) do if s.name:lower() == n:lower() then return s end end end
+  local function free(n) -- n, or "n 2", "n 3"... when a persona has that name
+    if not taken(n) then return n end
+    for i = 2, 99 do if not taken(n .. " " .. i) then return n .. " " .. i end end
+    return n
+  end
+  -- (on My REAPER: a copy is an alt, never "My REAPER (mine)", which read as a second My REAPER. James, 2026-11-19)
+  local suggest = cur.id == "my_reaper" and free("My REAPER alt") or free(cur.preset and cur.name or (cur.name .. " (mine)"))
+  local ok, name = reaper.GetUserInputs("Save as a persona", 1, "Name,extrawidth=160,separator=\n", suggest)
   name = ok and name:gsub("^%s+", ""):gsub("%s+$", "") or ""
   if name == "" then return end
+  local same = taken(name)
+  if same then
+    return say(same.id == "my_reaper" and "My REAPER is your REAPER as it is: changes you make while it's in use are already in it. To keep a copy, give it another name, such as " .. free("My REAPER alt") .. "."
+      or ("There's already a persona called " .. same.name .. ". Give this one another name."))
+  end
   local all = reaper.CountTracks(0)
   local wf = reaper.MB("Make " .. name .. " a workflow too?\n\nYes: a new, empty project with it starts as this one does: its " .. all .. " track" .. (all == 1 and "" or "s") ..
     " with their FX, routing and folders (not their audio or MIDI), its sample rate, recording format, render settings, tempo, markers and regions." ..
