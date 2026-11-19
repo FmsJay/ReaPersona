@@ -345,6 +345,209 @@ local function window_back(line)
   if w then move_window(w, { shown = shown == "1", docker = tonumber(d) >= 0 and tonumber(d) or nil, pref = tonumber(pref) }) end
 end
 
+-- ---------------------------------------------------------------- every other window (5.34; James: "anything that's docked in general
+-- and any popout windows should all save their layout and settings")
+-- ["windows", { [ident] = { s = 1 open / 0 closed, p = "float" or the docker's side, r = { x, y, w, h } of its own window } }, what]:
+-- REAPER's other windows. Opening, closing, docking and moving them are live. Taking one out of a docker isn't, for a script (focus +
+-- 41172 and DockWindowRemove leave it docked), except through a window set: loading one puts each window it lists as it was saved,
+-- docked or not. REAPER reads reaper-screensets.ini only as it starts, so ReaPersona's own set ("ReaPersona: windows": every window
+-- here closed and out of its docker) goes in through pending/, which the next install-and-restart merges in (both installers do).
+M.TOOL_WINDOWS = { -- { ident (as in reaper.ini and window sets), title to find it by (nil: open/close only), show action, name, size of its set record }
+  { "actions", "Actions", 40605, "Actions list", 24 }, { "regmgr", "Region/Marker Manager", 40326, "Region/Marker Manager", 24 },
+  { "trackmgr", "Track Manager", 40906, "Track Manager", 24 }, { "undo", "Undo History", 40072, "Undo History", 20 },
+  { "navigator", "Navigator", 40268, "Navigator", 24 }, { "perf", "Performance Meter", 40240, "Performance Meter", 24 },
+  { "vkb", "Virtual MIDI keyboard", 40377, "Virtual MIDI keyboard", 24 }, { "routing", "Routing Matrix", 40251, "Routing Matrix", 20 },
+  { "video", "Video Window", 50125, "Video window", 20 }, { "projbay_0", "Project Bay", 41157, "Project Bay", 24 },
+  { "xfadeedit", "Crossfade Editor", 41827, "Crossfade Editor", 24 },
+  { "bigclock", nil, 40378, "Big Clock", 24 }, { "fxbrowser", nil, 40271, "FX browser", 24 },
+}
+M.WINDOW_PLACES = { "float", "bottom", "left", "top", "right" }
+local PLACE_OK = { float = true, bottom = true, left = true, top = true, right = true }
+local SIDE_NAME = { [0] = "bottom", [1] = "left", [2] = "top", [3] = "right" }
+local function tool_hwnd(w) return w[2] and reaper.JS_Window_Find and reaper.JS_Window_Find(w[2], true) or nil end
+function M.windows_now() -- -> every window above as it is now (nil without js_ReaScriptAPI: it couldn't see them)
+  if not (reaper.JS_Window_Find and reaper.JS_Window_GetRect) then return nil end
+  local out = {}
+  for _, w in ipairs(M.TOOL_WINDOWS) do
+    local h, e = tool_hwnd(w), nil
+    if h then
+      local d = reaper.DockIsChildOfDock(h)
+      if d >= 0 then e = { s = 1, p = SIDE_NAME[reaper.DockGetPosition(d)] or "bottom" }
+      else
+        local ok, l, top, r, b = reaper.JS_Window_GetRect(h)
+        e = { s = 1, p = "float", r = ok and { l, top, r - l, b - top } or nil }
+      end
+    elseif w[2] then e = { s = 0 }
+    else e = { s = reaper.GetToggleCommandState(w[3]) == 1 and 1 or 0 } end
+    out[w[1]] = e
+  end
+  return out
+end
+function M.safe_windows(t) -- (pure) only the windows above, open/closed, a known place and a sane rect; nil when there's none
+  if type(t) ~= "table" then return nil end
+  local out, any = {}, false
+  for _, w in ipairs(M.TOOL_WINDOWS) do
+    local x = t[w[1]]
+    local s = type(x) == "table" and tonumber(x.s)
+    if s == 0 or s == 1 then
+      local e = { s = s }
+      if s == 1 and w[2] and PLACE_OK[x.p] then e.p = x.p end -- (one without a title opens and closes only)
+      if e.p == "float" and type(x.r) == "table" then
+        local r = {}
+        for i = 1, 4 do r[i] = math.floor(tonumber(x.r[i]) or 0) end
+        if r[3] >= 50 and r[4] >= 30 and r[3] <= 20000 and r[4] <= 20000 and math.abs(r[1]) <= 40000 and math.abs(r[2]) <= 40000 then e.r = r end
+      end
+      out[w[1]] = e; any = true
+    end
+  end
+  return any and out or nil
+end
+function M.window_words(x) -- (pure) "closed", "in its own window", "docked bottom"
+  if not x then return "as it is" elseif x.s ~= 1 then return "closed" elseif x.p == "float" then return "in its own window"
+  elseif x.p then return "docked " .. x.p else return "open" end
+end
+function M.windows_label(t) -- (pure) "Other windows: Actions list docked bottom, Undo History in its own window; 9 closed"
+  local open, shut = {}, 0
+  for _, w in ipairs(M.TOOL_WINDOWS) do
+    local x = t and t[w[1]]
+    if x and x.s == 1 then open[#open + 1] = w[4] .. " " .. M.window_words(x) elseif x then shut = shut + 1 end
+  end
+  return "Other windows: " .. (#open > 0 and table.concat(open, ", ") or "none open") .. (shut > 0 and ("; " .. shut .. " closed") or "")
+end
+M.UNDOCK_SET = "ReaPersona: windows"
+function M.undock_set_text(n) -- (pure) window set section [sset<n>]: every window above closed and floating, nothing else of REAPER's
+  -- (mask -3618: "Tool window positions" alone, as REAPER saves it with only that ticked. -1025, everything, loaded the missing main
+  -- window rect as 0,0 300x300 and undocked the transport on the laptop, 11-18)
+  local l = { "[sset" .. n .. "]", "name=" .. M.UNDOCK_SET, "mask=-3618", "poslist_size=" .. #M.TOOL_WINDOWS }
+  for i, w in ipairs(M.TOOL_WINDOWS) do
+    local bytes = { 0, 0, 0, 0 } -- (flags 0: closed, not docked; then no rect of its own, FFFFFFFF x 4; the rest 0)
+    for _ = 1, 16 do bytes[#bytes + 1] = 255 end
+    for _ = 21, w[5] do bytes[#bytes + 1] = 0 end
+    local sum, hex = 0, {}
+    for _, b in ipairs(bytes) do sum = sum + b; hex[#hex + 1] = string.format("%02X", b) end
+    hex[#hex + 1] = string.format("%02X", sum % 256) -- (REAPER's check byte: the sum of the others)
+    l[#l + 1] = "poslist" .. (i - 1) .. "_data=" .. table.concat(hex)
+    l[#l + 1] = "poslist" .. (i - 1) .. "_id=" .. w[1]
+    l[#l + 1] = "poslist" .. (i - 1) .. "_sz=" .. w[5]
+  end
+  return table.concat(l, "\n") .. "\n"
+end
+function M.undock_slot_in(text) -- (pure) -> the set number (1-10) holding ReaPersona's set in a reaper-screensets.ini text, or nil + a free one
+  local free
+  for n = 9, 0, -1 do
+    local s = M.ini_section(text or "", "sset" .. n)
+    if s and s:find("\nname=" .. M.UNDOCK_SET, 1, true) then return n + 1 end
+    if not free and not (s and s:find("poslist", 1, true)) then free = n + 1 end
+  end
+  return nil, free
+end
+function M.undock_slot() -- -> the window set that takes windows out of dockers, or nil + "waiting" (for a restart) / "full" (no free set)
+  local slot, free = M.undock_slot_in(M.read(res .. "/reaper-screensets.ini"))
+  if slot then return slot end
+  local pend = M.read(M.here .. "/pending/reaper-screensets.ini")
+  if pend and pend:find("name=" .. M.UNDOCK_SET, 1, true) then return nil, "waiting" end
+  if not free then return nil, "full" end
+  reaper.RecursiveCreateDirectory(M.here .. "/pending", 0)
+  M.write(M.here .. "/pending/reaper-screensets.ini", (pend or "") .. M.undock_set_text(free - 1))
+  return nil, "waiting"
+end
+local function place_window(w, x, state) -- one step towards x; true: not there yet, again in a moment
+  local h = tool_hwnd(w)
+  if x.s ~= 1 then
+    if h then
+      local d = reaper.DockIsChildOfDock(h)
+      reaper.JS_WindowMessage_Post(h, "WM_CLOSE", 0, 0, 0, 0) -- (as the x on its tab: its show action only focuses a docked tab)
+      if d >= 0 and not state.closed then state.closed = d; return true end
+    elseif state.closed then -- (closed from a docker: REAPER leaves it showing no tab, so the mixer or another window in it comes to the front)
+      for _, title in ipairs({ "Mixer", "Media Explorer" }) do
+        local o = reaper.JS_Window_Find(title, true)
+        if o and reaper.DockIsChildOfDock(o) == state.closed then reaper.DockWindowActivate(o); return end
+      end
+      for _, o in ipairs(M.TOOL_WINDOWS) do
+        local oh = tool_hwnd(o)
+        if oh and reaper.DockIsChildOfDock(oh) == state.closed then reaper.DockWindowActivate(oh); return end
+      end
+    elseif not w[2] and reaper.GetToggleCommandState(w[3]) == 1 then reaper.Main_OnCommand(w[3], 0) end
+    return
+  end
+  if not w[2] then if reaper.GetToggleCommandState(w[3]) ~= 1 then reaper.Main_OnCommand(w[3], 0) end return end
+  if not h then
+    if not state.opened then state.opened = true; reaper.Main_OnCommand(w[3], 0) end
+    return true
+  end
+  local d = reaper.DockIsChildOfDock(h)
+  if x.p == "float" then
+    if d < 0 and x.r then reaper.JS_Window_SetPosition(h, x.r[1], x.r[2], x.r[3], x.r[4]) end
+    return -- (still docked: there was no window set yet to take it out)
+  end
+  if not x.p then return end
+  if d >= 0 then
+    if SIDE_NAME[reaper.DockGetPosition(d)] == x.p then return end
+    if d == state.want and not state.sided then -- (a spare docker: to its side, as the Media Explorer's)
+      state.sided = true; reaper.JS_Window_SetFocus(h); reaper.Main_OnCommand(41598 + SIDES[x.p], 0); return true
+    end
+    return
+  end
+  state.want = state.want or docker_at(x.p) or spare_docker(x.p)
+  if not state.want or (state.tries or 0) >= 4 then return end
+  state.tries = (state.tries or 0) + 1
+  reaper.Dock_UpdateDockID(w[1], state.want)
+  reaper.JS_Window_SetFocus(h)
+  reaper.Main_OnCommand(41172, 0) -- (Dock/undock the focused window: docks it into the docker just set)
+  return true
+end
+-- What the window set also changes: it closes every window it doesn't list (measured on the laptop, 11-18: the transport hid and the
+-- mixer closed; the main window and the dockers stayed). So these are read before it loads and put back after: the transport's place
+-- and whether it shows, the mixer, toolbars 1-8, MIDI toolbars 1-4, floating toolbars 17-32, and the Media Explorer.
+local TRANSPORT_PLACES = { 41603, 41604, 41605, 41606 }
+local KEEP_TOGGLES = { 40259, 40260, 40078, 40083 }
+for c = 41679, 41690 do KEEP_TOGGLES[#KEEP_TOGGLES + 1] = c end
+for c = 42729, 42744 do KEEP_TOGGLES[#KEEP_TOGGLES + 1] = c end
+local function keep_now()
+  local k = { toggles = {}, explorer = window_now("explorer") }
+  for _, c in ipairs(TRANSPORT_PLACES) do if reaper.GetToggleCommandState(c) == 1 then k.place = c end end
+  for _, c in ipairs(KEEP_TOGGLES) do k.toggles[c] = reaper.GetToggleCommandState(c) end
+  local mx = reaper.JS_Window_Find("Mixer", true) -- (docked behind another tab, REAPER says it isn't visible: it's open all the same)
+  if mx and reaper.DockIsChildOfDock(mx) >= 0 then k.toggles[40078] = 1 end
+  return k
+end
+local function keep_back(k)
+  if k.place and reaper.GetToggleCommandState(k.place) ~= 1 then reaper.Main_OnCommand(k.place, 0) end
+  for _, c in ipairs(KEEP_TOGGLES) do
+    local was = k.toggles[c]
+    if was and was >= 0 and reaper.GetToggleCommandState(c) ~= was then reaper.Main_OnCommand(c, 0) end
+  end
+  window_back(k.explorer)
+end
+function M.apply_windows(want) -- the windows as `want` has them (the ones it doesn't mention stay as they are), queued behind other window moves
+  want = M.safe_windows(want)
+  if not (want and reaper.JS_Window_Find and reaper.JS_WindowMessage_Post) then return end
+  local target = {}
+  later(function() -- (once the moves queued before are done: what's open now, and whether one must come out of a docker)
+    local now, undock = M.windows_now() or {}, false
+    for _, w in ipairs(M.TOOL_WINDOWS) do
+      local x, n = want[w[1]], now[w[1]]
+      target[w[1]] = x
+      if x and x.s == 1 and x.p and n and n.s == 1 and n.p and n.p ~= "float" and n.p ~= x.p then undock = true end
+    end
+    local slot = undock and M.undock_slot()
+    if slot then -- (the set closes every one of them and takes them out of their dockers: the ones not mentioned go back as they were)
+      for _, w in ipairs(M.TOOL_WINDOWS) do if not target[w[1]] then target[w[1]] = now[w[1]] end end
+      local k = keep_now()
+      reaper.Main_OnCommand(M.WSET_LOAD + slot - 1, 0)
+      local waited = false
+      later(function() if not waited then waited = true; return true end keep_back(k) end) -- (a moment after the set, before the windows below: the transport, mixer and toolbars back)
+      table.insert(jobs, 2, table.remove(jobs)) -- (that step next, ahead of the window steps already queued)
+    end
+  end)
+  for _, w in ipairs(M.TOOL_WINDOWS) do
+    local state = {}
+    later(function() local x = target[w[1]]; if x then return place_window(w, x, state) end end)
+  end
+end
+local function hexs(s) return (s:gsub(".", function(ch) return string.format("%02x", ch:byte()) end)) end
+local function unhexs(s) return (s:gsub("%x%x", function(h) return string.char(tonumber(h, 16)) end)) end
+
 local function restore_feel(windows_left) -- (windows_left: a window's original is kept here when the next style moves it too)
   local list = orig_list()
   for n = #list, 1, -1 do
@@ -352,6 +555,8 @@ local function restore_feel(windows_left) -- (windows_left: a window's original 
     local ok, err = pcall(function()
     if kind == "d" then
       if windows_left then windows_left[a] = list[n] else window_back(list[n]) end
+    elseif kind == "w" and a ~= "" then -- (every other window, as it was before the persona: 5.34)
+      M.apply_windows(M.json_decode(unhexs(a)))
     elseif kind == "t" then
       local id = cmd_id(tonumber(a) or a)
       if id ~= 0 and reaper.GetToggleCommandState(id) ~= tonumber(b) then reaper.Main_OnCommand(id, 0) end
@@ -391,6 +596,7 @@ M.ASPECTS = {
   { "mouse", "Mouse drags and clicks (Smart Tool and so on; the wheel is part of the shortcuts)", true, "Mouse drags and clicks" },
   { "settings", "Snap, ripple, follow-playhead, the loop range and overlapping clips", true, "Snap, ripple and loop" },
   { "editor", "Dock the MIDI editor in the main window, or let it float", true, "MIDI editor docking" },
+  { "windows", "Every other window: which are open, docked or in their own window, and where (Actions list, Undo History, Region Manager, Routing Matrix...)", true, "Other windows" },
 }
 function M.aspect_on(a)
   local v = reaper.GetExtState(M.SECTION, "aspect " .. a)
@@ -400,6 +606,7 @@ function M.aspect_on(a)
 end
 function M.aspect_of(f)
   if f[1] == "midi_dock" then return "editor" end
+  if f[1] == "windows" then return "windows" end
   if f[1] == "dock" then return f[2] == "mixer" and "mixer_dock" or "browser" elseif f[1] == "radio" then return "transport" elseif f[1] == "switch" then return "toolbar"
   elseif f[1] == "mouse" then return "mouse"
   elseif f[1] == "toggle" then
@@ -463,6 +670,16 @@ local function apply_feel(st, windows_left, as_base) -- (as_base: your own look 
       end
       local id = cmd_id(f[3]) -- (these are "set" actions: run every time, as two of the ruler's can read on at once)
       if id ~= 0 then reaper.Main_OnCommand(id, 0) end
+    elseif f[1] == "windows" and M.safe_windows(f[2]) and reaper.JS_Window_Find then -- (every other window: 5.34)
+      if not as_base then -- (what they were is read once the last persona's windows are back: a queued step fills it in)
+        local idx = #list + 1
+        list[idx] = "w||"
+        later(function()
+          list[idx] = "w|" .. hexs(M.json_encode(M.windows_now() or {})) .. "|"
+          reaper.SetExtState(M.SECTION, "orig", table.concat(list, ";;"), true)
+        end)
+      end
+      M.apply_windows(f[2])
     elseif f[1] == "midi_dock" then -- ["midi_dock", 1 docked / 0 floating, what]
       list[#list + 1] = "e|" .. (M.midi_docked() and 1 or 0) .. "|"
       M.want_midi_dock(f[2] == 1)
@@ -724,6 +941,8 @@ local function feel_now(base) -- every setting, mouse behaviour and window place
       feel[#feel + 1] = { "dock", w, side, tonumber(shown), WINDOWS[w].name .. ": " .. (side == "float" and "its own window" or ("docked " .. side)) .. (shown == "1" and ", open" or ", closed") }
     end
   end
+  local wins = M.windows_now() -- (5.34: every other window)
+  if wins then feel[#feel + 1] = { "windows", wins, M.windows_label(wins) } end
   return feel
 end
 M.feel_now = feel_now
@@ -1443,6 +1662,7 @@ local function feel_slot(f)
   elseif f[1] == "radio" then return "radio " .. table.concat(f[2], ",")
   elseif f[1] == "dock" then return "dock " .. f[2]
   elseif f[1] == "midi_dock" then return "midi_dock"
+  elseif f[1] == "windows" then return "windows"
   elseif f[1] == "choice" then return "choice " .. table.concat(f[2], ",")
   elseif f[1] == "mouse" then return "mouse " .. f[2] .. " " .. f[3]
   elseif f[1] == "switch" then local c = tonumber(f[2]) or 0; return (c >= 41956 and c <= 41959) and "switch midi" or "switch main" end
@@ -1450,6 +1670,7 @@ end
 local function feel_value(f)
   if f[1] == "dock" then return f[3] .. "/" .. tostring(f[4]) elseif f[1] == "mouse" then return tostring(f[4])
   elseif f[1] == "midi_dock" then return tostring(f[2])
+  elseif f[1] == "windows" then return M.json_encode(f[2])
   elseif f[1] == "switch" then return tostring(f[2]) else return tostring(f[3]) end
 end
 -- ---------------------------------------------------------------- the Persona Builder: blocks stacked into a persona
@@ -1710,7 +1931,7 @@ function M.block_title(b)
     if M.block_slot(b) == "keys" then return b.id == "my_reaper" and "Your own shortcuts" or (name .. "'s shortcuts") end
     return name
   elseif b.kind == "mouse" then return name .. ": Mouse"
-  elseif b.kind == "feel" then return name .. ": " .. M.aspect_name(b.aspect)
+  elseif b.kind == "feel" then return (b.id and name or "Your own") .. ": " .. M.aspect_name(b.aspect) -- (5.34: windows set on Layout have no persona)
   elseif b.kind == "settings" then return (group_by_id(b.group) or { name = tostring(b.group) }).name
   elseif b.kind == "theme" then return "Theme: " .. tostring(b.file):gsub("%.ReaperTheme%a*$", "")
   elseif b.kind == "colour" then return "Colour " .. tostring(b.hex)
@@ -1739,6 +1960,10 @@ function M.safe_feel(list) -- a shared file's feel, keeping only commands ReaPer
       good = type(f[2]) == "table" and ok[tostring(f[3])]
       for _, c in ipairs(good and f[2] or {}) do good = good and ok[tostring(c)] end
     elseif good and f[1] == "mouse" then good = type(f[2]) == "string" and type(f[4]) == "string" and not f[4]:find("_", 1, true) -- (no custom actions)
+    elseif good and f[1] == "windows" then
+      local w = M.safe_windows(f[2])
+      good = w ~= nil
+      if good then f = { "windows", w, M.windows_label(w) } end
     elseif good then good = f[1] == "dock" or f[1] == "midi_dock" end
     if good then out[#out + 1] = f end
   end
@@ -1798,6 +2023,9 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
     end
     local th = daw and b.theme and M.theme_for(st)
     if th then out[#out + 1] = { slot = "theme", kind = "theme", label = th, value = th } end
+  elseif b.kind == "feel" and b.aspect == "windows" and type(b.items) == "table" then -- (5.34: the windows as you set them on Layout)
+    local w = M.safe_windows(b.items)
+    if w then feel({ "windows", w, M.windows_label(w) }) end
   elseif b.kind == "feel" and st then
     for _, f in ipairs(st.feel or {}) do if M.aspect_of(f) == b.aspect then feel(f) end end
   elseif b.kind == "settings" then
@@ -2977,6 +3205,18 @@ function M.theme_python() -- the Python the theme builder runs with: the venv's 
   local v = M.venv_python()
   return v and ('"' .. v .. '"') or M.py
 end
+function M.py_quiet() -- (5.34) the Python command for jobs REAPER doesn't wait for: on Windows its windowless twin (pythonw, pyw), so no
+  -- console pops up over REAPER (James saw one at the install's restart); the same command where there's no twin, and on a Mac or Linux
+  if M._pyq == nil then
+    M._pyq = M.py or false
+    if M.py and reaper.GetOS():find("^Win") then
+      local twin = ({ python = "pythonw", ["py -3"] = "pyw -3", python3 = "pythonw" })[M.py]
+      local exe = twin and twin:match("^(%S+)")
+      if exe and sh('cmd.exe /c where ' .. exe, 8000) == "0" then M._pyq = twin end
+    end
+  end
+  return M._pyq or M.py
+end
 function M.python_libs() -- -> true when the theme builder's Python has Pillow and numpy; cached
   if M._libs == nil then M._libs = M.python() ~= nil and sh(M.theme_python() .. ' -c "import PIL, numpy"', 15000) == "0" end
   return M._libs
@@ -2985,7 +3225,7 @@ function M.install_python_libs() -- starts install_libs.py, and REAPER doesn't w
   if not M.python() then return nil, "no Python 3 here (python.org)" end
   if not M.write(LIBS_STATUS, "running " .. os.time() .. "\n") then return nil, "couldn't write in " .. M.here end
   M._libs_seen = nil
-  reaper.ExecProcess(M.py .. ' "' .. M.here .. '/install_libs.py" "' .. M.VENV .. '" "' .. LIBS_STATUS .. '"', -1) -- (-1: don't wait)
+  reaper.ExecProcess(M.py_quiet() .. ' "' .. M.here .. '/install_libs.py" "' .. M.VENV .. '" "' .. LIBS_STATUS .. '"', -1) -- (-1: don't wait)
   return true
 end
 -- How the background install goes: nil (none), "running", or once when it ends "ok" / "failed" + why (the status file goes then).

@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.34.0
+- **Every other window in your persona.** The Actions list, Region/Marker Manager, Track Manager, Undo History, Navigator, Performance Meter, Virtual MIDI keyboard, Routing Matrix, Video window, Project Bay and Crossfade Editor: open or closed, docked on a side, or in their own window with their place and size. Big Clock and the FX browser open and close. Saved with My REAPER's look, *Save what I'm using* and any persona; using one puts them back, and switching away puts yours back, so a stray window no longer stays when you go back to My REAPER.
+- **Layout > Other windows:** load them from any persona, take them as they are now, or set each window. Settings > Personas can switch the part off.
+- **Taking a window out of a docker** goes through a window set of ReaPersona's ("ReaPersona: windows", in a free set under View > Screensets). REAPER only reads window sets as it starts, so it goes in at REAPER's next restart (the Layout tab offers it). It changes only those windows; ReaPersona puts the transport, mixer, toolbars and Media Explorer back straight after.
+- Closing a docked window brings the mixer (or another window in that docker) back to the front instead of an empty docker.
+- The shortcut install no longer flashes a console window over REAPER on Windows (it runs Python's windowless pythonw where there is one).
+
 ## 5.33.0
 - **Project defaults.** The Project tab (now *Project defaults*) also sets a new project's tempo, time signature and grid (straight or triplet), next to its sample rate, starter tracks or template and window set. Like the rest, they apply only to a project that's still empty. *Recording options* and *Playback options* jump to the click, count-in and pre-roll.
 - **A REAPER tab.** REAPER's and SWS's options moved out of Settings into their own main tab, one sub-tab per area: Playback, Editing, Recording, View, Colours & icons, Automation, Monitoring & FX and Mixer. *In my persona* and *Load from* work on each, as before.

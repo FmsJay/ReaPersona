@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.33.0
+-- @version 5.34.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -1086,7 +1086,7 @@ local function settings_page(sec) -- (5.33: in sub-tabs; sec = which)
     end
     local pend = core.restart_pending() -- (shown whether or not the advanced parts are unfolded)
     if #pend > 0 then
-      ImGui.TextColored(ctx, C.YELLOW, "From your other computers, waiting for REAPER to restart: " .. table.concat(pend, ", "))
+      ImGui.TextColored(ctx, C.YELLOW, "Waiting for REAPER to restart (from your other computers, or ReaPersona's window set): " .. table.concat(pend, ", "))
       if primary("Apply (REAPER restarts)##applysetup") then install_shortcuts() end
       ImGui.SetItemTooltip(ctx, "REAPER closes (asking about anything unsaved), they're merged into this computer's (backed up first), your persona shortcuts go back in, and REAPER opens again.")
     end
@@ -1639,7 +1639,7 @@ function install_shortcuts(remove, extra, asked) -- (remove: Remove ReaPersona, 
   os.remove(here .. "/install_cancelled") -- (before the installer starts: an old one would stop it at its first look)
   if core.python() then
     local setup = #core.restart_pending() > 0 and not remove and " --apply-setup" or "" -- (your setup from your other computers, waiting for a restart)
-    reaper.ExecProcess(core.py .. ' "' .. here .. '/install_shortcuts.py" --after-reaper-quits --relaunch "' .. exe .. '" --cfgfile "' .. cfg .. '"' .. (remove and " --remove" or "") .. setup .. table.concat(open), -1) -- (-1: don't wait)
+    reaper.ExecProcess(core.py_quiet() .. ' "' .. here .. '/install_shortcuts.py" --after-reaper-quits --relaunch "' .. exe .. '" --cfgfile "' .. cfg .. '"' .. (remove and " --remove" or "") .. setup .. table.concat(open), -1) -- (-1: don't wait)
   else
     local step, why = core.stage_install({ remove = remove, pid = core.reaper_pid(), exe = exe, cfg = cfg, projects = projects })
     if not step then return reaper.MB("Nothing was installed: " .. tostring(why), "ReaPersona", 0) end
@@ -2776,7 +2776,80 @@ do -- (the layout designer: its own scope)
       ImGui.SameLine(ctx)
       if ImGui.SmallButton(ctx, "Back to the persona's own##lyreset") then core.draft_clear(bld.blocks, "layout"); cache.items = nil end
     end
-    muted("REAPER's other windows aren't here: a script can dock them but can't undock them again, so a persona couldn't give you yours back.")
+    muted("REAPER's other windows (the Actions list, Undo History, Region Manager and the rest) are below, under Other windows.")
+    ImGui.Unindent(ctx, IND * UI)
+    card_end()
+  end
+end
+local windows_card -- (5.34: every other window, set one by one)
+do
+  local CHOICES = { { nil, "Leave as it is" }, { "closed", "Closed" }, { "float", "In its own window" }, { "bottom", "Docked at the bottom" },
+    { "left", "Docked on the left" }, { "top", "Docked at the top" }, { "right", "Docked on the right" } }
+  local undock_note, undock_at = nil, -10
+  local function block_items() -- -> the windows block's items (made from what it loads, the first time it's changed here), or nil
+    local b = core.draft_get(bld.blocks, "feel windows")
+    if not b then return nil end
+    if type(b.items) ~= "table" then
+      local items = {}
+      for _, e in ipairs(core.build_preview({ b })[1]) do if e.entry[1] == "windows" then items = e.entry[2] end end
+      b.items, b.id = items, nil
+    end
+    return b.items
+  end
+  function windows_card()
+    if not card("windows edit") then return end
+    heading("Set each window", 16)
+    muted("Open or closed, in its own window (where it is now) or docked on a side. Take them as they are now, or choose one by one.")
+    ImGui.Indent(ctx, IND * UI)
+    if not core.windows_now() then
+      ImGui.TextColored(ctx, C.YELLOW, "Needs js_ReaScriptAPI (Home > Setup) to see REAPER's windows.")
+      ImGui.Unindent(ctx, IND * UI); card_end(); return
+    end
+    if ImGui.Button(ctx, "Take them as they are now##wnow") then
+      core.draft_add(bld.blocks, { kind = "feel", aspect = "windows", items = core.windows_now() })
+      bld.active = true; core.undock_slot(); undock_at = -10
+      say("Every window, as it is now, is in your persona.")
+    end
+    local items = block_items() or {}
+    local now = core.windows_now() or {}
+    for _, w in ipairs(core.TOOL_WINDOWS) do
+      local x = items[w[1]]
+      local cur = not x and "Leave as it is" or x.s ~= 1 and "Closed" or nil
+      for _, c in ipairs(CHOICES) do if x and x.s == 1 and c[1] == (x.p or "float") then cur = c[2] end end
+      ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, w[4]); ImGui.SameLine(ctx, 210 * UI)
+      ImGui.SetNextItemWidth(ctx, 200 * UI)
+      if ImGui.BeginCombo(ctx, "##wc" .. w[1], cur or (x and x.s == 1 and "Open") or "Leave as it is") then
+        for _, c in ipairs(CHOICES) do
+          if (w[2] or c[1] == nil or c[1] == "closed" or c[1] == "float") and ImGui.Selectable(ctx, (not w[2] and c[1] == "float") and "Open" or c[2], cur == c[2]) then
+            local list = block_items()
+            if not list then core.draft_add(bld.blocks, { kind = "feel", aspect = "windows", items = {} }); list = block_items() end
+            if c[1] == nil then list[w[1]] = nil
+            elseif c[1] == "closed" then list[w[1]] = { s = 0 }
+            else
+              local n = now[w[1]]
+              list[w[1]] = { s = 1, p = w[2] and c[1] or nil, r = c[1] == "float" and n and n.p == "float" and n.r or nil } -- (its own window: where it is now, when it's open)
+              if c[1] ~= "float" then core.undock_slot(); undock_at = -10 end
+            end
+            bld.active = true
+          end
+        end
+        ImGui.EndCombo(ctx)
+      end
+      ImGui.SameLine(ctx); ImGui.TextColored(ctx, C.MUTED, "now " .. core.window_words(now[w[1]]))
+    end
+    if reaper.time_precise() - undock_at > 5 then -- (whether REAPER has ReaPersona's window set: read now and then, not every frame)
+      undock_at = reaper.time_precise()
+      local slot, why = core.undock_slot_in(core.read(reaper.GetResourcePath() .. "/reaper-screensets.ini")), nil
+      if not slot then why = (core.read(here .. "/pending/reaper-screensets.ini") or ""):find(core.UNDOCK_SET, 1, true) and "waiting" or "none" end
+      undock_note = why
+    end
+    if undock_note == "waiting" then
+      ImGui.TextColored(ctx, C.YELLOW, "Taking a window out of a docker needs ReaPersona's window set, which goes in when REAPER next restarts.")
+      if ImGui.SmallButton(ctx, "Restart REAPER now##wrestart") then install_shortcuts() end
+      ImGui.SetItemTooltip(ctx, "REAPER closes (asking about anything unsaved), ReaPersona's window set and your persona shortcuts go in, and REAPER opens again.")
+    elseif undock_note == "none" then
+      muted("Taking a window out of a docker needs a window set of ReaPersona's: it's added (in a free set, View > Screensets) the first time a persona docks one.")
+    end
     ImGui.Unindent(ctx, IND * UI)
     card_end()
   end
@@ -2814,6 +2887,7 @@ local function layout_page()
         if card("slot " .. x[1]) then heading(x[4], 16); muted("Set by your arrangement above."); card_end() end
       else
         slot_card(x[1], x[4], x[2], "feel " .. x[1], sources(function(st) return has_aspect(st, x[1]) end), function(st) return core.new_block("feel", st.id, x[1]) end, "Leave as it is")
+        if x[1] == "windows" then windows_card() end
       end
     end
   end
@@ -3447,7 +3521,7 @@ local function status_text()
     "Persona back at REAPER's start: " .. (core.startup_on() and "yes" or "no (add the startup line)"),
     core.sync_folder() ~= "" and ("Syncing with your other computers through " .. core.sync_folder()) or "Not syncing with other computers." }
   local pend = core.restart_pending()
-  if #pend > 0 then t[#t + 1] = "From your other computers, waiting for REAPER to restart: " .. table.concat(pend, ", ") end
+  if #pend > 0 then t[#t + 1] = "Waiting for REAPER to restart: " .. table.concat(pend, ", ") end
   return table.concat(t, "\n")
 end
 local function screen_reader_menu(once) -- -> true: open the window instead. once: opened by 'ReaPersona - screen-reader menu'

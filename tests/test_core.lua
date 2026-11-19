@@ -1087,6 +1087,37 @@ do -- 27. project defaults: tempo, time signature and grid (5.33)
   local st = assert(core.build_style({ { kind = "project", srate = 48000, tracks = "", wset = 0, bpm = 140, ts_num = 3, ts_den = 4 } }, "Waltz", "built_x"))
   assert(st.project.srate == 48000 and st.project.bpm == 140 and st.project.ts_num == 3 and st.project.ts_den == 4, "into the persona's project part")
 end
+do -- 28. every other window (5.34)
+  local w = core.safe_windows({ actions = { s = 1, p = "bottom" }, undo = { s = 1, p = "float", r = { 100, 50, 400, 300 } }, regmgr = { s = 0 },
+    bigclock = { s = 1, p = "left" }, nope = { s = 1, p = "top" }, trackmgr = { s = 1, p = "sideways" }, perf = { s = 1, p = "float", r = { 0, 0, 5, 5 } } })
+  assert(w.actions.p == "bottom" and w.undo.r[3] == 400 and w.regmgr.s == 0, "kept as given")
+  assert(w.bigclock.s == 1 and w.bigclock.p == nil, "a window without a title only opens and closes")
+  assert(w.nope == nil and w.trackmgr.p == nil and w.perf.r == nil, "no unknown window, place or tiny rect")
+  assert(core.safe_windows({ nope = { s = 1 } }) == nil and core.safe_windows("x") == nil)
+  local label = core.windows_label(w)
+  assert(label:find("Actions list docked bottom", 1, true) and label:find("Undo History in its own window", 1, true) and label:find("1 closed", 1, true), label)
+  -- ReaPersona's window set: each record's last byte is the sum of the others; a free set is used, then found again
+  local text = core.undock_set_text(9)
+  assert(text:find("[sset9]", 1, true) and text:find("name=" .. core.UNDOCK_SET, 1, true) and text:find("\nmask=-3618\n", 1, true), "tool windows only")
+  for hex in text:gmatch("_data=(%x+)") do
+    local sum = 0
+    for i = 1, #hex - 2, 2 do sum = sum + tonumber(hex:sub(i, i + 1), 16) end
+    assert(sum % 256 == tonumber(hex:sub(-2), 16), "check byte")
+  end
+  assert(text:find("poslist3_id=undo\nposlist3_sz=20", 1, true) and text:find("poslist0_data=00000000" .. ("FF"):rep(16) .. "00000000F0", 1, true))
+  local slot, free = core.undock_slot_in("[screensets]\n[sset9]\nname=Mine\nposlist_size=1\nposlist0_id=x\n[sset8]\n")
+  assert(slot == nil and free == 9, "set #10 is yours, #9 is empty: #9")
+  assert(core.undock_slot_in("[sset4]\r\nname=" .. core.UNDOCK_SET .. "\r\nposlist_size=0\r\n") == 5, "found again")
+  -- in a shared file, and as a block of your own on Layout
+  local kept = core.safe_feel({ { "windows", { actions = { s = 1, p = "top" }, evil = { s = 1 } }, "x" } })
+  assert(#kept == 1 and kept[1][2].actions.p == "top" and kept[1][2].evil == nil and kept[1][3]:find("Actions list docked top", 1, true))
+  local st = assert(core.build_style({ { kind = "feel", aspect = "windows", items = { navigator = { s = 1, p = "right" } } } }, "Windows", "built_x"))
+  local got
+  for _, f in ipairs(st.feel) do if f[1] == "windows" then got = f[2] end end
+  assert(got and got.navigator.p == "right", "the windows block into the persona")
+  assert(core.aspect_of({ "windows", {} }) == "windows" and core.window_words({ s = 1, p = "left" }) == "docked left")
+  assert(core.block_title({ kind = "feel", aspect = "windows", items = {} }) == "Your own: Other windows")
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")
