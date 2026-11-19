@@ -690,7 +690,7 @@ function colours.draw(ctx, ImGui, proj)
   ImGui.SetItemTooltip(ctx, "On: a colour button shows the new colours with Keep it and Put it back, and Put it back gives you exactly what you had.\n" ..
     "Off: the colours change straight away (Ctrl+Z still takes them back).")
   ImGui.PushStyleColor(ctx, ImGui.Col_Text, ImGui.GetStyleColor(ctx, ImGui.Col_TextDisabled)) -- (wrapped: one line ran off the page)
-  ImGui.TextWrapped(ctx, "Kept with personas: Save what I'm using... saves this look with it, and the Persona Builder has a Colours block. " ..
+  ImGui.TextWrapped(ctx, "Kept with personas: Save what I'm using... saves this look with it, and In my persona (top of this tab) puts it in the persona you're making. " ..
     "Switching to one brings its look back; a workflow with one colours the tracks of each new project it sets up.")
   ImGui.PopStyleColor(ctx)
   if from == "project" then

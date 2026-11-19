@@ -1439,34 +1439,90 @@ function M.new_block(kind, a, b) -- every part on; a settings block starts as RE
   elseif kind == "colours" then return { kind = "colours", set = M.colours_now() or {} }
   elseif kind == "project" then return { kind = "project", srate = 0, tracks = "", tracks_name = "", wset = 0 } end
 end
--- A persona being made from every tab (5.26; James: "blocks should maybe be split up into the main tabs and the things you choose in all of
--- them are what makes the persona", and "everything from every persona should also be editable in the same way"). The tabs add blocks to one
--- draft; what there can be only one of (a theme, a colour look, the persona's colour, a group of settings, the whole mouse) replaces the one
--- already there, and adding a block that's already in moves it to the bottom (lower wins). -> the list, true when one was replaced (pure)
-local function same_block(a, b)
-  if a.kind ~= b.kind then return false end
-  if a.kind == "theme" or a.kind == "colour" or a.kind == "colours" or a.kind == "mouse" or a.kind == "project" then return true end
-  if a.kind == "settings" then return a.group == b.group end
-  if a.kind == "feel" then return a.id == b.id and a.aspect == b.aspect end
-  if a.kind == "daw" then return a.id == b.id and not a.keys == not b.keys and not a.feel == not b.feel and not a.theme == not b.theme and not a.mouse == not b.mouse end
-  return false
+-- A persona made from the tabs (5.27; James: "all the blocks should move and just be based on the tabs so you can choose more granularly ...
+-- Blocks are built automatically from all settings, then constructed into the persona. More tabs for each type of block"). The persona being
+-- made holds at most one block per slot: the shortcuts, the mouse, each part of the layout (mixer, transport, browser, toolbar, MIDI editor,
+-- snap and ripple), each group of REAPER settings, the theme, the persona's colour, the colour look and the project. Each tab picks what goes
+-- in its slots, line by line; the order they're built in is fixed, so nothing depends on where a block was added. (5.26 had a stack.)
+function M.block_slot(b) -- (pure) -> the slot a block fills
+  if b.kind == "daw" then
+    if b.keys and not b.feel and not b.theme and not b.mouse then return "keys" end
+    return "daw " .. tostring(b.id) -- (a whole DAW, as personas built before 5.27 have: split by M.split_blocks)
+  elseif b.kind == "feel" then return "feel " .. tostring(b.aspect)
+  elseif b.kind == "settings" then return "settings " .. tostring(b.group) end
+  return b.kind -- (mouse, theme, colour, colours, project: one each)
 end
-function M.draft_add(blocks, b)
-  local replaced = false
-  for i = #blocks, 1, -1 do if same_block(blocks[i], b) then table.remove(blocks, i); replaced = true end end
+function M.draft_add(blocks, b) -- the block into its slot (replacing what was there). -> the list, true when one was replaced (pure)
+  local slot, replaced = M.block_slot(b), false
+  for i = #blocks, 1, -1 do if M.block_slot(blocks[i]) == slot then table.remove(blocks, i); replaced = true end end
   blocks[#blocks + 1] = b
   return blocks, replaced
 end
-function M.blocks_of(st) -- a persona as blocks to edit: the Builder's own, or the persona whole (a saved setup with its colours)
-  if type(st.blocks) == "table" then return M.json_decode(M.json_encode(st.blocks)) end
-  local out = { M.new_block("daw", st.id) }
-  if st.preset and st.colours then out[2] = { kind = "colours", set = st.colours } end
+function M.draft_get(blocks, slot) for _, b in ipairs(blocks) do if M.block_slot(b) == slot then return b end end end
+function M.draft_clear(blocks, slot) for i = #blocks, 1, -1 do if M.block_slot(blocks[i]) == slot then table.remove(blocks, i) end end return blocks end
+function M.keys_block(id) local b = M.new_block("daw", id); b.feel, b.theme, b.mouse = false, false, false; return b end
+-- A whole DAW block as one block per slot: its keys, its mouse, each part of its layout it has, and its theme. Lines left out stay left out.
+function M.split_blocks(blocks) -- (pure but for M.by_id)
+  local out = {}
+  for _, b in ipairs(blocks or {}) do
+    local st = b.kind == "daw" and M.by_id(b.id)
+    if st and M.block_slot(b) ~= "keys" then
+      local mouse = b.mouse; if mouse == nil then mouse = b.keys and b.feel end -- (a block from before 5.10)
+      local function part(nb) nb.off = type(b.off) == "table" and M.json_decode(M.json_encode(b.off)) or nil; M.draft_add(out, nb) end -- (a copy: unticking while editing mustn't change the saved one)
+      if b.keys then part(M.keys_block(b.id)) end
+      if mouse then part(M.new_block("mouse", b.id)) end
+      if b.feel then
+        local has = {}
+        for _, f in ipairs(st.feel or {}) do has[M.aspect_of(f)] = true end
+        for _, x in ipairs(M.ASPECTS) do if has[x[1]] and x[1] ~= "mouse" then part(M.new_block("feel", b.id, x[1])) end end
+      end
+      local th = b.theme and M.theme_for(st)
+      if th then part(M.new_block("theme", th)) end
+    else M.draft_add(out, M.json_decode(M.json_encode(b))) end
+  end
   return out
+end
+local SLOT_ORDER = { keys = 1, mouse = 2, feel = 3, settings = 4, theme = 5, colour = 6, colours = 7, project = 8 }
+function M.draft_order(blocks) -- (pure) the order they're built in: the shortcuts first, then the mouse, the layout, REAPER settings (over a DAW's snap and ripple), the look, the project
+  local out = {}
+  for i, b in ipairs(blocks) do out[i] = b end
+  local function rank(b) return SLOT_ORDER[(M.block_slot(b):match("^(%a+)"))] or 0 end
+  table.sort(out, function(a, b) local ra, rb = rank(a), rank(b); if ra ~= rb then return ra < rb end return M.block_slot(a) < M.block_slot(b) end)
+  return out
+end
+function M.blocks_of(st) -- a persona as the tabs' choices: one you built as its blocks, any other whole (a saved setup with its colours)
+  local out = M.split_blocks(type(st.blocks) == "table" and st.blocks or { M.new_block("daw", st.id) })
+  if not st.blocks and st.preset and st.colours then M.draft_add(out, { kind = "colours", set = st.colours }) end
+  return out
+end
+
+-- Favourites (5.27): a star on any DAW or persona; Personas > Favourites lists them. Kept as ExtState "favourites" (ids joined by ";"),
+-- which syncs like any setting. Never set: My REAPER and the persona in use (setting up ReaPersona stars the DAW you pick).
+function M.favourites()
+  local out, seen = {}, {}
+  local function add(id) if id ~= "" and not seen[id] then seen[id] = true; out[#out + 1] = id end end
+  if reaper.HasExtState(M.SECTION, "favourites") then
+    for id in reaper.GetExtState(M.SECTION, "favourites"):gmatch("[^;]+") do add(id) end
+  else
+    add("my_reaper")
+    local cur = M.current()
+    if cur then add(cur.base or cur.id) end
+  end
+  return out
+end
+function M.is_favourite(id) for _, f in ipairs(M.favourites()) do if f == id then return true end end return false end
+function M.set_favourite(id, on)
+  local keep = {}
+  for _, f in ipairs(M.favourites()) do if f ~= id then keep[#keep + 1] = f end end
+  if on then keep[#keep + 1] = id end
+  reaper.SetExtState(M.SECTION, "favourites", table.concat(keep, ";"), true)
 end
 function M.block_title(b)
   local st = b.id and M.by_id(b.id)
   local name = st and st.name or tostring(b.id)
-  if b.kind == "daw" then return name
+  if b.kind == "daw" then
+    if M.block_slot(b) == "keys" then return b.id == "my_reaper" and "Your own shortcuts" or (name .. "'s shortcuts") end
+    return name
   elseif b.kind == "mouse" then return name .. ": Mouse"
   elseif b.kind == "feel" then return name .. ": " .. M.aspect_name(b.aspect)
   elseif b.kind == "settings" then return (group_by_id(b.group) or { name = tostring(b.group) }).name
@@ -1589,7 +1645,8 @@ function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true
   if layer == "borrow" then st.keys_from = daws[1]; M.resolve_keys(st) -- (one DAW's keys, all of them: its shortcut layer, nothing to install)
   elseif layer == "own" then -- (a layer of their own, which needs installing)
     st.alt = own or free_alt()
-    if not st.alt then return nil, "all 16 shortcut layers are in use" end
+    if not st.alt then return nil, "its keys need a shortcut layer of their own (some left out, or one persona's shortcuts with another's mouse wheel) and all 16 are in use. " ..
+      "Use one persona's shortcuts with its own mouse, or your own shortcuts, or delete a persona of yours you don't use" end
     install = true
   else st.alt = 0 end -- (no shortcuts block: your own keys)
   st.description = name .. ", built from " .. table.concat(names, ", ") .. " (lower blocks win)." ..
@@ -2836,7 +2893,7 @@ function M.extstate_keys(text, section) -- the keys reaper-extstate.ini's text k
 end
 local function extstate_names() -- every key this version sets: some may not be in reaper-extstate.ini yet (REAPER writes it later)
   local t = { "style", "orig", "orig project", "view", "look", "migrated", "page", "welcomed", "text size", "all actions", "follow projects",
-    "follow beat", "project default", "midi dock", "workflow", "search", "theme my_reaper", "theme path my_reaper", "sync folder", "sync id", "sync last", "sync file", M.LOOK_KEY, "update seen" }
+    "follow beat", "project default", "midi dock", "workflow", "search", "theme my_reaper", "theme path my_reaper", "sync folder", "sync id", "sync last", "sync file", M.LOOK_KEY, "update seen", "favourites" }
   for _, list in ipairs({ M.styles, M.presets }) do
     for _, st in ipairs(list) do for _, k in ipairs({ "theme ", "forks ", "declined theme " }) do t[#t + 1] = k .. st.id end end
   end
@@ -3505,7 +3562,7 @@ function M.setup_items() -- -> everything of yours as items; the kinds whose fil
   for k in pairs(keys) do
     local v = reaper.GetExtState(M.SECTION, k)
     -- (a look never saved here isn't a change: sent as "", it was newer than the look another computer saved, and won. 5.21.1)
-    if M.synced_setting(k) and not (k == M.LOOK_KEY and v == "") then items["setting " .. k] = v end
+    if M.synced_setting(k) and not ((k == M.LOOK_KEY or k == "favourites") and v == "") then items["setting " .. k] = v end
   end
   for _, x in ipairs(M.EXT_SETTINGS) do
     for _, k in ipairs(M.extstate_keys(ini, x.section)) do

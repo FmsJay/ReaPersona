@@ -857,13 +857,40 @@ do
   assert(rep and #list == 6, "a settings group once")
   -- editing: a built persona as its blocks (a copy), a DAW persona whole, a saved setup with its colours
   local built = { blocks = { core.new_block("daw", "logic") }, name = "B" }
+  built.blocks[1].off = { ["key Ctrl+Z"] = true }
   local bb = core.blocks_of(built)
-  bb[1].keys = false
-  assert(built.blocks[1].keys == true and #bb == 1, "a copy: editing doesn't change the saved persona until it's saved")
+  bb[1].off["key Ctrl+X"] = true
+  assert(#bb > 1 and built.blocks[1].off["key Ctrl+X"] == nil, "a copy: editing doesn't change the saved persona until it's saved")
   local d = core.blocks_of(core.by_id("pro_tools"))
-  assert(#d == 1 and d[1].kind == "daw" and d[1].id == "pro_tools" and d[1].keys and d[1].feel and d[1].theme and d[1].mouse)
+  assert(core.draft_get(d, "keys").id == "pro_tools" and core.draft_get(d, "mouse") and core.draft_get(d, "feel transport") and core.draft_get(d, "theme"),
+    "a DAW persona opens as one block per slot (5.27)")
   local p = core.blocks_of({ id = "preset_x", preset = true, colours = { ["colour look"] = "{}" } })
   assert(#p == 2 and p[1].id == "preset_x" and p[2].kind == "colours", "a saved setup keeps its colours")
+end
+-- 20. One block per slot (5.27): a whole DAW splits into its parts (lines left out stay out), the build order is fixed, its keys and mouse
+-- together still borrow its layer, and favourites.
+do
+  local whole = core.new_block("daw", "pro_tools"); whole.off = { ["key Ctrl+Z"] = true }
+  local parts = core.split_blocks({ whole, core.new_block("theme", "X.ReaperThemeZip") })
+  local k = core.draft_get(parts, "keys")
+  assert(k and k.off and k.off["key Ctrl+Z"] and core.draft_get(parts, "theme").file == "X.ReaperThemeZip", "a later theme block replaces the DAW's own; left-out lines stay out")
+  local order = core.draft_order({ core.new_block("project"), core.new_block("theme", "T"), core.new_block("settings", core.SETTING_GROUPS[1].id), core.new_block("feel", "logic", "transport"), core.new_block("mouse", "logic"), core.keys_block("logic") })
+  local kinds = {}; for i, b in ipairs(order) do kinds[i] = core.block_slot(b):match("^%a+") end
+  assert(table.concat(kinds, ",") == "keys,mouse,feel,settings,theme,project", table.concat(kinds, ","))
+  assert(core.keys_layer({ core.keys_block("logic"), core.new_block("mouse", "logic") }) == "borrow", "a DAW's keys and its mouse: its own layer, nothing to install")
+  assert(core.keys_layer({ core.keys_block("logic"), core.new_block("mouse", "ableton") }) == "own", "another DAW's mouse wheel: a layer of its own")
+  assert(core.block_title(core.keys_block("logic")):find("shortcuts", 1, true) and core.block_title(core.keys_block("my_reaper")) == "Your own shortcuts")
+  local has = reaper.HasExtState
+  reaper.HasExtState = function(s, key) return ext[s .. "/" .. key] ~= nil end
+  ext["ReaPersona/style"] = "ableton"; ext["ReaPersona/favourites"] = nil
+  local f = core.favourites()
+  assert(#f == 2 and f[1] == "my_reaper" and f[2] == "ableton", "never set: My REAPER and the persona in use")
+  core.set_favourite("logic", true); core.set_favourite("my_reaper", false)
+  assert(ext["ReaPersona/favourites"] == "ableton;logic" and core.is_favourite("logic") and not core.is_favourite("my_reaper"))
+  core.set_favourite("ableton", false); core.set_favourite("logic", false)
+  assert(#core.favourites() == 0 and core.setup_items()["setting favourites"] == nil, "none starred: not sent as an empty list that would win elsewhere")
+  reaper.HasExtState = has
+  ext["ReaPersona/style"], ext["ReaPersona/favourites"] = nil, nil
 end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
