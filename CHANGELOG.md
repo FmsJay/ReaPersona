@@ -1,5 +1,13 @@
 # Changelog
 
+## 5.38.0
+- **Preview as I change:** a switch in the bar at the top while you make or edit a persona. Each change on any tab goes into REAPER a
+  moment after you make it (the look, layout, mouse, colours, REAPER settings and one DAW's keys), so you see it as you go; turning it
+  off, Go back or Stop puts what you had back exactly. What a preview can't show is said under the bar: keys mixed from several DAWs
+  (your own until it's saved and installed), REAPER preferences (at the next restart) and the project part (a new, empty project).
+- **Undo and Redo** in the same bar, and Ctrl+Z / Ctrl+Shift+Z (Cmd on a Mac) while the window has focus: they step through every change
+  you made to the persona, and with Preview on REAPER follows. Ctrl+Z while a key is being captured on Shortcuts is still that key.
+
 ## 5.37.1
 Fixes from a second round of reviews of 5.36.1 and 5.37.0 (code, DAW personas, UI and UX, security; reports reapersona-review2-*.md).
 - **Safety:** what comes from a file or another computer is checked more closely. Start scripts that come with a look, preset or setup

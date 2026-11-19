@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.37.1
+-- @version 5.38.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -2027,6 +2027,8 @@ function bld_load(st) -- edit a persona: one you built is saved over itself; any
   local mine = (st.blocks and st.user and st.kind == "built") or st.id == "my_reaper" -- (My REAPER is yours too: saved over, as its look. 5.28)
   bld.blocks = core.blocks_of(st)
   bld.name, bld.id, bld.msg, bld.active = mine and st.name or "", mine and st.id or nil, "", true
+  bld.hist, bld.pos, bld.shown = nil, nil, nil
+  bld.preview = reaper.GetExtState(SECTION, "draft preview") == "1"
   bld.from = not mine and st.name or nil -- (unnamed, it's saved as "<this> - custom")
   local c = core.draft_get(bld.blocks, "colour")
   bld.colour = c and tonumber((c.hex or ""):gsub("#", ""), 16) or nil
@@ -2041,6 +2043,8 @@ local function bld_default_name() -- the name it gets when you don't give one
 end
 function bld_new() -- an empty persona to make from the tabs
   bld.blocks, bld.name, bld.id, bld.msg, bld.active, bld.colour, bld.from = {}, "", nil, "", true, nil, nil
+  bld.hist, bld.pos, bld.shown = nil, nil, nil
+  bld.preview = reaper.GetExtState(SECTION, "draft preview") == "1"
   say("Making a new persona: choose its shortcuts, mouse, layout, theme, colours and so on on their tabs. The bar at the top shows it; name it and Save there.")
 end
 function in_persona(b, what) -- a block into its slot of the persona being made
@@ -2100,6 +2104,58 @@ local function bld_save() -- -> the saved persona, or nil (bld.msg says why)
   end
   bld.msg = "Not saved: " .. tostring(install)
 end
+-- Preview and undo while making a persona (5.38; James: "have changes audition in the background on reaper so you could see how it would
+-- look in real time, along with an undo"). Every change on any tab is kept (bld.hist: the blocks as JSON, looked at 4 times a second),
+-- Undo/Redo step through them, and with Preview on the persona as it stands goes into REAPER a moment after each change, as Try it does.
+function bld.try(quiet) -- the persona as chosen so far, in REAPER now; Go back, Stop or turning Preview off put yours back
+  local st, install = core.build_style(bld_blocks(), bld.name ~= "" and bld.name or "Your persona", "built_try")
+  if not st then bld.later = "Can't preview it: " .. tostring(install); if not quiet then say("Can't try it: " .. tostring(install)) end return end
+  if install then st.alt = 0 end -- (keys from several DAWs need their layer installed: the trial keeps your own keys)
+  local later = {} -- (what a preview can't show: it goes in after a restart, or with a new project)
+  if install then later[#later + 1] = "its shortcuts (your own until it's saved and installed: they mix DAWs)" end
+  for _, b in ipairs(bld.blocks) do
+    if b.kind == "feel" and b.aspect == "prefs" then later[#later + 1] = "REAPER preferences (when REAPER restarts)"
+    elseif b.kind == "project" then later[#later + 1] = "the project part (a new, empty project)" end
+  end
+  bld.later = #later > 0 and ("Not shown until later: " .. table.concat(later, "; ") .. ".") or nil
+  bld.back = bld.back or core.current().id
+  core.use(st)
+  if not quiet then say("Trying it" .. (install and " (with your own shortcuts until it's saved and installed)" or "") .. ". Save it, or Go back.") end
+end
+function bld.step(d) -- Undo (-1) or Redo (+1) of your changes to the persona being made
+  local h = bld.hist
+  if not (h and h[(bld.pos or 0) + d]) then return end
+  local ok, t = pcall(core.json_decode, h[bld.pos + d])
+  if not ok or type(t) ~= "table" then return end
+  bld.pos, bld.blocks, bld.stepped, bld.changed_at = bld.pos + d, t, true, reaper.time_precise()
+  local c = core.draft_get(bld.blocks, "colour")
+  bld.colour = c and tonumber((c.hex or ""):gsub("#", ""), 16) or nil
+  say((d < 0 and "Undone" or "Redone") .. (bld.preview and ": REAPER follows in a moment." or "."))
+end
+function bld.tick() -- each frame: the change history, Ctrl+Z / Ctrl+Shift+Z, and the preview
+  if not bld.active and #bld.blocks == 0 then bld.hist, bld.pos = nil, nil; return end
+  local now = reaper.time_precise()
+  if ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows) and not ImGui.IsAnyItemActive(ctx) and not (bld.kq and bld.kq.cap) then
+    if ImGui.IsKeyChordPressed(ctx, ImGui.Mod_Ctrl | ImGui.Mod_Shift | ImGui.Key_Z) or ImGui.IsKeyChordPressed(ctx, ImGui.Mod_Ctrl | ImGui.Key_Y) then bld.step(1)
+    elseif ImGui.IsKeyChordPressed(ctx, ImGui.Mod_Ctrl | ImGui.Key_Z) then bld.step(-1) end
+  end
+  if now - (bld.seen_at or 0) < 0.25 then return end
+  bld.seen_at = now
+  local s = core.json_encode(bld.blocks)
+  if not bld.hist then bld.hist, bld.pos, bld.shown = { s }, 1, s
+  elseif bld.stepped then bld.hist[bld.pos], bld.stepped = s, nil -- (the step's own state, as this encodes it)
+  elseif s ~= bld.hist[bld.pos] then
+    for i = #bld.hist, bld.pos + 1, -1 do bld.hist[i] = nil end -- (a change after an undo: what was undone can't be redone)
+    bld.hist[#bld.hist + 1] = s
+    if #bld.hist > 60 then table.remove(bld.hist, 1) end
+    bld.pos, bld.changed_at = #bld.hist, now
+  end
+  -- (a moment after the last change, and not while the last switch's window moves are still going)
+  if bld.preview and bld.shown ~= bld.hist[bld.pos] and now - (bld.changed_at or 0) > 0.6 and not core.busy() then
+    bld.shown = bld.hist[bld.pos]
+    bld.try(true)
+  end
+end
 local function draft_strip() -- the persona being made, over every tab
   if not bld.active and #bld.blocks == 0 then return end
   local titles = {}
@@ -2120,18 +2176,30 @@ local function draft_strip() -- the persona being made, over every tab
     if primary(bld.id and "Save changes##strip" or "Save as new##strip") then bld_save() end
     ImGui.SetItemTooltip(ctx, bld.id and ("Saves over " .. bld.name .. ", which you made.") or "A new persona of yours: the DAWs and personas it came from stay as they are.")
     ImGui.SameLine(ctx); if ImGui.GetContentRegionAvail(ctx) < 60 * UI then ImGui.NewLine(ctx) end
-    if ImGui.Button(ctx, "Try it##strip") then
-      local st, install = core.build_style(bld_blocks(), bld.name ~= "" and bld.name or "Your persona", "built_try")
-      if st then
-        if install then st.alt = 0 end -- (keys from several DAWs need their layer installed: the trial keeps your own keys)
-        bld.back = bld.back or core.current().id
-        core.use(st)
-        say("Trying it" .. (install and " (with your own shortcuts until it's saved and installed)" or "") .. ". Save it, or Go back.")
-      else say("Can't try it: " .. tostring(install)) end
+    if not bld.preview and ImGui.Button(ctx, "Try it##strip") then bld.try() end
+    ImGui.SameLine(ctx); if ImGui.GetContentRegionAvail(ctx) < 170 * UI then ImGui.NewLine(ctx) end
+    local pch, pon = ImGui.Checkbox(ctx, "Preview as I change##strip", bld.preview == true)
+    if pch then
+      bld.preview = pon
+      reaper.SetExtState(SECTION, "draft preview", pon and "1" or "0", true)
+      if pon then bld.shown = nil; bld.changed_at = 0; say("Preview on: each change goes into REAPER a moment after you make it. Turning it off puts yours back.")
+      elseif bld.back then local back = core.by_id(bld.back); bld.back, bld.later = nil, nil; if back then use(back) end end
     end
+    ImGui.SetItemTooltip(ctx, "Each change you make on any tab goes into REAPER a moment later, so you see it as you go. Off, Stop or Go back puts what you had back, exactly as it was.")
+    ImGui.SameLine(ctx); if ImGui.GetContentRegionAvail(ctx) < 120 * UI then ImGui.NewLine(ctx) end
+    local can_undo, can_redo = bld.hist and bld.pos and bld.pos > 1, bld.hist and bld.pos and bld.hist[bld.pos + 1] ~= nil
+    if not can_undo then ImGui.BeginDisabled(ctx) end
+    if ImGui.Button(ctx, "Undo##strip") then bld.step(-1) end
+    if not can_undo then ImGui.EndDisabled(ctx) end
+    ImGui.SetItemTooltip(ctx, "Your last change to this persona, undone (" .. MOD .. "+Z).")
+    ImGui.SameLine(ctx)
+    if not can_redo then ImGui.BeginDisabled(ctx) end
+    if ImGui.Button(ctx, "Redo##strip") then bld.step(1) end
+    if not can_redo then ImGui.EndDisabled(ctx) end
+    ImGui.SetItemTooltip(ctx, "The change you undid, back (" .. MOD .. "+Shift+Z).")
     if bld.back then
       ImGui.SameLine(ctx)
-      if ImGui.Button(ctx, "Go back##strip") then local back = core.by_id(bld.back); bld.back = nil; if back then use(back) end end
+      if ImGui.Button(ctx, "Go back##strip") then local back = core.by_id(bld.back); bld.back, bld.preview, bld.later = nil, false, nil; if back then use(back) end end
       ImGui.SetItemTooltip(ctx, "Back to " .. ((core.by_id(bld.back) or {}).name or "the persona you had") .. ", exactly as it was.")
     end
     ImGui.SameLine(ctx); if ImGui.GetContentRegionAvail(ctx) < 50 * UI then ImGui.NewLine(ctx) end
@@ -2139,8 +2207,10 @@ local function draft_strip() -- the persona being made, over every tab
         or reaper.MB(bld.id and ("Stop editing " .. bld.name .. "? Changes you haven't saved are lost.") or "Stop making this persona? What you chose isn't saved.", "ReaPersona", 4) == 6) then -- (asks first: review 2026-11-18)
       if bld.back then local b = core.by_id(bld.back); bld.back = nil; if b then use(b) end end -- (out of a trial: what you had)
       bld.blocks, bld.name, bld.id, bld.msg, bld.active, bld.colour, bld.from, bld.snap = {}, "", nil, "", false, nil, nil, nil
+      bld.hist, bld.pos, bld.later = nil, nil, nil
     end
     ImGui.SetItemTooltip(ctx, "Stop making it: nothing is saved, and personas you have stay as they are.")
+    if bld.preview and bld.later then muted(bld.later) end
     if bld.msg ~= "" then muted(bld.msg) end
     card_end()
   end
@@ -2214,6 +2284,7 @@ end
 -- any action; and every key there is (core.catalog), each to add.
 do -- (the Shortcuts editor: its own scope)
 local kq = { kind = "All", source = "All", section = "All", shown = 120, cat = nil, add = { q = "", cmd = nil, name = nil, spec = nil }, cap = nil }
+bld.kq = kq -- (draft_tick: no undo while a key is being captured)
 local rp = { data = nil, read = false } -- (5.31: REAPER's "Mouse modifier keys and action shortcuts" page: every key, its defaults too, and every mouse action)
 function read_rpage(make) -- make: REAPER writes it first (Help: Mouse modifier keys and action shortcuts, which also opens it in the browser)
   if make then reaper.Main_OnCommand(40308, 0) end
@@ -3304,7 +3375,7 @@ local GUIDE = {
   { "What each page does", {
     "Home: the first steps, what ReaPersona can use and whether it's there (one click for each), importing from another DAW on this computer, and themes by other people. Drop theme, toolbar, keymap or persona files anywhere on the window to add them.",
     "Personas > DAWs: each DAW's persona, with its keys, look and feel: Use it, its cheat sheet, a new project like it, and that DAW's plug-ins with REAPER's own for each (it can add a \"<DAW> -> REAPER\" folder to REAPER's FX browser). Workflow on top (above the cards) adds a kind of session, voiceover or mixing say, to whichever persona is in use. Your personas: the ones you saved or built, and your workflows. Favourites: the ones you starred.",
-    "Making your own: New persona (Your personas) or Edit on any persona's page, then choose each part on its tab; the bar at the top shows what's in it, and Save is there. A DAW persona you edit is saved as a new one of yours.",
+    "Making your own: New persona (Your personas) or Edit on any persona's page, then choose each part on its tab; the bar at the top shows what's in it, and Save is there. A DAW persona you edit is saved as a new one of yours. Preview as I change (in that bar) puts each change into REAPER a moment after you make it, and Undo and Redo (Ctrl+Z, Ctrl+Shift+Z) step through your changes; Go back or Stop puts what you had back.",
     "Themes > Your themes: the theme for each persona. Get more: the REAPER Stash and ReaPack. Adjust: change the theme in use, live, and put its settings in your persona. Build one: a theme from parts of others.",
     "Colours: colour the whole project at once: tracks by gradient, folder or instrument, items by section or take, regions too. Try it first, then keep it or put it back.",
     "Shortcuts: your persona's keys (change any, add any action), and every key of every persona with the REAPER action it runs.",
@@ -3591,6 +3662,7 @@ local function frame()
         ImGui.Separator(ctx)
         ImGui.Dummy(ctx, 0, 2)
       end
+      bld.tick() -- (5.38: the change history and the live preview, on every tab and in search)
       if search_q == "" then draft_strip() end -- (the persona being made, over every tab)
       if core.prefs_queued then core.prefs_queued = false; say("Some of this persona's REAPER preferences go in when REAPER restarts (Home > Restart REAPER now).") end
       if core.prefs_need_python then core.prefs_need_python = false; say("This persona's REAPER preferences need Python 3 to go in (python.org): the rest of it is in use.") end
