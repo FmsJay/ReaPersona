@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.36.0
+- **Each DAW's plug-ins in REAPER.** A DAW's page (Pro Tools, Logic, GarageBand, Ableton, FL Studio, Cubase/Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition) lists its stock plug-ins with REAPER's own for each: Channel EQ is ReaEQ, Space Designer is ReaVerb, Simpler is ReaSamplOmatic5000, and so on.
+- **A "<DAW> -> REAPER" folder** in REAPER's FX browser with those plug-ins, added or taken out from that page. Only REAPER's stock plug-ins (ReaPlugs and Cockos JSFX), found on each computer; every other folder (yours, StudioSync's) stays as it is. REAPER shows the folder after its next restart.
+- tools/dev/restart_and_test.ps1 gives its test script to the new REAPER at its start (an evaluation copy's About box could keep -nonewinst from reaching it).
+
 ## 5.35.1
 - REAPER > Preferences, checked against REAPER's config-variable reference: the default automation mode no longer changes *Arm new envelopes* (they share a number), the recording prompt changes only *on stop* (not *on punch-out*), fade and crossfade shapes are the 7 REAPER has, and the solo dim level goes to -1 dB at most. *Solo in front* itself is the switch on REAPER > Mixer (live, no restart), so it's no longer here too.
 - The layout designer's dragging, checked with a real mouse drag on the laptop.

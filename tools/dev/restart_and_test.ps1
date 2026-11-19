@@ -1,5 +1,6 @@
 # ReaPersona dev tool (Windows): restart REAPER through ReaPersona's installer, wait until it's back, then optionally run a test script.
 #   restart_and_test.ps1 -Reaper "D:\Portable Workstation\DAW\REAPER\reaper.exe" [-Test C:\path\test.lua] [-Wait 8]
+# The test .lua is handed to the new REAPER on its command line (it runs once REAPER has started).
 # Run it in the logged-in desktop session (REAPER is a GUI app), e.g. through Invoke-InSession.ps1 from another computer.
 # restart_reaper.lua refuses to quit when a project has unsaved changes. Log: %TEMP%\rp_restart.log
 param([Parameter(Mandatory = $true)][string]$Reaper, [string]$Test = "", [int]$Wait = 8)
@@ -9,6 +10,8 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $before = @(Get-Process reaper -ErrorAction SilentlyContinue | ForEach-Object Id)
 if ($before.Count -eq 0) { Set-Content $log "not restarted: REAPER isn't running"; exit 1 }
 Remove-Item $log -ErrorAction SilentlyContinue
+$tfile = Join-Path $env:TEMP "rp_restart_test.txt"  # (restart_reaper.lua gives this test to the new REAPER at its start)
+if ($Test) { Set-Content $tfile $Test } else { Remove-Item $tfile -ErrorAction SilentlyContinue }
 & $Reaper -nonewinst (Join-Path $here "restart_reaper.lua")
 for ($i = 0; $i -lt 40 -and -not (Test-Path $log); $i++) { Start-Sleep -Milliseconds 250 }
 if (-not (Select-String -Path $log -Pattern "^quitting" -Quiet -ErrorAction SilentlyContinue)) { exit 1 }  # (the reason is in the log)
@@ -67,11 +70,6 @@ if ($nag) { Note "its About box didn't close: no test run"; exit 1 }
 Start-Sleep -Seconds $Wait  # (its startup scripts and ReaPersona's own start first)
 $note = Join-Path (Split-Path -Parent $Reaper) "Scripts\ReaPersona\last_install.txt"
 if (Test-Path $note) { Note ("installer: " + ((Get-Content $note) -join " / ")) }
-if ($Test) {
-  & $Reaper -nonewinst $Test
-  Start-Sleep -Seconds 3
-  $extra = @(Get-Process reaper -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $pid0 })
-  if ($extra.Count -gt 0) { $extra | Stop-Process -Force; Note "a second REAPER started instead of running the test in this one: stopped it, no test run"; exit 1 }
-  Note "ran $Test"
-}
+if ($Test) { Note "the test was given to REAPER at its start: $Test" }
+Remove-Item $tfile -ErrorAction SilentlyContinue
 exit 0

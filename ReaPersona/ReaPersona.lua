@@ -1,6 +1,6 @@
 -- @description ReaPersona: fit REAPER to your preferred look, workflow or favourite DAW (Pro Tools, Pro Tools Intro, Logic, GarageBand, Ableton Live, FL Studio, Cubase, Nuendo, Studio One, Bitwig, Cakewalk, Reason, Audacity, Audition, or stock REAPER); build your own personas from blocks, give each project its own, tweak and merge themes live, and import, export or sync your setup across computers
 -- @author James (with Claude)
--- @version 5.35.1
+-- @version 5.36.0
 -- @license GPL-3.0
 -- @link https://github.com/FmsJay/ReaPersona
 -- @about Each persona is a shortcut layer (REAPER's Main alt-N sections, switched by its override actions), a theme, its feel (settings
@@ -150,6 +150,7 @@ local function keycap(text) -- a key, drawn like one
   ImGui.DrawList_AddText(dl, x + 6, y + 2, C.TEXT, text)
 end
 local UI = (tonumber(reaper.GetExtState(SECTION, "text size")) or 15) / 15 -- (Settings > text size)
+local IND = 18 -- (what edits the persona sits a little to the right, so it reads as part of it. 5.28) (up here: the persona pages use it too, 5.36)
 local function heading(text, size)
   ImGui.PushFont(ctx, bold, (size or 17) * UI)
   ImGui.Text(ctx, text)
@@ -802,6 +803,25 @@ local function detail(sel, alt)
     muted((sel.id == "base_reaper" and "" or "With REAPER's own keys (Base REAPER has them all). ") .. "From REAPER 7.85's factory keymap.")
     rows("tips", sel.tips, true)
     if ImGui.SmallButton(ctx, "REAPER User Guide") then core.open_url("https://www.reaper.fm/userguide.php") end
+    card_end()
+  end
+  local fxl = core.fx_equiv(sel.preset and sel.base or sel.id) -- (5.36: its plug-ins, and REAPER's own for each)
+  if fxl and card("fx card") then
+    local who = sel.preset and core.by_id(sel.base) or sel
+    heading(who.name .. "'s plug-ins in REAPER")
+    muted("REAPER's own plug-in for each of " .. who.name .. "'s. A folder of them in REAPER's FX browser keeps them together (REAPER shows it after its next restart; it lists REAPER's names).")
+    local here, on = core.fx_stock_here(), core.fx_folder_on(who)
+    if ImGui.SmallButton(ctx, (on and "Take out" or "Add") .. " the '" .. core.fx_folder_name(who) .. "' folder##fxf") then
+      local n, why = core.fx_folder_set(who, not on)
+      say(n and (on and "The folder is out of REAPER's FX browser (after its next restart)." or ("The folder, with " .. n .. " of REAPER's plug-ins, is in REAPER's FX browser after its next restart.")) or ("Not changed: " .. tostring(why)))
+    end
+    ImGui.Indent(ctx, IND * UI)
+    for _, x in ipairs(fxl) do
+      local f = here[x[2]]
+      ImGui.Text(ctx, x[1]); ImGui.SameLine(ctx, 260 * UI)
+      if f then ImGui.TextColored(ctx, C.MUTED, core.fx_stock_name(x[2])) else ImGui.TextColored(ctx, C.YELLOW, core.fx_stock_name(x[2]) .. " (not found in this REAPER)") end
+    end
+    ImGui.Unindent(ctx, IND * UI)
     card_end()
   end
 end
@@ -2123,7 +2143,6 @@ local function entry_line(e, b)
   elseif e.kind == "feel" and not core.aspect_on(core.aspect_of(e.entry)) then ImGui.TextColored(ctx, C.YELLOW, text .. "   (off in Settings > Personas)")
   else ImGui.Text(ctx, text) end
 end
-local IND = 18 -- (what edits the persona sits a little to the right, so it reads as part of it. 5.28)
 local function slot_card(id, title, tip, slot, list, make, leave, section_of)
   if not card("slot " .. id) then return end
   heading(title, 16)

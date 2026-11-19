@@ -18,6 +18,9 @@ for i = 0, 255 do
   if fn == "" and reaper.CountTracks(p) > 0 then return done("not restarted: a project with tracks has never been saved") end
   if fn ~= "" then open[#open + 1] = ' --open "' .. fn .. '"' end
 end
+-- (a test to run once REAPER is back: given to the new REAPER at its start, so nothing has to reach it while it's still opening)
+local tf = io.open((os.getenv("TEMP") or os.getenv("TMPDIR") or "/tmp") .. "/rp_restart_test.txt", "rb")
+if tf then local test = tf:read("a"):match("^%s*(.-)%s*$"); tf:close(); if test ~= "" and reaper.file_exists(test) then open[#open + 1] = ' --open "' .. test .. '"' end end
 local win = reaper.GetOS():find("^Win") ~= nil
 local py
 if win then

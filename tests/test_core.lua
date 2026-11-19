@@ -1156,6 +1156,23 @@ do -- 31. a theme's own settings in a persona (5.35)
   local st = assert(core.build_style({ { kind = "themeset", set = { theme = "T.ReaperThemeZip", params = { a = 2 } } } }, "Th", "built_x"))
   assert(st.themeset and st.themeset.params.a == 2 and core.block_slot({ kind = "themeset" }) == "themeset")
 end
+do -- 32. "<DAW> -> REAPER" FX folders (5.36)
+  for id, list in pairs(core.FX_EQUIV) do
+    assert(core.by_id(id), "a persona: " .. id)
+    for _, x in ipairs(list) do assert(core.FX_STOCK[x[2]], id .. ": " .. x[1] .. " -> " .. tostring(x[2])) end
+  end
+  assert(core.fx_equiv("pro_tools_intro") == core.FX_EQUIV.pro_tools and core.fx_equiv("nuendo") == core.FX_EQUIV.cubase and core.fx_equiv("my_reaper") == nil)
+  local ini = "[Folder0]\nItem0=C:\\x\\GTune.dll\nNb=1\nType0=3\n\n[Folders]\nId0=0\nName0=Favorites\nId1=1\nName1=StudioSync (everyone has)\nNbFolders=2\n\n[Folder1]\nItem0=loser/3BandEQ\nType0=2\nNb=1\n"
+  local a = core.fx_folders_ini(ini, "Logic Pro -> REAPER", { { ident = "D:\\R\\reaeq.dll", type = 3 }, { ident = "guitar/chorus", type = 2 } })
+  assert(a:find("Name2=Logic Pro -> REAPER\nNbFolders=3", 1, true) and a:find("[Folder2]\nItem0=D:\\R\\reaeq.dll\nType0=3\nItem1=guitar/chorus\nType1=2\nNb=2", 1, true), a)
+  assert(a:find("[Folder1]\nItem0=loser/3BandEQ\nType0=2\nNb=1", 1, true) and a:find("Item0=C:\\x\\GTune.dll", 1, true), "StudioSync's and Favorites kept")
+  local again = core.fx_folders_ini(a, "Logic Pro -> REAPER", { { ident = "x.dll", type = 3 } })
+  assert(again:find("Id2=2\nName2=Logic Pro -> REAPER", 1, true) and again:find("[Folder2]\nItem0=x.dll\nType0=3\nNb=1", 1, true) and not again:find("guitar/chorus", 1, true), "replaced in place")
+  local out = core.fx_folders_ini(a, "Logic Pro -> REAPER", nil)
+  assert(not out:find("Logic Pro", 1, true) and not out:find("[Folder2]", 1, true) and out:find("NbFolders=2", 1, true) and out:find("Name1=StudioSync (everyone has)", 1, true), "taken out, the rest kept")
+  assert(core.fx_folders_ini(ini, "Nope -> REAPER", nil) == ini, "nothing to take out: unchanged")
+  assert(core.fx_folders_ini("", "Ableton Live -> REAPER", { { ident = "a", type = 2 } }):find("[Folders]\nId0=0\nName0=Ableton Live -> REAPER\nNbFolders=1", 1, true), "a computer with no folders yet")
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")

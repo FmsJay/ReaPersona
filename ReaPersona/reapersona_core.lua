@@ -786,6 +786,150 @@ end
 -- what a mouse entry is set to now matches the style? (for the picker's "not applied" warnings)
 function M.mouse_ok(f) local c = M.for_os(f[2]); return not c or (reaper.GetMouseModifier and reaper.GetMouseModifier(c, f[3], "") ~= "") end
 
+-- ---------------------------------------------------------------- "<DAW> -> REAPER" FX folders (5.36)
+-- James: "Yes go ahead with that" (a folder per DAW of REAPER's own plug-ins for what that DAW ships). REAPER's FX folders can't rename
+-- what's in them, so the folder holds the REAPER plug-ins and the persona's page says which is which. Only REAPER's stock plug-ins,
+-- found on each computer through its installed-FX list (a VST is listed by its full path, different everywhere). reaper-fxfolders.ini
+-- is changed only in that folder, every other one kept, as StudioSync does with its own (its folders_ini, GPL-3, with taking out added).
+-- REAPER reads the file as it starts, so the folder shows after its next restart.
+M.FX_STOCK = { -- key -> { kind, REAPER's name (VST) or JSFX path, the name shown }
+  eq = { "vst", "ReaEQ" }, comp = { "vst", "ReaComp" }, mbcomp = { "vst", "ReaXcomp" }, gate = { "vst", "ReaGate" }, limit = { "vst", "ReaLimit" },
+  delay = { "vst", "ReaDelay" }, convo = { "vst", "ReaVerb" }, reverb = { "vst", "ReaVerbate" }, pitch = { "vst", "ReaPitch" }, tune = { "vst", "ReaTune" },
+  fir = { "vst", "ReaFir", "ReaFir (noise reduction)" }, synth = { "vsti", "ReaSynth" }, sampler = { "vsti", "ReaSamplOmatic5000" }, vocoder = { "vst", "ReaVocode" },
+  chorus = { "js", "guitar/chorus", "JS: Chorus" }, flanger = { "js", "guitar/flanger", "JS: Flanger" }, phaser = { "js", "guitar/phaser", "JS: 4-Tap Phaser" },
+  trem = { "js", "guitar/tremolo", "JS: Tremolo" }, deess = { "js", "Liteon/deesser", "JS: De-esser" }, analyzer = { "js", "analysis/gfxanalyzer", "JS: Frequency Spectrum Analyzer" },
+  loud = { "js", "analysis/loudness_meter", "JS: Loudness Meter" }, sat = { "js", "loser/Saturation", "JS: Saturation" }, dist = { "js", "loser/waveShapingDstr", "JS: Waveshaping Distortion" },
+  width = { "js", "loser/stereoEnhancer", "JS: Stereo Enhancer" }, util = { "js", "utility/volume_pan_sample_accurate_auto", "JS: Volume/Pan Adjustment" },
+}
+function M.fx_stock_name(k) local s = M.FX_STOCK[k]; return s and (s[3] or s[2]) or k end
+M.FX_EQUIV = { -- persona id -> { { that DAW's plug-in, key } } in the order shown
+  pro_tools = { { "EQ III", "eq" }, { "Dyn3 Compressor/Limiter", "comp" }, { "Dyn3 Expander/Gate", "gate" }, { "Maxim", "limit" }, { "Pro Multiband Dynamics", "mbcomp" },
+    { "Dyn3 De-Esser", "deess" }, { "Mod Delay III", "delay" }, { "D-Verb", "reverb" }, { "Space", "convo" }, { "Pitch II", "pitch" }, { "AIR Chorus", "chorus" },
+    { "AIR Flanger", "flanger" }, { "AIR Phaser", "phaser" }, { "AIR Stereo Width", "width" }, { "Lo-Fi", "dist" }, { "Trim", "util" }, { "Xpand!2", "synth" } },
+  logic = { { "Channel EQ", "eq" }, { "Compressor", "comp" }, { "Noise Gate", "gate" }, { "Adaptive Limiter", "limit" }, { "Multipressor", "mbcomp" }, { "DeEsser 2", "deess" },
+    { "Stereo Delay", "delay" }, { "ChromaVerb", "reverb" }, { "Space Designer", "convo" }, { "Pitch Shifter", "pitch" }, { "Pitch Correction", "tune" }, { "Chorus", "chorus" },
+    { "Flanger", "flanger" }, { "Phaser", "phaser" }, { "Tremolo", "trem" }, { "Overdrive", "dist" }, { "Direction Mixer", "width" }, { "Gain", "util" },
+    { "Multimeter", "analyzer" }, { "Loudness Meter", "loud" }, { "EVOC 20 PolySynth", "vocoder" }, { "ES2", "synth" }, { "Sampler", "sampler" } },
+  garageband = { { "Channel EQ", "eq" }, { "Compressor", "comp" }, { "Noise Gate", "gate" }, { "Limiter", "limit" }, { "DeEsser", "deess" }, { "Echo", "delay" },
+    { "Track Reverb", "reverb" }, { "Chorus", "chorus" }, { "Flanger", "flanger" }, { "Phaser", "phaser" }, { "Tremolo", "trem" }, { "Overdrive", "dist" } },
+  ableton = { { "EQ Eight", "eq" }, { "Compressor", "comp" }, { "Gate", "gate" }, { "Limiter", "limit" }, { "Multiband Dynamics", "mbcomp" }, { "Delay", "delay" },
+    { "Reverb", "reverb" }, { "Hybrid Reverb", "convo" }, { "Shifter", "pitch" }, { "Chorus-Ensemble", "chorus" }, { "Phaser-Flanger", "phaser" }, { "Auto Pan-Tremolo", "trem" },
+    { "Saturator", "sat" }, { "Overdrive", "dist" }, { "Utility", "util" }, { "Spectrum", "analyzer" }, { "Vocoder", "vocoder" }, { "Operator", "synth" }, { "Simpler", "sampler" } },
+  fl_studio = { { "Fruity Parametric EQ 2", "eq" }, { "Fruity Limiter (compressor)", "comp" }, { "Fruity Limiter", "limit" }, { "Maximus", "mbcomp" }, { "Fruity Delay 3", "delay" },
+    { "Fruity Reeverb 2", "reverb" }, { "Fruity Convolver", "convo" }, { "Pitcher", "tune" }, { "Fruity Chorus", "chorus" }, { "Fruity Flanger", "flanger" }, { "Fruity Phaser", "phaser" },
+    { "Fruity Soft Clipper", "sat" }, { "Fruity Blood Overdrive", "dist" }, { "Fruity Stereo Shaper", "width" }, { "Fruity Balance", "util" }, { "Wave Candy", "analyzer" },
+    { "Vocodex", "vocoder" }, { "3x Osc", "synth" } },
+  cubase = { { "Frequency", "eq" }, { "Compressor", "comp" }, { "Gate", "gate" }, { "Brickwall Limiter", "limit" }, { "Multiband Compressor", "mbcomp" }, { "DeEsser", "deess" },
+    { "StereoDelay", "delay" }, { "RoomWorks", "reverb" }, { "REVerence", "convo" }, { "Pitch Correct", "tune" }, { "Chorus", "chorus" }, { "Flanger", "flanger" },
+    { "Phaser", "phaser" }, { "Tremolo", "trem" }, { "Magneto II", "sat" }, { "Distortion", "dist" }, { "StereoEnhancer", "width" }, { "SuperVision", "analyzer" }, { "Retrologue", "synth" } },
+  studio_one = { { "Pro EQ", "eq" }, { "Compressor", "comp" }, { "Gate", "gate" }, { "Limiter", "limit" }, { "Multiband Dynamics", "mbcomp" }, { "Analog Delay", "delay" },
+    { "Room Reverb", "reverb" }, { "Open Air", "convo" }, { "Chorus", "chorus" }, { "Flanger", "flanger" }, { "Phaser", "phaser" }, { "Red Light Distortion", "dist" },
+    { "Binaural Pan", "width" }, { "Mixtool", "util" }, { "Spectrum Meter", "analyzer" }, { "Mojito", "synth" }, { "SampleOne", "sampler" } },
+  bitwig = { { "EQ+", "eq" }, { "Compressor", "comp" }, { "Gate", "gate" }, { "Peak Limiter", "limit" }, { "Delay-2", "delay" }, { "Reverb", "reverb" }, { "Convolution", "convo" },
+    { "Chorus", "chorus" }, { "Flanger", "flanger" }, { "Phaser", "phaser" }, { "Tremolo", "trem" }, { "Saturator", "sat" }, { "Distortion", "dist" }, { "Tool", "util" },
+    { "Spectrum", "analyzer" }, { "Polysynth", "synth" }, { "Sampler", "sampler" } },
+  cakewalk = { { "QuadCurve EQ", "eq" }, { "Sonitus Compressor", "comp" }, { "Sonitus Gate", "gate" }, { "Concrete Limiter", "limit" }, { "Sonitus Multiband", "mbcomp" },
+    { "Sonitus Delay", "delay" }, { "Sonitus Reverb", "reverb" }, { "Sonitus Modulator (chorus)", "chorus" }, { "Sonitus Modulator (flanger)", "flanger" },
+    { "Sonitus Phase", "phaser" }, { "TH3", "dist" }, { "Channel Tools", "util" } },
+  reason = { { "MClass Equalizer", "eq" }, { "MClass Compressor", "comp" }, { "MClass Maximizer", "limit" }, { "DDL-1 Delay", "delay" }, { "RV7000", "reverb" },
+    { "Neptune", "tune" }, { "CF-101 Chorus/Flanger", "chorus" }, { "PH-90 Phaser", "phaser" }, { "Scream 4", "dist" }, { "MClass Stereo Imager", "width" },
+    { "BV512 Vocoder", "vocoder" }, { "Subtractor", "synth" }, { "NN-XT", "sampler" } },
+  audacity = { { "Filter Curve EQ", "eq" }, { "Compressor", "comp" }, { "Noise Gate", "gate" }, { "Limiter", "limit" }, { "Echo", "delay" }, { "Reverb", "reverb" },
+    { "Noise Reduction", "fir" }, { "Change Pitch", "pitch" }, { "Phaser", "phaser" }, { "Distortion", "dist" }, { "Amplify", "util" }, { "Plot Spectrum", "analyzer" },
+    { "Loudness Normalization", "loud" } },
+  audition = { { "Parametric Equalizer", "eq" }, { "Single-band Compressor", "comp" }, { "Hard Limiter", "limit" }, { "Multiband Compressor", "mbcomp" }, { "DeEsser", "deess" },
+    { "Delay", "delay" }, { "Studio Reverb", "reverb" }, { "Convolution Reverb", "convo" }, { "Noise Reduction", "fir" }, { "Pitch Shifter", "pitch" },
+    { "Automatic Pitch Correction", "tune" }, { "Chorus", "chorus" }, { "Flanger", "flanger" }, { "Phaser", "phaser" }, { "Distortion", "dist" }, { "Stereo Expander", "width" },
+    { "Amplify", "util" }, { "Frequency Analysis", "analyzer" }, { "Loudness Meter", "loud" } },
+}
+local FX_SAME = { pro_tools_intro = "pro_tools", nuendo = "cubase" }
+function M.fx_equiv(id) return M.FX_EQUIV[id] or M.FX_EQUIV[FX_SAME[id or ""] or ""] end -- (pure) nil for My REAPER, Base REAPER...
+function M.fx_folder_name(st) return (st.name or tostring(st.id)) .. " -> REAPER" end
+function M.fx_folders_ini(text, name, items) -- (pure) reaper-fxfolders.ini with folder `name` set to items ({ {ident, type} }), or taken out (nil)
+  local sections, order, cur = {}, {}, nil
+  for line in ((text or "") .. "\n"):gmatch("([^\r\n]*)\r?\n") do
+    local sec = line:match("^%[(.-)%]%s*$")
+    if sec then cur = sec; if not sections[sec] then sections[sec] = {}; order[#order + 1] = sec end
+    elseif cur and line ~= "" then sections[cur][#sections[cur] + 1] = line end
+  end
+  local f, folders = {}, {}
+  for _, l in ipairs(sections.Folders or {}) do
+    local k, i, v = l:match("^(%a+)(%d+)=(.*)$")
+    if k == "Id" or k == "Name" then f[tonumber(i)] = f[tonumber(i)] or {}; f[tonumber(i)][k == "Id" and "id" or "name"] = v end
+  end
+  local n = 0
+  for i in pairs(f) do n = math.max(n, i) end
+  for i = 0, n do if f[i] and f[i].id then folders[#folders + 1] = f[i] end end
+  local ours, top, at = nil, -1, nil
+  for k, x in ipairs(folders) do top = math.max(top, tonumber(x.id) or -1); if x.name == name then ours, at = x, k end end
+  if not items then -- (taken out: its entry and its section)
+    if not ours then return text end
+    table.remove(folders, at)
+    sections["Folder" .. ours.id] = nil
+  else
+    if not ours then ours = { id = tostring(top + 1), name = name }; folders[#folders + 1] = ours end
+    local body = {}
+    for k, it in ipairs(items) do body[#body + 1] = "Item" .. (k - 1) .. "=" .. it.ident; body[#body + 1] = "Type" .. (k - 1) .. "=" .. it.type end
+    body[#body + 1] = "Nb=" .. #items
+    local fs = "Folder" .. ours.id
+    if not sections[fs] then order[#order + 1] = fs end
+    sections[fs] = body
+  end
+  local list = {}
+  for i, x in ipairs(folders) do list[#list + 1] = "Id" .. (i - 1) .. "=" .. x.id; list[#list + 1] = "Name" .. (i - 1) .. "=" .. x.name end
+  list[#list + 1] = "NbFolders=" .. #folders
+  if not sections.Folders then order[#order + 1] = "Folders" end
+  sections.Folders = list
+  local out = {}
+  for _, sec in ipairs(order) do
+    if sections[sec] then
+      out[#out + 1] = "[" .. sec .. "]"
+      for _, l in ipairs(sections[sec]) do out[#out + 1] = l end
+      out[#out + 1] = ""
+    end
+  end
+  return table.concat(out, "\n") .. "\n"
+end
+local fx_found -- (REAPER's stock plug-ins on this computer, looked up once: key -> { ident, type, name })
+function M.fx_stock_here()
+  if fx_found then return fx_found end
+  fx_found = {}
+  if not reaper.EnumInstalledFX then return fx_found end
+  local want_vst, want_js = {}, {}
+  for k, s in pairs(M.FX_STOCK) do if s[1] == "js" then want_js[s[2]:lower()] = k else want_vst[s[2]] = k end end
+  for i = 0, 100000 do
+    local ok, name, ident = reaper.EnumInstalledFX(i)
+    if not ok then break end
+    local vst = name:find("%(Cockos%)$") and not name:find("ReaPlugs Edition", 1, true) and name:match("^VSTi?: (Rea%w+)") -- ("VST: ReaFir (FFT EQ+Dynamics Processor) (Cockos)" is ReaFir)
+    local k = vst and want_vst[vst] or (name:match("^JS: ") and want_js[ident:lower()])
+    if k and not fx_found[k] then fx_found[k] = { ident = ident, type = vst and 3 or 2, name = name } end
+  end
+  return fx_found
+end
+function M.fx_folder_on(st) -- is this persona's folder in reaper-fxfolders.ini?
+  local t = M.read(res .. "/reaper-fxfolders.ini") or ""
+  return t:find("\nName%d+=" .. M.fx_folder_name(st):gsub("%p", "%%%0") .. "\r?\n") ~= nil or t:find("^Name%d+=" .. M.fx_folder_name(st):gsub("%p", "%%%0") .. "\r?\n") ~= nil
+end
+function M.fx_folder_set(st, on) -- the folder in or out. -> how many plug-ins it holds (in), or nil + why
+  local list = M.fx_equiv(st and st.id)
+  if not list then return nil, "no plug-in list for this persona" end
+  local path = res .. "/reaper-fxfolders.ini"
+  local old = M.read(path) or ""
+  local items
+  if on then
+    items = {}
+    local here, seen = M.fx_stock_here(), {}
+    for _, x in ipairs(list) do
+      local f = here[x[2]]
+      if f and not seen[x[2]] then seen[x[2]] = true; items[#items + 1] = { ident = f.ident, type = f.type } end
+    end
+    if #items == 0 then return nil, "REAPER's own plug-ins weren't found in its list of installed FX" end
+  end
+  local new = M.fx_folders_ini(old, M.fx_folder_name(st), items)
+  if new ~= old and not M.write(path, new) then return nil, "couldn't write reaper-fxfolders.ini" end
+  return items and #items or 0
+end
+
 -- ---------------------------------------------------------------- presets: the style in use, its theme and how everything is set now
 -- A preset keeps the style's keys (same shortcut layer, MIDI keys and toolbar) and records the theme plus every setting and mouse
 -- behaviour any style touches, as they are when you save it. In presets.json; it's used like a style, and put back the same way.
