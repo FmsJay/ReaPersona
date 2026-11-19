@@ -564,7 +564,7 @@ local function run()
     if l == "My REAPER##sovmy_reaper" then offers_my = true end
     for _, st in ipairs(R.styles) do if not st.user and st.id ~= "my_reaper" and l == st.name .. "##sov" .. st.id then offers_daw = true end end
   end
-  assert(offers_mine and offers_my and not offers_daw, "Save over lists yours and My REAPER, never a DAW")
+  assert(offers_mine and offers_my and offers_daw, "Save over lists yours, My REAPER and the DAWs (5.46)")
   mb_answer = 7; pick2[mine_name .. "##sov" .. target.id] = true; frame("Layout"); pick2 = {}; mb_answer = 1
   assert(mb_said[#mb_said]:find("Save over " .. mine_name .. "?", 1, true), "it asks first")
   assert(core.draft_get(core.by_id(target.id).blocks, "theme").file == "Before.ReaperTheme" and not bld.id, "No leaves it as it was")
@@ -587,6 +587,14 @@ local function run()
   core.draft_add(bld.blocks, core.new_block("theme", "Look.ReaperTheme"))
   mb_answer = 6; pick2["My REAPER##sovmy_reaper"] = true; frame("Layout"); pick2 = {}; mb_answer = 1
   assert(looks == 1 and bld.id == "my_reaper" and bld.msg:find("My REAPER is saved", 1, true), "saving over My REAPER saves its look: " .. tostring(bld.msg))
+  -- a DAW: Yes saves a "- alt" copy, the DAW left as it is (5.46)
+  local pt = core.by_id("pro_tools")
+  fresh(); core.draft_add(bld.blocks, core.new_block("theme", "Alt.ReaperTheme"))
+  mb_answer = 6; pick2["Pro Tools##sovpro_tools"] = true; frame("Layout"); pick2 = {}; mb_answer = 1
+  assert(mb_said[#mb_said]:find("save this as Pro Tools - alt instead (recommended)", 1, true), "it recommends the alt: " .. tostring(mb_said[#mb_said]))
+  local alt_st = bld.id and core.by_id(bld.id)
+  assert(alt_st and alt_st.name == "Pro Tools - alt" and alt_st.id ~= "pro_tools" and core.by_id("pro_tools") == pt, "Yes: a copy named - alt; Pro Tools as it ships")
+  core.delete_user_style(alt_st.id)
   core.use, core.save_look = ru2, rsl2
   core.delete_user_style(target.id)
   rawset(ImGui, "Selectable", real_sel)
@@ -622,19 +630,32 @@ local function run()
   rawset(ImGui, "SmallButton", real_small)
   reaper.SetExtState(R.SECTION, "every action", "0", true)
 
-  -- 14. James, 2026-11-19: one My REAPER. Saving what you use on My REAPER offers an alt, and a name a persona has saves nothing
+  -- 14. James, 2026-11-19: one My REAPER, saved over (the one before kept); a DAW's name offers "- alt" (5.46)
   local gui, offered, typed = reaper.GetUserInputs, nil, nil
   reaper.GetUserInputs = function(_, _, _, default) offered = default; return true, typed or default end
-  local rsp = core.save_preset
-  local saved_as
-  core.save_preset = function(name) saved_as = name; return { id = "preset_t", name = name } end
+  local rsp, rsl = core.save_preset, core.save_my_look
+  local saved_as, saved_over, looked
+  core.save_preset = function(name, _, over) saved_as, saved_over = name, over; return { id = over or "preset_t", name = name } end
+  core.save_my_look = function(any) looked = any; return { feel = {}, theme = "A.ReaperTheme" } end
   set_style("my_reaper")
+  mb_answer = 2; R.save_preset_prompt(); mb_answer = 1
+  assert(offered == "My REAPER" and not looked and not saved_as, "on My REAPER it's offered as itself, and Cancel saves nothing: " .. tostring(offered))
+  assert(mb_said[#mb_said]:find("over My REAPER?", 1, true) and mb_said[#mb_said]:find("My REAPER - alt", 1, true), "it asks, and names the alt")
   typed = "my reaper"; R.save_preset_prompt()
-  assert(offered:find("^My REAPER alt") and not offered:find("(mine)", 1, true), "on My REAPER the copy is an alt: " .. tostring(offered))
-  assert(not saved_as and said():find("already in it", 1, true), "typing My REAPER saves no second one: " .. tostring(said()))
+  assert(looked == true and not saved_as and said():find("Saved over My REAPER", 1, true), "OK: what's in use is My REAPER's look: " .. tostring(said()))
+  set_style("pro_tools")
   typed = nil; R.save_preset_prompt()
-  assert(saved_as == offered, "the alt name saves")
-  core.save_preset, reaper.GetUserInputs = rsp, gui
+  assert(offered == "Pro Tools - alt" and saved_as == "Pro Tools - alt" and not saved_over, "on a DAW: the alt: " .. tostring(offered))
+  saved_as = nil; typed = "PRO TOOLS"; R.save_preset_prompt()
+  assert(mb_said[#mb_said - 1]:find("Save this as Pro Tools - alt instead?", 1, true) and saved_as == "Pro Tools - alt", "a DAW's name offers its alt")
+  saved_as = nil; mb_answer = 2; R.save_preset_prompt(); mb_answer = 1
+  assert(not saved_as, "and Cancel saves nothing")
+  local had_presets = core.presets
+  core.presets = { { id = "preset_x", name = "Gig setup", preset = true, base = "pro_tools" } }
+  typed = "gig setup"; mb_answer = 6; R.save_preset_prompt(); mb_answer = 1
+  assert(saved_over == "preset_x" and saved_as == "Gig setup", "a setup of yours is saved over, after asking")
+  core.presets = had_presets
+  core.save_preset, core.save_my_look, reaper.GetUserInputs = rsp, rsl, gui
 end
 
 local ok, err = xpcall(run, debug.traceback)

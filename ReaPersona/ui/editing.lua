@@ -69,13 +69,19 @@ end
 -- Saving over a persona (James, 2026-11-19: "should be able to overwrite personas just with a pop up confirming, just not base DAWs.
 -- Should be able to overwrite My REAPER"). The ones that can be saved over: your own built personas (save_built keeps their id, so
 -- favourites, projects and sync still point at them, and keeps the one before as an earlier version) and My REAPER (its look, as Save
--- changes on it does). Never a DAW, Base REAPER or a saved setup.
-local function over_targets() -- -> My REAPER first, then yours by name; not the one being edited (Save changes is for that)
-  local out = {}
-  for _, st in ipairs(styles) do if st.user and st.kind == "built" and st.id ~= bld.id and st.id ~= "built_try" then out[#out + 1] = st end end
+-- changes on it does). Then (5.46, James: "Can do this with the daws too but for those ones it would recommend the -alt") the DAWs, last:
+-- one picked offers "<DAW> - alt" first; saved over, yours takes its place and the original waits, to put back. Never Base REAPER or a
+-- saved setup (Save what I'm using saves over those).
+local function over_targets() -- -> My REAPER first, then yours by name, then the DAWs; not the one being edited (Save changes is for that)
+  local out, daws = {}, {}
+  for _, st in ipairs(styles) do
+    if st.user and st.kind == "built" and st.id ~= bld.id and st.id ~= "built_try" then out[#out + 1] = st
+    elseif core.is_daw(st) and st.id ~= bld.id then daws[#daws + 1] = st end
+  end
   table.sort(out, function(a, b) return a.name:lower() < b.name:lower() end)
   local mine = core.by_id("my_reaper")
   if mine and bld.id ~= "my_reaper" then table.insert(out, 1, mine) end
+  for _, st in ipairs(daws) do out[#out + 1] = st end
   return out
 end
 local function named_mine(name) -- one of those with this name (any case), or nil
@@ -84,6 +90,15 @@ local function named_mine(name) -- one of those with this name (any case), or ni
   for _, st in ipairs(over_targets()) do if st.name:lower() == n then return st end end
 end
 function bld_save_over(st) -- the persona being made, saved over st after asking. -> the saved persona, or nil
+  if core.is_daw(st) then
+    local alt = core.custom_name(st.name, "alt")
+    local a = reaper.MB(st.name .. " comes with ReaPersona.\n\nYes: save this as " .. alt .. " instead (recommended).\nNo: save over " .. st.name ..
+      ". Yours takes its place; the original stays, and Put back the original, on its page, brings it back.", "ReaPersona: save over a DAW", 3)
+    if a == 6 then bld.id, bld.from, bld.name = nil, nil, alt; return bld_save() end
+    if a ~= 7 then return nil end
+    bld.id, bld.from, bld.name, bld.over_daw = st.id, nil, st.name, true
+    return bld_save()
+  end
   if reaper.MB("Save over " .. st.name .. "? Its earlier version is kept under Earlier versions, on its page." ..
       (st.id == "my_reaper" and "\n\nMy REAPER takes this layout, mouse, theme and colours as your look on every computer; its shortcuts stay your own keymap." or ""),
       "ReaPersona: save over", 4) ~= 6 then return nil end
@@ -108,7 +123,8 @@ function bld_save() -- -> the saved persona, or nil (bld.msg says why)
     if bld.name:match("^%s*$") then -- (never over a DAW: a new persona, "<DAW> - custom" unless you name it; one you're editing keeps its name)
       bld.name = bld.id and (core.by_id(bld.id) or {}).name or bld_default_name()
     end
-    st, install = core.save_built(bld_blocks(), bld.name, bld.id)
+    st, install = core.save_built(bld_blocks(), bld.name, bld.id, bld.over_daw)
+    bld.over_daw = nil
     if not st then bld.msg = "Not saved: " .. tostring(install); return end
     bld.id, selected, ensure_new = st.id, st.id, true
   end
@@ -124,7 +140,8 @@ function bld_save() -- -> the saved persona, or nil (bld.msg says why)
     (mine and ": its layout, mouse, theme and colours are your look on every computer (Earlier versions, on its page, puts one back)." or ".") ..
     ((trial and before and before.id ~= st.id) and (" Undo switch (top) puts " .. before.name .. " back.") or "") ..
     ((trial and was_on) and " Preview is off for now." or "") ..
-    (mine and "" or " It's in Personas > Your personas.") .. (note or "") ..
+    (mine and "" or core.factory[st.id] and " It's in Personas > DAWs, in place of the original (Put back the original, on its page, brings that back)."
+      or " It's in Personas > Your personas.") .. (note or "") ..
     (install and (" Install its shortcuts (" .. INSTALL_WHERE .. ") to use its keys.") or "")
   say(bld.msg)
   return st
@@ -279,7 +296,7 @@ function draft_strip() -- the persona being made, over every tab
         end
         ImGui.EndCombo(ctx)
       end
-      ImGui.SetItemTooltip(ctx, "Saves this over one of your personas, or My REAPER (it asks first). The DAWs can't be saved over. The one it replaces is kept under Earlier versions, on its page.")
+      ImGui.SetItemTooltip(ctx, "Saves this over My REAPER, one of your personas or a DAW (it asks first; for a DAW it offers a '- alt' copy instead). The one it replaces is kept: under Earlier versions, or for a DAW, Put back the original, on its page.")
     end
     ImGui.SameLine(ctx); if ImGui.GetContentRegionAvail(ctx) < 60 * UI then ImGui.NewLine(ctx) end
     if not bld.preview and ImGui.Button(ctx, "Try it##strip") then bld.try() end

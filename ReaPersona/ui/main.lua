@@ -111,7 +111,7 @@ function search_page()
       section("Personas")
       for i, st in ipairs(hits) do
         if ImGui.SmallButton(ctx, "Use##ss" .. i) then use(st); selected = st.id end
-        ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Show##ss" .. i) then selected = st.id; search_q = ""; go((st.user or st.preset or st.kind == "built") and "Presets" or "DAWs") end
+        ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Show##ss" .. i) then selected = st.id; search_q = ""; go((st.user or st.preset or st.kind == "built") and not core.factory[st.id] and "Presets" or "DAWs") end
         ImGui.SameLine(ctx); ImGui.Text(ctx, st.name)
       end
       shown = shown + #hits

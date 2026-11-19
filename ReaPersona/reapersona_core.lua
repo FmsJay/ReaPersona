@@ -257,7 +257,28 @@ function M.apply_layer_map(styles, map) -- (pure) built-in personas' layers from
   return styles
 end
 M.apply_layer_map(M.styles, M.layer_map())
-for _, st in ipairs(load(USERS)) do st.user = true; M.midi_here(st); M.styles[#M.styles + 1] = st end -- (imported/shared styles)
+-- Saving over a DAW (5.46; James: "Can do this with the daws too but for those ones it would recommend the -alt"). Yours keeps the DAW's
+-- id and takes its place in the list, so favourites, projects and setups on it follow; the DAW as it ships waits in M.factory, and
+-- deleting yours (Put back the original, on its page) brings it back.
+M.factory = {}
+function M.is_daw(st) -- one that ships with ReaPersona and can be saved over: not My REAPER, Base REAPER or a theme persona
+  return st ~= nil and not st.user and not st.preset and st.kind ~= "theme" and st.id ~= "my_reaper" and st.id ~= "base_reaper" and st.id ~= "built_try"
+end
+local function add_user(st) -- one of yours into the list: in the place of the DAW it was saved over, if any
+  for n, s in ipairs(M.styles) do
+    if s.id == st.id and not s.user then M.factory[st.id] = s; M.styles[n] = st; return end
+  end
+  M.styles[#M.styles + 1] = st
+end
+local function drop_user(n) -- M.styles[n], one of yours, out of the list: the DAW it replaced back in its place, on this computer's layer
+  local f = M.factory[M.styles[n].id]
+  if not f then table.remove(M.styles, n); return end
+  M.factory[f.id] = nil
+  M.styles[n] = f
+  f.alt = f.default_alt or f.alt
+  M.apply_layer_map({ f }, M.layer_map())
+end
+for _, st in ipairs(load(USERS)) do st.user = true; M.midi_here(st); add_user(st) end -- (imported/shared styles)
 function M.new_id(prefix) -- a style/preset id nothing has yet
   local n, id = 0, prefix .. os.time()
   while M.by_id(id) do n = n + 1; id = prefix .. os.time() .. "_" .. n end
@@ -281,8 +302,8 @@ local function save_user_style(st) -- add (or replace) a style of yours in user_
   local ok, why = M.save_json(USERS, { styles = users })
   st.user = true
   if not ok then return nil, why end
-  for n = #M.styles, 1, -1 do if M.styles[n].id == st.id then table.remove(M.styles, n) end end
-  M.styles[#M.styles + 1] = st
+  for n = #M.styles, 1, -1 do if M.styles[n].id == st.id and M.styles[n].user then drop_user(n) end end
+  add_user(st)
   M.stubs_stale = true -- (its "use" action gets written next time the picker opens)
   return st
 end
@@ -1665,7 +1686,8 @@ local function feel_now(base, fast) -- every setting, mouse behaviour and window
   return feel
 end
 M.feel_now = feel_now
-function M.save_preset(name, with_project) -- -> the new preset (as a style). with_project: this project's rate and tracks for new projects
+function M.save_preset(name, with_project, over) -- -> the new preset (as a style). with_project: this project's rate and tracks for new
+  -- projects. over: the id of a setup of yours to save over (it keeps its id; the one before is kept as an earlier version. 5.46)
   local base = M.current()
   if base.preset then base = M.by_id(base.base) or M.styles[1] end
   local feel = feel_now(base)
@@ -1673,12 +1695,24 @@ function M.save_preset(name, with_project) -- -> the new preset (as a style). wi
   local p = { id = M.new_id("preset_"), name = name, base = base.id, saved = os.date("%Y-%m-%d"), feel = feel,
               theme = M.loaded_theme() or M.theme_for(base), project = with_project and M.project_now(true) or nil, colours = M.colours_now(),
               starts = M.starts_now() }
-  list[#list + 1] = p
+  local at
+  for n, q in ipairs(list) do if over and q.id == over then at = n end end
+  if at then p.id = over; M.keep_version(over, list[at]); list[at] = p else list[#list + 1] = p end
   local ok, why = M.save_json(PRESETS, { presets = list })
   if not ok then return nil, why end
   load_presets()
   reaper.SetExtState(M.SECTION, "style", p.id, true) -- (it is what's in use now: switching away puts back what the style changed)
   return M.by_id(p.id)
+end
+function M.put_preset(p) -- an earlier version of a setup back (the one it replaces kept too). -> true, or nil + why
+  if type(p) ~= "table" or not p.id then return nil, "that version is damaged" end
+  local list = load_presets()
+  local at
+  for n, q in ipairs(list) do if q.id == p.id then at = n end end
+  if at then M.keep_version(p.id, list[at]); list[at] = p else list[#list + 1] = p end
+  local ok, why = M.save_json(PRESETS, { presets = list })
+  load_presets()
+  return ok, why
 end
 -- A new user's own setup, kept as a persona before ReaPersona first changes anything (5.17), unless it's REAPER as it ships: then Base
 -- REAPER already is it. Pure: the keymap, mouse and menu files' text, the theme in use, the settings now (feel_now) and Base REAPER's feel.
@@ -1779,9 +1813,10 @@ function M.source(id) -- a persona to take parts from; My REAPER is its look (so
   end
   return M.by_id(id)
 end
-function M.save_my_look() -- -> the look, or nil + why. Only from My REAPER: a persona's settings aren't your look
+function M.save_my_look(any) -- -> the look, or nil + why. Only from My REAPER (a persona's settings aren't your look), unless any: you
+  -- chose to save what you're using over My REAPER (5.46)
   -- (My REAPER really in use: a preview left on, or a persona deleted elsewhere, also reads as My REAPER. Engine review 2026-11-19)
-  if not M.mine_now() then return nil, "switch to My REAPER first: your look is what you have there" end
+  if not any and not M.mine_now() then return nil, "switch to My REAPER first: your look is what you have there" end
   local feel = {}
   for _, f in ipairs(feel_now(M.by_id("my_reaper") or M.styles[1])) do
     if f[1] ~= "switch" and not (f[1] == "mouse" and (f[4] or "") == "") then feel[#feel + 1] = f end -- (a mouse context left at REAPER's default: each computer's own)
@@ -2428,8 +2463,8 @@ local function fix_clashes()
 end
 fix_clashes()
 function M.reload_users() -- your personas, presets and theme recipes read again, in place (a sync or a setup file changed the files)
-  for n = #M.styles, 1, -1 do if M.styles[n].user then table.remove(M.styles, n) end end
-  for _, st in ipairs(load(USERS)) do st.user = true; M.midi_here(st); M.styles[#M.styles + 1] = st end
+  for n = #M.styles, 1, -1 do if M.styles[n].user then drop_user(n) end end
+  for _, st in ipairs(load(USERS)) do st.user = true; M.midi_here(st); add_user(st) end
   for _, st in ipairs(M.styles) do if st.user and st.keys_from then M.resolve_keys(st) end end
   M.both_systems() -- (one from a computer on an older version: its keys for both systems)
   fix_clashes()
@@ -3563,18 +3598,27 @@ function M.own_layer(st)
   if not ok then st.keys, st.midi_keys, st.alt, st.keys_from, st.midi_all = table.unpack(was, 1, 5) end
   return ok, why
 end
-function M.custom_name(base) -- (pure but for M.styles) "Pro Tools - custom", then "Pro Tools - custom 2"... (James: "if no name given '[daw name] - custom'")
+function M.custom_name(base, word) -- (pure but for M.styles) "Pro Tools - custom", then "Pro Tools - custom 2"... (James: "if no name given
+  -- '[daw name] - custom'"); word "alt": "Pro Tools - alt" (5.46). Any case counts as taken
   local taken = {}
-  for _, list in ipairs({ M.styles, M.presets }) do for _, st in ipairs(list) do taken[st.name] = true end end
-  local name, n = base .. " - custom", 1
-  while taken[name] do n = n + 1; name = base .. " - custom " .. n end
+  for _, list in ipairs({ M.styles, M.presets }) do for _, st in ipairs(list) do taken[st.name:lower()] = true end end
+  word = word or "custom"
+  local name, n = base .. " - " .. word, 1
+  while taken[name:lower()] do n = n + 1; name = base .. " - " .. word .. " " .. n end
   return name
 end
-function M.save_built(blocks, name, id) -- -> the persona, true when its shortcuts need installing; or nil + why
+function M.save_built(blocks, name, id, over_daw) -- -> the persona, true when its shortcuts need installing; or nil + why
   local old = id and M.by_id(id)
-  if old and not (old.kind == "built" and old.user) then id = nil end -- (never over a DAW, My REAPER, Base REAPER or a saved setup: a new persona of yours. 5.27.1)
+  -- (never over My REAPER, Base REAPER or a saved setup: a new persona of yours. 5.27.1. A DAW only when you chose to save over it: 5.46)
+  if old and not (old.kind == "built" and old.user) and not (over_daw and M.is_daw(old)) then id = nil end
   local st, install = M.build_style(blocks, name, id)
   if not st then return nil, install end
+  if st.keys_from and st.keys_from == st.id then -- (over a DAW, on that DAW's own keys: a copy on a layer of its own, as the DAW's layer is its)
+    local a = free_alt()
+    if not a then return nil, "all 16 shortcut layers are in use" end
+    st.keys, st.midi_keys, st.midi_all, st.keys_from, st.alt = copy(st.keys), copy(st.midi_keys), copy(st.midi_all), nil, a
+    install = true
+  end
   local ok, why = save_user_style(st)
   if not ok then return nil, why end
   return st, install
@@ -3641,15 +3685,18 @@ function M.presets_on(id) -- names of your presets and mixes built on a style
   return out
 end
 function M.delete_user_style(id) -- -> true, or nil + why. Its "use" action goes too; if it's in use, My REAPER takes over.
+  -- (yours over a DAW: the DAW comes back, in use if yours was, its "use" action stays, and yours is kept as an earlier version. 5.46)
+  local over = M.factory[id] ~= nil
   local users = load(USERS)
   if bad[USERS] then return nil, "user_styles.json doesn't parse, so it isn't written over" end
-  for n = #users, 1, -1 do if users[n].id == id then table.remove(users, n) end end
+  for n = #users, 1, -1 do if users[n].id == id then if over then M.keep_version(id, users[n]) end table.remove(users, n) end end
   local ok, why = M.save_json(USERS, { styles = users })
   if not ok then return nil, why end
-  if reaper.GetExtState(M.SECTION, "workflow") == id then reaper.SetExtState(M.SECTION, "workflow", "", true) end
-  if reaper.GetExtState(M.SECTION, "style") == id then M.use(M.by_id("my_reaper") or M.styles[1]) end
-  for n = #M.styles, 1, -1 do if M.styles[n].id == id and M.styles[n].user then table.remove(M.styles, n) end end
-  M.remove_script("use " .. id)
+  if not over and reaper.GetExtState(M.SECTION, "workflow") == id then reaper.SetExtState(M.SECTION, "workflow", "", true) end
+  local in_use = reaper.GetExtState(M.SECTION, "style") == id
+  if in_use and not over then M.use(M.by_id("my_reaper") or M.styles[1]) end
+  for n = #M.styles, 1, -1 do if M.styles[n].id == id and M.styles[n].user then drop_user(n) end end
+  if over then if in_use then M.use(M.by_id(id)) end else M.remove_script("use " .. id) end
   return true
 end
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 5.46.0
+- **Save over My REAPER, with a backup** (James): "Save what I'm using" on My REAPER offers My REAPER itself; saving asks first, makes
+  what you're using your look on every computer, and keeps the look before under Earlier versions. Give it another name
+  ("My REAPER - alt") for a second one.
+- **Save over your setups** the same way: a setup's own name saves over it after a confirm, the one before under Earlier versions
+  (setups now have Earlier versions on their page).
+- **Save over a DAW, with "- alt" recommended:** a DAW's name, or a DAW picked under Save over on the tabs, offers "<DAW> - alt" first.
+  Saving over the DAW anyway puts yours in its place (same card, favourites and projects follow) and keeps the original: Put back the
+  original, on its page, brings it back, and Earlier versions on the DAW puts yours back again. Its shortcuts go on a layer of their own.
+- Copies are named "<name> - alt" (was "My REAPER alt" or "<name> (mine)").
+
 ## 5.45.1
 - **One My REAPER** (James): "Save what I'm using" on My REAPER offers "My REAPER alt" (not "My REAPER (mine)", which read as
   a second My REAPER), and a name another persona already has saves nothing and says why.

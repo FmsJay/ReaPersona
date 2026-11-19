@@ -920,7 +920,33 @@ do
   assert(core.custom_name("Pro Tools") == "Pro Tools - custom 2", "a second one gets a number")
   local again = assert(core.save_built({ core.keys_block("logic") }, "Renamed", st.id))
   assert(again.id == st.id, "one you built is saved over")
-  for n = #core.styles, 1, -1 do if core.styles[n].id == st.id then table.remove(core.styles, n) end end
+  core.delete_user_style(st.id) -- (out of the file too: a reload brought it back. 5.46)
+end
+-- 21b. Over a DAW when asked (5.46): yours takes its place (its id, its spot) on a layer of its own; a reload keeps it there; deleting
+-- it puts the DAW back, yours kept as a version
+do
+  assert(core.custom_name("Pro Tools", "alt") == "Pro Tools - alt")
+  local pt, at = core.by_id("garageband"), nil
+  assert(core.keys_layer({ core.keys_block("garageband") }, nil) == "borrow", "(its keys whole: the layer it borrows becomes a copy)")
+  for n, s in ipairs(core.styles) do if s == pt then at = n end end
+  local st, inst = core.save_built({ core.keys_block("garageband") }, "GarageBand", "garageband", true)
+  assert(st and st.id == "garageband" and st.user and core.styles[at] == st and core.factory.garageband == pt, "yours in its place")
+  assert(not st.keys_from and (st.alt or 0) > 0 and st.alt ~= pt.alt and inst == true and #st.keys > 0, "its keys on a layer of its own: " .. tostring(st.alt))
+  assert(core.custom_name("Pro Tools", "alt") == "Pro Tools - alt", "the alt name is still free")
+  local n0 = #core.versions("garageband")
+  local again = assert(core.save_built({ core.keys_block("garageband") }, "GarageBand", "garageband"))
+  assert(again.alt == st.alt and #core.versions("garageband") == n0 + 1, "saved again over yours: same layer, the one before kept")
+  core.reload_users()
+  assert(core.styles[at].id == "garageband" and core.styles[at].user and core.factory.garageband == pt, "a reload keeps yours in its place")
+  local count = 0; for _, s in ipairs(core.styles) do if s.id == "garageband" then count = count + 1 end end
+  assert(count == 1, "one GarageBand in the list")
+  local n1 = #core.versions("garageband")
+  assert(core.delete_user_style("garageband"))
+  assert(core.styles[at] == pt and not core.factory.garageband and core.by_id("garageband") == pt, "deleting yours puts the DAW back")
+  assert(#core.versions("garageband") == n1 + 1, "yours kept, to put back")
+  local plain = assert(core.save_built({ core.keys_block("garageband") }, "Not asked", "garageband"))
+  assert(plain.id ~= "garageband" and core.by_id("garageband") == pt, "not asked: never over a DAW")
+  core.delete_user_style(plain.id)
 end
 -- 22. Versions and My REAPER (5.28): saving over keeps the one before; My REAPER opens as its look and saves as its look.
 do

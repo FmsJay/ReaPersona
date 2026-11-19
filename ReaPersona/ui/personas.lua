@@ -92,7 +92,8 @@ function style_card(st, w, sel, alt)
   ImGui.DrawList_AddCircleFilled(dl, x + 16, y + 8 + ih + 17 * UI, 4.5 * UI, solid(col))
   ImGui.DrawList_AddTextEx(dl, bold, 15 * UI, x + 26, y + 8 + ih + 8 * UI, C.TEXT, st.short or st.name)
   local sub = st.preset and ("yours, on " .. (core.by_id(st.base) or { name = "" }).name) or st.kind == "theme" and "theme, with your keys"
-    or st.id == "my_reaper" and "your own setup" or st.id == "base_reaper" and "REAPER as it ships" or st.kind == "built" and "built by you" or st.user and "yours"
+    or st.id == "my_reaper" and "your own setup" or st.id == "base_reaper" and "REAPER as it ships" or core.factory[st.id] and "your version"
+    or st.kind == "built" and "built by you" or st.user and "yours"
     or "keys, theme and layout"
   ImGui.DrawList_AddTextEx(dl, font, 13 * UI, x + 26, y + 8 + ih + 27 * UI, C.MUTED, sub)
   if fav or hov then
@@ -153,31 +154,44 @@ function save_preset_prompt()
   if core.is_trial() then -- (a preview isn't a persona of its own: saved, it named one that's gone. Review 2026-11-19)
     return say("REAPER is showing the persona you're making: Save it from the bar at the top, or Go back there first to save what you had.")
   end
-  local function taken(n) for _, s in ipairs(styles) do if s.name:lower() == n:lower() then return s end end end
-  local function free(n) -- n, or "n 2", "n 3"... when a persona has that name
-    if not taken(n) then return n end
-    for i = 2, 99 do if not taken(n .. " " .. i) then return n .. " " .. i end end
-    return n
+  local function taken(n)
+    for _, list in ipairs({ styles, core.presets }) do for _, s in ipairs(list) do if s.name:lower() == n:lower() then return s end end end
   end
-  -- (on My REAPER: a copy is an alt, never "My REAPER (mine)", which read as a second My REAPER. James, 2026-11-19)
-  local suggest = cur.id == "my_reaper" and free("My REAPER alt") or free(cur.preset and cur.name or (cur.name .. " (mine)"))
+  -- (James, 2026-11-19: "you should be able to overwrite your 'my reaper' but old ones saved as backups. Can do this with the daws too but
+  -- for those ones it would recommend the -alt". My REAPER and your setups are offered as themselves, saved over after asking, the one
+  -- before kept under Earlier versions; anything else is offered as "<name> - alt")
+  local suggest = cur.id == "my_reaper" and "My REAPER" or cur.preset and cur.name or core.custom_name(cur.name, "alt")
   local ok, name = reaper.GetUserInputs("Save as a persona", 1, "Name,extrawidth=160,separator=\n", suggest)
   name = ok and name:gsub("^%s+", ""):gsub("%s+$", "") or ""
   if name == "" then return end
-  local same = taken(name)
-  if same then
-    return say(same.id == "my_reaper" and "My REAPER is your REAPER as it is: changes you make while it's in use are already in it. To keep a copy, give it another name, such as " .. free("My REAPER alt") .. "."
-      or ("There's already a persona called " .. same.name .. ". Give this one another name."))
+  local same, over = taken(name), nil
+  if same and same.id == "my_reaper" then
+    if reaper.MB("Save what you're using over My REAPER?\n\nIts theme, layout, mouse and settings become your look on every computer that syncs; its shortcuts stay your own keymap. " ..
+        "The look it has now is kept: Earlier versions, on its page, puts it back.\n\n(For a second one instead, Cancel and give it another name, such as " .. core.custom_name("My REAPER", "alt") .. ".)",
+        "ReaPersona: save over", 1) ~= 1 then return end
+    local look, why = core.save_my_look(true)
+    return say(look and ("Saved over My REAPER: " .. core.look_label(look) .. ". Earlier versions, on its page, puts the one before back.") or ("Not saved: " .. tostring(why)))
+  elseif same and same.preset then
+    if reaper.MB("Save over " .. same.name .. "? The one there now is kept: Earlier versions, on its page, puts it back.", "ReaPersona: save over", 4) ~= 6 then return end
+    name, over = same.name, same.id
+  elseif same then
+    local alt = core.custom_name(same.name, "alt")
+    local why = core.is_daw(same) and (same.name .. " comes with ReaPersona. To change it itself, Edit it, change it on the tabs and pick it under Save over: the original stays, to put back.")
+      or same.user and (same.name .. " is a persona you made on the tabs: to change it, Edit it there and Save changes (the one before is kept).")
+      or (same.name .. " comes with ReaPersona and isn't saved over.")
+    if reaper.MB(why .. "\n\nSave this as " .. alt .. " instead?", "ReaPersona: save", 1) ~= 1 then return end
+    name = alt
   end
   local all = reaper.CountTracks(0)
   local wf = reaper.MB("Make " .. name .. " a workflow too?\n\nYes: a new, empty project with it starts as this one does: its " .. all .. " track" .. (all == 1 and "" or "s") ..
     " with their FX, routing and folders (not their audio or MIDI), its sample rate, recording format, render settings, tempo, markers and regions." ..
     "\nNo: just the shortcuts, theme, layout and settings, as now.", "ReaPersona: save", 3)
   if wf == 2 then return end
-  local st, why = core.save_preset(name, wf == 6) -- (yes: the whole project as its template, 5.13)
+  local st, why = core.save_preset(name, wf == 6, over) -- (yes: the whole project as its template, 5.13)
   if not st then return say("Not saved: " .. tostring(why)) end
   selected = st.id
-  say("Saved " .. name .. ": it's in your list" .. (wf == 6 and ", and new projects with it start like this one." or "."))
+  say((over and "Saved over " or "Saved ") .. name .. (over and " (Earlier versions, on its page, puts the one before back)" or ": it's in your list") ..
+    (wf == 6 and ", and new projects with it start like this one." or "."))
 end
 
 -- The grid of cards (or a list of chips, for a narrow window). Double-click uses one.
@@ -342,7 +356,16 @@ function detail(sel, alt)
       end
       ImGui.SetItemTooltip(ctx, "This persona as one file: drop it on someone's ReaPersona window (they need the DAW personas it's built on).")
     end
-    if sel.preset or sel.user then
+    local over = core.factory[sel.id] -- (yours saved over a DAW: deleting it puts the DAW back. 5.46)
+    if over then
+      ImGui.SameLine(ctx)
+      if ImGui.Button(ctx, "Put back the original") and reaper.MB("Put back " .. over.name .. " as it comes with ReaPersona?\n\nYour version is kept under Earlier versions, on its page, to put back." ..
+          (core.sync_folder() ~= "" and " Your other computers go back to the original too (they sync)." or ""), "ReaPersona", 4) == 6 then
+        local ok, why = core.delete_user_style(sel.id)
+        say(ok and (over.name .. " is back as it comes with ReaPersona.") or ("Not put back: " .. tostring(why)))
+      end
+      ImGui.SetItemTooltip(ctx, "Your version replaced " .. over.name .. ". This brings the one that comes with ReaPersona back; yours is kept under Earlier versions.")
+    elseif sel.preset or sel.user then
       ImGui.SameLine(ctx)
       ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.RED)
       local deps = ImGui.Button(ctx, "Delete persona") and (sel.preset and {} or core.presets_on(sel.id))
@@ -365,7 +388,8 @@ function detail(sel, alt)
     ImGui.SetItemTooltip(ctx, sel.id == "my_reaper" and "Change your own layout, mouse, theme and colours on the tabs, then Save changes: it becomes your look on every computer that syncs (Earlier versions, on this page, puts the old one back)."
       or sel.blocks and "Change any part of it on the Shortcuts, Mouse, Layout, Themes, Colours, Project and REAPER tabs, then Save changes in the bar at the top."
       or "Start from " .. sel.name .. " and change any part on the tabs. It's saved as a persona of yours: " .. sel.name .. " stays as it is.")
-    local vid = (sel.id == "my_reaper" or (sel.user and sel.kind == "built")) and sel.id
+    -- (a setup, and a DAW: its versions are yours saved over it, so one picked is saved over it again. 5.46)
+    local vid = (sel.id == "my_reaper" or (sel.user and sel.kind == "built") or sel.preset or core.is_daw(sel)) and sel.id
     local vers = vid and core.versions(vid) or {}
     if #vers > 0 then -- (5.28: each save keeps the one before)
       ImGui.SameLine(ctx)
@@ -373,7 +397,7 @@ function detail(sel, alt)
       if ImGui.BeginCombo(ctx, "##vers", "Earlier versions (" .. #vers .. ")") then
         for i, v in ipairs(vers) do
           if ImGui.Selectable(ctx, tostring(v.saved) .. "##v" .. i) and reaper.MB("Put back " .. sel.name .. " as it was on " .. tostring(v.saved) .. "?\n\nThe version you have now is kept too, so you can come back to it.", "ReaPersona", 4) == 6 then
-            if vid == "my_reaper" then core.save_look(v.data) else core.save_user_style(v.data); core.reload_users() end
+            if vid == "my_reaper" then core.save_look(v.data) elseif sel.preset then core.put_preset(v.data) else core.save_user_style(v.data); core.reload_users() end
             if reaper.GetExtState(SECTION, "style") == vid then core.use(core.by_id(vid)) end
             say(sel.name .. " is back as it was on " .. tostring(v.saved) .. ".")
           end
@@ -516,7 +540,7 @@ end
 
 function daws_page(sel, alt)
   local list = {}
-  for _, st in ipairs(styles) do if st.kind ~= "theme" and not st.user and st.kind ~= "built" then list[#list + 1] = st end end -- (yours: Your personas)
+  for _, st in ipairs(styles) do if st.kind ~= "theme" and ((not st.user and st.kind ~= "built") or core.factory[st.id]) then list[#list + 1] = st end end -- (yours: Your personas; yours saved over a DAW: here, in its place)
   workflow_row()
   view_switch()
   chooser(list, pick_in(list, sel), alt)
@@ -658,7 +682,7 @@ function presets_page(sel, alt)
     card_end()
   end
   local list = {}
-  for _, st in ipairs(styles) do if (st.user or st.kind == "built") and st.kind ~= "theme" and st.id ~= "built_try" then list[#list + 1] = st end end
+  for _, st in ipairs(styles) do if (st.user or st.kind == "built") and st.kind ~= "theme" and st.id ~= "built_try" and not core.factory[st.id] then list[#list + 1] = st end end
   for _, st in ipairs(core.presets) do list[#list + 1] = st end
   if #list == 0 then return end
   view_switch()
