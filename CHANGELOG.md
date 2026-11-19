@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.33.0
+- **Project defaults.** The Project tab (now *Project defaults*) also sets a new project's tempo, time signature and grid (straight or triplet), next to its sample rate, starter tracks or template and window set. Like the rest, they apply only to a project that's still empty. *Recording options* and *Playback options* jump to the click, count-in and pre-roll.
+- **A REAPER tab.** REAPER's and SWS's options moved out of Settings into their own main tab, one sub-tab per area: Playback, Editing, Recording, View, Colours & icons, Automation, Monitoring & FX and Mixer. *In my persona* and *Load from* work on each, as before.
+- **Settings in sub-tabs.** ReaPersona's own settings are split up: Sync (your other computers), Personas (what a persona may change, a persona per project, ReaPersona's actions), Scrolling & zoom, Look (this window, the screen-reader menu), Updates and Remove.
+
 ## 5.32.0
 - **A layout designer.** Layout now opens with *Arrange your layout*: a picture of REAPER's window with its four docks (top, left, right, bottom), the transport's four places (top of the window, above the ruler, below the arrange view, bottom of the window), and *In its own window* and *Closed*. Drag the Mixer, the Media Explorer, the Transport and the MIDI editor where you want them. Windows in one dock are tabs in the order shown; drop one onto another to put it before it. It starts from the persona's own layout (or REAPER as it is now), *Back to the persona's own* undoes your arrangement, and the parts it sets show as set by it below.
 - Only windows ReaPersona can also put back are in it: REAPER's other windows (the Actions list, the Region/Marker Manager, the Track Manager, the Navigator...) can be docked by a script but not undocked again, so a persona couldn't give you your layout back.

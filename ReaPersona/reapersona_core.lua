@@ -1899,8 +1899,18 @@ function M.project_entries(b) -- a project block's lines, for the Builder (pure)
   end
   local w = tonumber(b.wset) or 0
   if w >= 1 and w <= 10 then out[#out + 1] = { slot = "project wset", kind = "project", label = "Window set #" .. w, value = { wset = w } } end
+  local bpm = tonumber(b.bpm) or 0 -- (5.33: tempo, time signature and grid, for a new project)
+  if bpm >= 10 and bpm <= 960 then out[#out + 1] = { slot = "project bpm", kind = "project", label = string.format("Tempo %g BPM (a new project)", bpm), value = { bpm = bpm } } end
+  local num, den = tonumber(b.ts_num) or 0, tonumber(b.ts_den) or 0
+  if num >= 1 and num <= 64 and (den == 1 or den == 2 or den == 4 or den == 8 or den == 16 or den == 32) then
+    out[#out + 1] = { slot = "project ts", kind = "project", label = "Time signature " .. num .. "/" .. den .. " (a new project)", value = { ts_num = num, ts_den = den } }
+  end
+  local grid = tonumber(b.grid) or 0
+  if grid > 0 and grid <= 4 then out[#out + 1] = { slot = "project grid", kind = "project", label = "Grid " .. M.grid_name(grid) .. " (a new project)", value = { grid = grid } } end
   return out
 end
+M.GRIDS = { { 1, "1/1" }, { 0.5, "1/2" }, { 0.25, "1/4" }, { 0.125, "1/8" }, { 1 / 16, "1/16" }, { 1 / 32, "1/32" }, { 1 / 6, "1/4 triplet" }, { 1 / 12, "1/8 triplet" }, { 1 / 24, "1/16 triplet" } }
+function M.grid_name(g) for _, x in ipairs(M.GRIDS) do if math.abs(x[1] - g) < 1e-9 then return x[2] end end return string.format("%g", g) end
 function M.track_chunk(name, armed, monitor, input) -- a starter track as a track template's text (pure). input: 0 = mono input 1, 1024 = stereo 1/2
   return "<TRACK\n  NAME \"" .. tostring(name):gsub('"', "'") .. "\"\n  REC " .. (armed and 1 or 0) .. " " .. (input or 0) .. " " .. (monitor and 1 or 0) ..
     " 0 0 0 0 0\n  NCHAN 2\n>\n"
@@ -2093,6 +2103,16 @@ function M.apply_project(st) -- the persona's project part, in the project in fr
   end
   local w = tonumber(p.wset) or 0
   if w >= 1 and w <= 10 then reaper.Main_OnCommand(M.WSET_LOAD + w - 1, 0); done[#done + 1] = "window set #" .. w end
+  local bpm, num, den = tonumber(p.bpm), tonumber(p.ts_num), tonumber(p.ts_den) -- (5.33: a new project's tempo, time signature and grid)
+  if empty and (bpm or num) and reaper.CountTempoTimeSigMarkers(0) == 0 then
+    if num and den then
+      reaper.SetTempoTimeSigMarker(0, -1, 0, -1, -1, bpm or reaper.Master_GetTempo(), num, den, false)
+      done[#done + 1] = (bpm and (string.format("%g BPM in ", bpm)) or "") .. num .. "/" .. den
+    else reaper.SetCurrentBPM(0, bpm, false); done[#done + 1] = string.format("%g BPM", bpm) end
+    reaper.UpdateTimeline()
+  end
+  local grid = tonumber(p.grid)
+  if empty and grid and grid > 0 then reaper.SetProjectGrid(0, grid); done[#done + 1] = "grid " .. M.grid_name(grid) end
   if st.colours and st.colours["colour look"] and #done > 0 and reaper.CountTracks(0) > 0 then -- (the tracks it brought, in its colours)
     local ok, n = pcall(function() return M.colours().colour_project(0, st.colours) end)
     if ok and n and n > 0 then done[#done + 1] = M.colours_label(st.colours):lower() elseif not ok then M.log("colouring the new project: " .. tostring(n)) end

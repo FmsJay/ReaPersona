@@ -1074,6 +1074,19 @@ do
   assert(got == 41605, "the designer's transport wins")
   assert(core.block_slot({ kind = "layout" }) == "layout" and core.block_title({ kind = "layout" }) == "Layout: your own")
 end
+do -- 27. project defaults: tempo, time signature and grid (5.33)
+  local ents = core.project_entries({ kind = "project", srate = 0, tracks = "", wset = 0, bpm = 92, ts_num = 6, ts_den = 8, grid = 1 / 12 })
+  local by = {}
+  for _, e in ipairs(ents) do by[e.slot] = e end
+  assert(by["project bpm"] and by["project bpm"].value.bpm == 92, "a tempo line")
+  assert(by["project ts"] and by["project ts"].value.ts_num == 6 and by["project ts"].value.ts_den == 8, "a time signature line")
+  assert(by["project grid"] and by["project grid"].label:find("1/8 triplet", 1, true), "the grid by its name")
+  local bad = core.project_entries({ kind = "project", srate = 0, tracks = "", wset = 0, bpm = 5, ts_num = 4, ts_den = 3, grid = 9 })
+  assert(#bad == 0, "no tempo under 10, no denominator of 3, no grid over 4")
+  assert(core.grid_name(0.25) == "1/4" and core.grid_name(1 / 24) == "1/16 triplet" and core.grid_name(0.3) == "0.3")
+  local st = assert(core.build_style({ { kind = "project", srate = 48000, tracks = "", wset = 0, bpm = 140, ts_num = 3, ts_den = 4 } }, "Waltz", "built_x"))
+  assert(st.project.srate == 48000 and st.project.bpm == 140 and st.project.ts_num == 3 and st.project.ts_den == 4, "into the persona's project part")
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")
