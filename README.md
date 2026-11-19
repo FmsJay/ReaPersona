@@ -38,7 +38,7 @@ Switching away puts back everything a persona changed, so **My REAPER** is alway
 
 ## Setup, in one place
 
-The first time, ReaPersona asks which DAW you're coming from and uses its persona straight away. The window has these pages: **Home** (setup), **Personas** (favourites, DAWs, your personas), **Shortcuts**, **Mouse**, **Layout**, **Themes** (yours, get more, adjust, build one), **Colours**, **Project** (defaults), **REAPER** (its options, an area per tab), **Settings** (sync, personas, scrolling & zoom, look, updates, remove) and **Help**. It works as a narrow window too; it always floats, so a persona that docks windows can't take it into a docker.
+The first time, ReaPersona asks which DAW you're coming from and uses its persona straight away; Home's Getting started then finishes setting up in one step (one REAPER restart). Show everything (bottom left) brings in the editors, Layout, Project, REAPER's options and the theme tools. The window has these pages: **Home** (setup), **Personas** (favourites, DAWs, your personas), **Shortcuts**, **Mouse**, **Layout**, **Themes** (yours, get more, adjust, build one), **Colours**, **Project** (defaults), **REAPER** (its options, an area per tab), **Settings** (sync, personas, scrolling & zoom, look, updates, remove) and **Help**. It works as a narrow window too; it always floats, so a persona that docks windows can't take it into a docker.
 
 **Home** lists everything ReaPersona can use, whether you have it, and a button for each:
 

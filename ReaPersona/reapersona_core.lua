@@ -1716,7 +1716,11 @@ function M.ensure_scripts()
                  ["play from start"] = { "play_from_start" }, ["follow projects"] = { "follow_projects" },
                  ["duplicate to new track"] = { "duplicate_to_new_track" }, ["autopunch"] = { "autopunch" },
                  ["remove leaving a gap"] = { "without_ripple", "40312" }, ["cut leaving a gap"] = { "without_ripple", "40307" },
-                 ["screen-reader menu"] = { "screen_reader_menu" }, ["notation editor"] = { "notation_editor" } }
+                 ["screen-reader menu"] = { "screen_reader_menu" }, ["notation editor"] = { "notation_editor" },
+                 -- (5.37, checked against each DAW's own docs: Pro Tools' edit modes are one exclusive group, so each is ripple and snap
+                 -- set together; Logic's and GarageBand's Cmd+D is a new track with the same settings, without its content)
+                 ["pt shuffle"] = { "run_cmds", "40310,40753" }, ["pt slip"] = { "run_cmds", "40309,40753" }, ["pt grid"] = { "run_cmds", "40309,40754" },
+                 ["new track like this"] = { "run_cmds", "40062,40421,40006" } }
   local names = {}
   for _, st in ipairs(M.styles) do main["use " .. st.id] = { "use_id", st.id }; local l = (st.short or st.name):lower(); names[l] = (names[l] or 0) + 1 end
   local todo, off, all, used = {}, {}, M.all_actions(), used_ids()
@@ -1795,6 +1799,14 @@ function M.duplicate_to_new_track()
 end
 -- Audacity's Silence, "Delete and leave gap" and "Cut and leave gap": remove or cut the selected area of the items with ripple editing off
 -- for this one edit (REAPER's own actions: SWS's smart remove took whole items when run from a script).
+function M.run_cmds(list) -- (5.37) several actions as one undo step: "40310,40753" (ids, or named "_..." ones)
+  reaper.Undo_BeginBlock()
+  for c in tostring(list):gmatch("[^,%s]+") do
+    local id = tonumber(c) or reaper.NamedCommandLookup(c)
+    if id and id ~= 0 then reaper.Main_OnCommand(id, 0) end
+  end
+  reaper.Undo_EndBlock("ReaPersona", -1)
+end
 function M.without_ripple(cmd)
   local id = tonumber(cmd) or reaper.NamedCommandLookup(cmd)
   if id == 0 then return end
@@ -3802,7 +3814,7 @@ end
 local function extstate_names() -- every key this version sets: some may not be in reaper-extstate.ini yet (REAPER writes it later)
   local t = { "style", "orig", "orig project", "view", "look", "migrated", "page", "welcomed", "text size", "all actions", "follow projects",
     "follow beat", "project default", "midi dock", "workflow", "search", "theme my_reaper", "theme path my_reaper", "sync folder", "sync id", "sync last", "sync file", M.LOOK_KEY, "update seen", "favourites",
-    "persona prefs", "themeset orig", "orig token" } -- (5.34-5.36's: review 2026-11-18)
+    "persona prefs", "themeset orig", "orig token", "advanced" } -- (5.34-5.37's: review 2026-11-18)
   for _, list in ipairs({ M.styles, M.presets }) do
     for _, st in ipairs(list) do for _, k in ipairs({ "theme ", "forks ", "declined theme " }) do t[#t + 1] = k .. st.id end end
   end

@@ -1,5 +1,29 @@
 # Changelog
 
+## 5.37.0
+- **The DAW personas checked against each DAW's own documentation** (Avid's Pro Tools Shortcuts Guide, Apple's Logic Pro 13 and GarageBand
+  guides, Ableton's Live 12 manual, Bitwig's guide, Image-Line's FL Studio manual, Reason 13's key commands, Steinberg's Cubase 14 and Nuendo
+  14 default key commands, the Studio One 7 sheet, Cakewalk's, Audacity's and Adobe Audition's references), and every REAPER action checked
+  against REAPER 7.86's list. About 100 fixes, among them:
+  - Pro Tools: F1 Shuffle, F2 Slip and F4 Grid are one exclusive group (each sets ripple and snap together), Shift+F4 toggles snap,
+    Shift+S solos, waveform zoom on Ctrl+Alt+[ ], Ctrl+D duplicates the selection, E is the zoom toggle, keypad +/- nudge.
+  - Logic: Undo History on Ctrl+Option+Cmd+Z, Cmd+D an empty track with the same settings (GarageBand too), comma and period move a bar,
+    V shows and hides plug-in windows, E and P close the editor again. The persona follows Logic Pro 13's keys (it says so now).
+  - Ableton: the Windows slide-clip modifier is Shift+Alt as in Live, M sends typing to the virtual MIDI keyboard, Option+wheel sizes the
+    selected track, Ctrl+J glues to the selection; Playtime is labelled as a paid add-on.
+  - FL Studio: F5 the playlist, F12 closes the other windows, Alt+M mutes and Alt+Shift+M unmutes, copies of a MIDI clip share their notes
+    (like patterns), R says it records straight away. Reason: F7, Z, Shift+Enter, keypad period, Ctrl+J glues.
+  - Cubase: Shift+M mutes and Shift+U unmutes, Alt+Space plays the selection, Project Setup, MixConsole, automation read/write for all
+    tracks, waveform zoom, and the five keys only Nuendo had. Studio One: Shift+S zoom toggle, Redo Zoom, precount, floating windows.
+  - Cakewalk: separate record and playback metronome, Delete/Cut/Copy follow the time selection, Q quantizes notes too, and Preferences,
+    arm all, close project, ProChannel, lock clip. Audacity: J/K are track start/end, Shift+arrows extend the selection, Up/Down move
+    between tracks. Audition: Delete/Cut/Copy follow the time selection, Shift+R repeats, Space leaves the playhead where it stopped.
+  Install and restart once to get the updated keys.
+- **Finish setting up, in one step:** Home's Getting started adds the startup line and installs the shortcuts with one restart.
+- **Show everything** (bottom of the list on the left, or Settings > Look): off, only the main tabs show (Home, Personas, Themes,
+  Colours, Shortcuts, Settings, Help); on, also the editors, Layout, Project, REAPER's options and the theme tools. A new install
+  starts with it off; one already in use keeps everything.
+
 ## 5.36.1
 Fixes from a review of the whole of ReaPersona (seven reviews: engine, the window, UX and wording, functionality, security, performance,
 the product). What was found, fixed and left: docs/REVIEW-2026-11-18.md.
