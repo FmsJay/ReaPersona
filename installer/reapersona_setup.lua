@@ -95,21 +95,28 @@ end
 -- Installs the persona's shortcuts: REAPER reads its keymap only when it starts, so it quits and comes back (about 10 seconds). As
 -- ReaPersona.lua's install_shortcuts(): install_shortcuts.py where a real Python runs, else the swap step core.stage_install writes
 -- (cmd on Windows, /bin/sh on a Mac or Linux). Everything is planned before the result is written; launch() then starts it and quits.
+-- What starts this REAPER again. The engine's M.relaunch_exe is the one rule (round 3); this copy, kept line for line the same, is only for
+-- an older ReaPersona that doesn't have it yet (round 4, code-health 7).
+local function relaunch_exe_copy(core)
+  -- (on a Mac GetExePath() is the folder holding REAPER.app, "/Applications", not a path inside it: install_shortcuts.py opens the .app)
+  local d = reaper.GetExePath():gsub("\\", "/"):gsub("/+$", "")
+  local win, mac = reaper.GetOS():find("^Win") ~= nil, core.IS_MAC
+  if mac then
+    local exe = d:match("^(.-%.app)") or d .. "/REAPER.app"
+    for _, a in ipairs({ d .. "/REAPER.app", d .. "/REAPER64.app" }) do if not d:match("%.app") and reaper.file_exists(a .. "/Contents/Info.plist") then exe = a; break end end
+    return exe
+  end
+  local exe = d .. (win and "/reaper.exe" or "/reaper") -- (Linux: the reaper binary beside it)
+  -- (an AppImage: GetExePath is its temporary mount, gone once REAPER quits, and $APPIMAGE is the file itself; only when this REAPER runs from
+  -- that mount ($APPDIR, on a / boundary): a REAPER started from another AppImage'd launcher inherits its APPIMAGE too)
+  local ai, appdir = os.getenv("APPIMAGE"), (os.getenv("APPDIR") or ""):gsub("/+$", "")
+  if not win and ai and ai ~= "" and appdir ~= "" and (d == appdir or d:sub(1, #appdir + 1) == appdir .. "/") then exe = ai end
+  return exe
+end
+
 local function plan_keys(core)
   if not reaper.file_exists(core.here .. "/midi_defaults.json") then core.midi_defaults() end
-  -- (on a Mac GetExePath() is the folder holding REAPER.app, "/Applications", not a path inside it: matching ".app" in it found nothing, and
-  -- REAPER quit and never came back. install_shortcuts.py opens a .app with `open -a`)
-  local d = reaper.GetExePath():gsub("\\", "/"):gsub("/+$", "")
-  local exe = d .. (reaper.GetOS():find("^Win") and "/reaper.exe" or "/reaper") -- (Linux: the reaper binary beside it)
-  -- (an AppImage: GetExePath is its temporary mount, gone once REAPER quits; $APPIMAGE is the file itself. Only when this REAPER runs from
-  -- that mount ($APPDIR): a REAPER started from some other AppImage'd launcher inherits its APPIMAGE too. Round 1 / round 2, cross-platform N2)
-  local ai, appdir = os.getenv("APPIMAGE"), (os.getenv("APPDIR") or ""):gsub("/+$", "")
-  if not core.IS_MAC and not reaper.GetOS():find("^Win") and ai and ai ~= "" and appdir ~= ""
-    and (d == appdir or d:sub(1, #appdir + 1) == appdir .. "/") then exe = ai end
-  if core.IS_MAC then
-    exe = d:match("^(.-%.app)") or d .. "/REAPER.app"
-    for _, a in ipairs({ d .. "/REAPER.app", d .. "/REAPER64.app" }) do if not d:match("%.app") and reaper.file_exists(a .. "/Contents/Info.plist") then exe = a; break end end
-  end
+  local exe = core.relaunch_exe and core.relaunch_exe() or relaunch_exe_copy(core)
   local cfg = reaper.get_ini_file():gsub("\\", "/") -- (-cfgfile users get REAPER back on the same configuration)
   os.remove(core.here .. "/install_cancelled") -- (an old one would stop the install at its first look)
   -- (on a Mac without the developer tools, /usr/bin/python3 is a stub that pops up an install offer: Python only where a real one is)
@@ -189,12 +196,19 @@ local function apply(path)
     local made = ok and path ~= nil
     step("shortcuts", made, made and (n .. " keys in " .. path .. (skipped and #skipped > 0 and (" (" .. #skipped .. " left out)") or ""))
       or ("no keymap file: " .. tostring(not ok and path or (skipped and skipped[1]) or "unknown")))
+    -- (single quotes keep a $ or ! in the path as it is. A ' in the path would need '\'' or '"'"', and the result's strings can't hold a
+    -- backslash or a double quote (clean() above), so then the window gives the command instead: Home > Install puts it on the clipboard. Round 4)
+    local function cmd(args)
+      if core.here:find("'", 1, true) then return "the command ReaPersona shows (Extensions > ReaPersona, Home > Install: it also goes on the clipboard)" end
+      return " python3 '" .. core.here .. "/install_shortcuts.py' " .. args .. " "
+    end
     out.note = "REAPER now looks and clicks like " .. st.name .. ". This Flatpak REAPER can't restart itself to load shortcuts, so: close REAPER, " ..
-      "run  python3 '" .. core.here .. "/install_shortcuts.py' --apply-setup  in a terminal, then start REAPER again." ..
+      "run " .. cmd("--apply-setup") .. " in a terminal, then start REAPER again." ..
       (made and (" (No python3? In REAPER: Actions > Show action list > Key Map... > Import..., pick " .. path .. " and choose to merge; toolbars aren't included.)") or "") ..
       -- (ReaPack's Uninstall deletes install_shortcuts.py, and with it the only way to take the layers and toolbars out again. Round 3, L6)
-      " To remove ReaPersona one day: close REAPER, run  python3 '" .. core.here .. "/install_shortcuts.py' --remove --apply-prefs  first, and " ..
-      "only then uninstall it in ReaPack (that command needs ReaPersona's files)."
+      " To remove ReaPersona one day: close REAPER, run " ..
+      (core.here:find("'", 1, true) and "the command Settings > Remove ReaPersona shows" or cmd("--remove --apply-prefs")) ..
+      " first, and only then uninstall it in ReaPack (that command needs ReaPersona's files)."
     return finish()
   end
   local start, how

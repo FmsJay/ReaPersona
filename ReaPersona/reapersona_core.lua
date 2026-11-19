@@ -125,6 +125,9 @@ function M.json_decode(s) -- objects, arrays, strings, numbers, booleans, null (
         else local v = val(); if v ~= nil then n = n + 1; t[n] = v end end -- (a null in a list is left out, not a hole that cuts it short)
         ws(); local d = s:sub(i, i); i = i + 1
         if d ~= "," then
+          -- (closed by its own bracket, or it's no whole file: one cut short after a whole entry read as a shorter file, past the updater's
+          -- check and the "doesn't parse: a copy kept" guard. Round 4 code health review)
+          if d ~= (obj and "}" or "]") then error("bad JSON at " .. (i - 1) .. " (cut short?)") end
           if obj and t["#int"] == true then -- (json_encode's mark: the whole-number keys were numbers)
             t["#int"] = nil
             local ks = {}
@@ -174,8 +177,14 @@ function M.json_encode(v, ind) -- for scripts.json and shared styles (pure)
       end
     else
       -- ("#int": its whole-number keys are numbers, so json_decode gives back [2], not ["2"]. Round 2 code health review)
-      local ints = false
-      for n2, k in ipairs(keys) do keys[n2] = { tostring(k), k }; ints = ints or math.type(k) == "integer" end
+      local ints, kept = false, {}
+      for _, k in ipairs(keys) do
+        -- ("3" beside 3: a settings block 5.40 saved with gaps, then changed on the REAPER tab. The number is the newer; one "3" written,
+        -- not two in no fixed order. Round 4)
+        local twin = type(k) == "string" and k:match("^%-?%d+$") and math.tointeger(tonumber(k))
+        if not (twin and v[twin] ~= nil) then kept[#kept + 1] = { tostring(k), k }; ints = ints or math.type(k) == "integer" end
+      end
+      keys = kept
       table.sort(keys, function(a, b) return a[1] < b[1] end)
       if ints then parts[1] = '"#int": true' end
       for _, k in ipairs(keys) do parts[#parts + 1] = M.json_encode(k[1]) .. ": " .. M.json_encode(v[k[2]], inner) end
@@ -367,6 +376,25 @@ local function docker_at(side) -- the first docker REAPER keeps on that side of 
   for i = 0, 15 do if reaper.DockGetPosition(i) == want then return i end end
 end
 M.docker_at = docker_at
+-- The docker a window goes into, as REAPER has it now (GetConfigWantsDock, measured: 0-15). shortcut: REAPER says 0 for a window it has
+-- never docked too, so "none yet" reads as Docker 1, which is also where such a window first docks. -> 0-15, or nil without the call
+function M.live_pref(ident)
+  local v = reaper.GetConfigWantsDock and reaper.GetConfigWantsDock(ident)
+  local d = math.tointeger(tonumber(v))
+  return d and d >= 0 and d <= 15 and d or nil
+end
+M.SIDE_POS = { bottom = 0, left = 1, top = 2, right = 3, floating = 4 } -- (where a docker sits: DockGetPosition's numbers; 4 a docker in its own window)
+-- A docker on that side of this computer for the window: its own when that's on the side (re-applying a persona keeps it; you chose
+-- among several there), else the first docker there; nil when there's none (round 4, James: dockers travel by side)
+local function docker_on(side, ident)
+  local want = M.SIDE_POS[side]
+  if not want then return nil end
+  local cur = ident and M.live_pref(ident)
+  if cur and reaper.DockGetPosition(cur) == want then return cur end
+  for i = 0, 15 do if reaper.DockGetPosition(i) == want then return i end end
+end
+M.docker_on = docker_on
+M.dock_assigned = {} -- (dockers ReaPersona gave a window this session: reaper.ini doesn't know them until REAPER quits)
 -- No docker on that side yet: take a spare one (nothing docked in it, no settings of its own) and, once the window is in it, send it
 -- to that side with "Docker: Show in <side> of main window" (41598 + side), which acts on the focused window's docker. The same
 -- spare is reused next time (ExtState "docker <side>"); left empty, REAPER doesn't show it.
@@ -375,6 +403,7 @@ local function spare_docker(side)
   if kept and reaper.DockGetPosition(kept) == SIDES[side] then return kept end
   local t = M.read(res .. "/reaper.ini") or ""
   local used = {}
+  for n in pairs(M.dock_assigned) do used[n] = true end -- (given this session: round 4 engine review)
   for n in t:gmatch("\ndocker[sm][eo][ld][e]?(%d+)=") do used[tonumber(n)] = true end -- (dockersel<N>, dockermode<N>)
   for n in (M.ini_section(t, "REAPERdockpref") or ""):gmatch("=%S+ (%d+)") do used[tonumber(n)] = true end
   for i = 15, 1, -1 do
@@ -383,14 +412,17 @@ local function spare_docker(side)
 end
 M.spare_docker = spare_docker
 function M.ini_section(t, name) -- the body of [name] in an ini text (up to the next line starting with "["), or nil
-  local s = t:find("[" .. name .. "]", 1, true)
+  -- (the name in any case: this drive's reaper.ini says [reaper], older files [REAPER], and REAPER keeps whichever a file has. Looked for
+  -- as written first, so the big files' sections (reaper-extstate.ini) cost no lowering. Round 4 cross-platform review)
+  local s = t:find("[" .. name .. "]", 1, true) or t:lower():find("[" .. name:lower() .. "]", 1, true)
   if not s then return nil end
   local e = t:find("\n%[", s + 1)
   return t:sub(s + #name + 2, e or #t)
 end
-local function ini_window(w) -- what reaper.ini last saved: docked?, and its docker preference
+local function ini_window(w) -- what reaper.ini last saved: docked?, and its docker preference (REAPER's live one when it says)
   local t = M.read(res .. "/reaper.ini") or ""
-  local pref = tonumber((M.ini_section(t, "REAPERdockpref") or ""):match("\n" .. WINDOWS[w].ident .. "=%S+ (%d+)") or "") or 0
+  -- (live: after a restart reaper.ini holds the dockers of the persona that was in use as REAPER quit, not yours. Round 4 engine review)
+  local pref = M.live_pref(WINDOWS[w].ident) or tonumber((M.ini_section(t, "REAPERdockpref") or ""):match("\n" .. WINDOWS[w].ident .. "=%S+ (%d+)") or "") or 0
   local docked = WINDOWS[w].ini and (M.ini_section(t, "REAPER") or ""):match("\n" .. WINDOWS[w].ini .. "%s*=%s*(%d)") == "1"
     or (M.ini_section(t, "reaper_" .. w) or ""):match("\ndocked=(%d)") == "1"
   return docked, pref
@@ -421,6 +453,8 @@ local function move_window(w, want)
   if not (W and reaper.JS_Window_OnCommand and reaper.Dock_UpdateDockID) then return end
   local token = {}
   pending[w] = { want = want, token = token } -- (until it's there, this is where the window "is", for the next style's snapshot)
+  if want.docker then M.dock_assigned[want.docker] = true end
+  if want.pref then M.dock_assigned[want.pref] = true end
   later(function() -- (returns true: not there yet, try again in a moment)
     if reaper.GetToggleCommandState(W.show) ~= 1 then reaper.Main_OnCommand(W.show, 0); return true end
     local h = reaper.JS_Window_Find(W.title, true)
@@ -499,6 +533,7 @@ function M.windows_now(fast, putback) -- -> every window above as it is now (nil
       if putback then
         ini = ini or M.read(res .. "/reaper.ini") or ""
         e.d, e.dp = M.closed_dock(ini, w[1]) -- (docked or floating when it was closed, and its docker: put back that way. James, round 2)
+        e.dp = M.live_pref(w[1]) or e.dp -- (its docker as REAPER has it now: reaper.ini can hold a persona's since the last restart. Round 4)
       end
     else e = { s = reaper.GetToggleCommandState(w[3]) == 1 and 1 or 0 } end
     out[w[1]] = e
@@ -506,8 +541,8 @@ function M.windows_now(fast, putback) -- -> every window above as it is now (nil
   return out
 end
 -- Where reaper.ini keeps a window's docked flag when it isn't dock= in [<ident>]: Undo History and the Routing Matrix in REAPER's main
--- section, the Crossfade Editor in [fadeedit] (as BuyOne's "Save-Load window set" reads them; the drive's own reaper.ini has undownd_* and
--- routingwnd_vis in [reaper]. Round 3 engine review)
+-- section (the drive's own reaper.ini has undownd_* and routingwnd_vis in [reaper]. Round 3 engine review). The Crossfade Editor has its
+-- own [xfadeedit] section, as checked on the laptop, so the usual rule finds it.
 M.DOCK_KEYS = { undo = { "reaper", "undownd_dock" }, routing = { "reaper", "routing_dock" } } -- (seen in reaper.ini on the laptop; the Crossfade Editor has its own [xfadeedit] section)
 function M.closed_dock(ini, ident) -- (pure) a closed window as reaper.ini last saved it: 1 docked / 0 floating, and the docker it docks into (or nil)
   -- (its own section's dock=, as REAPER writes it for toolbars and the MIDI editor; none: never docked. shortcut: reaper.ini as REAPER last
@@ -675,7 +710,8 @@ local function place_window(w, x, state) -- one step towards x; true: not there 
     end
     return
   end
-  state.want = state.want or docker_at(x.p) or spare_docker(x.p)
+  -- (its own docker when that's on this side: a dockers part on the same side, or yours, kept; else the first there. Round 4)
+  state.want = state.want or docker_on(x.p, w[1]) or spare_docker(x.p)
   if not state.want or (state.tries or 0) >= 4 then return end
   state.tries = (state.tries or 0) + 1
   reaper.Dock_UpdateDockID(w[1], state.want)
@@ -779,7 +815,7 @@ do
     end
     return out
   end
-  function M.dock_is_script(ident) return ident:match("^reaimgui:") ~= nil or ident:match("%.[lL][uU][aA]$") ~= nil or ident:match("%.eel$") ~= nil or ident:match("%.py$") ~= nil end
+  function M.dock_is_script(ident) local l = ident:lower(); return l:match("^reaimgui:") ~= nil or l:match("%.lua$") ~= nil or l:match("%.eel$") ~= nil or l:match("%.py$") ~= nil end
   function M.dock_window_name(ident) -- -> a name to show: "Mixer", "Toolbar 26", StudioSync's window title, a script's name
     if names[ident] then return names[ident] end
     local n
@@ -789,43 +825,65 @@ do
     elseif ident == "toolbar" then n = "Main toolbar"
     elseif ident:match("^toolbar:%d+$") then n = "Toolbar " .. ident:match("%d+")
     elseif ident:match("^reaimgui:") then -- (its context's settings file names the windows: [Window][<title>]; ImGui's own debug window left out)
-      local titles, seen = {}, {}
+      -- (one name: the script's main window, the first it opened, which comes first after ImGui's Debug; its other dialogs left out. A title
+      -- written "###Name" or "Label###Name" is saved as ###Name, the window's id, which is its name here: StudioSync's main window is
+      -- "###StudioSync", and was skipped, so its dialogs were joined into "Make a drum map / StudioSync feedback / Invitation". Round 4 UX)
       for t in ((M.read(res .. "/ReaImGui/" .. ident:sub(10) .. ".ini") or "") .. "\n"):gmatch("%[Window%]%[([^\r\n]-)%]%s*\r?\n") do
-        local shown = t:match("^(.-)##") or t -- (after ## is ImGui's id, not shown)
-        if shown ~= "" and not t:match("^Debug##") and not t:match("^WindowOverViewport") and not seen[shown] then seen[shown] = true; titles[#titles + 1] = shown end
+        local shown = t:match("###(.+)$") or t:match("^(.-)##") or t -- (after ## is ImGui's id, not shown; after ### the id is the name)
+        if shown ~= "" and not t:match("^Debug##") and not t:match("^WindowOverViewport") then n = shown; break end
       end
-      n = #titles > 0 and table.concat(titles, " / ") or ("A script's window (" .. ident:sub(10) .. ")")
+      n = n or ("A script's window (" .. ident:sub(10) .. ")")
     elseif not n and M.dock_is_script(ident) then n = ident:gsub("%.%a+$", "") end
     names[ident] = n or ident
     return names[ident]
   end
-  function M.safe_dockpref(t) -- (pure) only plain window names and dockers 0-15; nil when there's none
+  -- (James, round 4: dockers travel BY SIDE. A persona keeps { [ident] = "bottom" | "left" | "top" | "right" | "floating" } and each
+  -- computer uses a docker on that side (docker_on). 5.43.0 kept docker numbers, which are each computer's own: a number is read as the
+  -- side that docker has on this computer, live (DockGetPosition) or as reaper.ini last saved it)
+  M.DOCK_SIDES = { "bottom", "left", "top", "right", "floating" }
+  local SIDE_WORDS = { bottom = "at the bottom", left = "on the left", top = "at the top", right = "on the right", floating = "in a floating docker" }
+  function M.docker_side(n) -- docker n's side on this computer: "bottom" ... "floating"
+    local pos = reaper.DockGetPosition and reaper.DockGetPosition(n)
+    if type(pos) ~= "number" or pos < 0 then pos = (M.dockers(M.read(res .. "/reaper.ini") or "")[n + 1] or {}).pos or 0 end
+    return M.DOCK_SIDES[pos + 1] or "bottom"
+  end
+  function M.safe_dockpref(t) -- only plain window names, each a side (a 5.43 docker number becomes its side here); nil when there's none
     if type(t) ~= "table" then return nil end
     local out, any = {}, false
     for k, v in pairs(t) do
       local d = math.tointeger(tonumber(v))
-      if M.dock_ident_ok(k) and d and d >= 0 and d <= 15 then out[k] = d; any = true end
+      if M.dock_ident_ok(k) then
+        if type(v) == "string" and SIDE_WORDS[v] then out[k] = v; any = true
+        elseif d and d >= 0 and d <= 15 then out[k] = M.docker_side(d); any = true end
+      end
     end
     return any and out or nil
   end
-  function M.dockpref_label(t) -- "Window dockers: StudioSync in Docker 3, Toolbar 26 in Docker 16"
+  function M.dockpref_label(t) -- "Window dockers: Mixer at the bottom, StudioSync on the left"
     local list = {}
-    for k, d in pairs(t or {}) do list[#list + 1] = M.dock_window_name(k) .. " in Docker " .. (d + 1) end
+    for k, s in pairs(t or {}) do list[#list + 1] = M.dock_window_name(k) .. " " .. (SIDE_WORDS[s] or tostring(s)) end
     table.sort(list)
     return "Window dockers: " .. table.concat(list, ", ")
   end
-  function M.dock_docker_now(ident) -- the docker a window goes into now: REAPER's answer, else reaper.ini's; or nil
-    local d = reaper.GetConfigWantsDock and math.tointeger(tonumber(reaper.GetConfigWantsDock(ident)))
-    if d and d >= 0 and d <= 15 then return d end
-    for _, p in ipairs(M.dock_prefs(M.read(res .. "/reaper.ini"))) do if p.ident == ident then return p.docker end end -- (shortcut: as REAPER last saved it)
+  function M.dock_docker_now(ident) -- the docker a window goes into now: REAPER's answer (0 for one it has never docked, so always a
+    -- number while the call is there: see M.live_pref), else reaper.ini's as REAPER last saved it; or nil
+    local d = M.live_pref(ident)
+    if d then return d end
+    for _, p in ipairs(M.dock_prefs(M.read(res .. "/reaper.ini"))) do if p.ident == ident then return p.docker end end
   end
-  function M.dock_now(ident, d) -- the mixer or Media Explorer, open and docked in another docker now: moved there at once. -> true when it can be
+  -- The mixer or Media Explorer into docker d. Through window_now and move_window, so a move already queued (the last persona's put-back,
+  -- or this switch's) counts as where it is, and this one is queued after it and wins: re-applying a persona kept your docker, and coming
+  -- from a persona that docked it recorded that persona's (round 4 engine review). Open and docked: moved now; else REAPER's choice set.
+  -- -> true when ident is one of the two
+  function M.dock_now(ident, d)
     local W = WINDOWS[ident]
-    if not (W and reaper.JS_Window_Find and reaper.GetToggleCommandState(W.show) == 1) then return false end
-    local h = reaper.JS_Window_Find(W.title, true)
-    local now = h and reaper.DockIsChildOfDock(h)
-    if not (now and now >= 0) then return false end -- (floating or closed: it goes there the next time it docks)
-    if now ~= d then move_window(ident, { shown = true, docker = d }) end
+    if not W then return false end
+    local shown, cur = window_now(ident):match("^d|[^|]+|(%d)|(%-?%d+)")
+    cur = tonumber(cur) or -1
+    local can = reaper.JS_Window_OnCommand ~= nil
+    if can and pending[ident] then move_window(ident, { shown = shown == "1", docker = cur >= 0 and d or nil, pref = d })
+    elseif can and shown == "1" and cur >= 0 and cur ~= d then move_window(ident, { shown = true, docker = d, pref = d })
+    else reaper.Dock_UpdateDockID(ident, d); M.dock_assigned[d] = true end
     return true
   end
 end
@@ -918,8 +976,10 @@ local function restore_feel(windows_left) -- (windows_left: a window's original 
     elseif kind == "w" and a ~= "" then -- (every other window, as it was before the persona: 5.34)
       M.apply_windows(M.json_decode(unhexs(a)), true)
     elseif kind == "k" then -- (the docker a window goes into, yours back: 5.43)
-      local ident, d = unhexs(a), math.tointeger(tonumber(b))
-      if M.dock_ident_ok(ident) and d and d >= 0 and d <= 15 then reaper.Dock_UpdateDockID(ident, d); M.dock_now(ident, d) end
+      local ident, d = unhexs(a), math.tointeger(tonumber(b)) -- (a number: a put-back list is this computer's own)
+      if M.dock_ident_ok(ident) and d and d >= 0 and d <= 15 then
+        if not M.dock_now(ident, d) then reaper.Dock_UpdateDockID(ident, d); M.dock_assigned[d] = true end
+      end
     elseif (kind == "t" or kind == "s" or kind == "c" or (kind == "r" and a ~= "none")) and not M.feel_ok()[a] then
       M.log("put back: not one of ReaPersona's settings, left: " .. list[n]) -- (review 2: whatever reached this list can't run other actions)
     elseif kind == "t" then
@@ -1000,6 +1060,11 @@ local function apply_feel(st, windows_left, as_base) -- (as_base: your own look 
   local moves = {}
   local function wanted(f) return as_base or M.aspect_on(M.aspect_of(f)) end -- (the aspect switches are about personas, not your look)
   for _, f in ipairs(st.feel or {}) do if f[1] == "dock" and wanted(f) then moves[f[2]] = true end end
+  local placed = {} -- (windows its layout docks: the dockers part leaves those to it)
+  for w in pairs(moves) do placed[w] = true end
+  for _, f in ipairs(st.feel or {}) do
+    if f[1] == "windows" and wanted(f) then for id, x in pairs(M.safe_windows(f[2]) or {}) do if x.s == 1 and x.p and x.p ~= "float" then placed[id] = true end end end
+  end
   for w, line in pairs(windows_left) do -- (windows the last style moved and this one doesn't: put back first, so this style's mixer
     if not moves[w] then window_back(line); windows_left[w] = nil end -- shown/hidden comes after, not under, the move back)
   end
@@ -1011,7 +1076,7 @@ local function apply_feel(st, windows_left, as_base) -- (as_base: your own look 
     local ok, err = pcall(function()
     if not wanted(f) then return end
     if f[1] == "dock" and WINDOWS[f[2]] and reaper.JS_Window_OnCommand then
-      local d, made = f[3] ~= "float" and docker_at(f[3]) or nil, nil
+      local d, made = f[3] ~= "float" and docker_on(f[3], WINDOWS[f[2]].ident) or nil, nil -- (its own docker when on that side: round 4)
       if f[3] ~= "float" and not d then d = spare_docker(f[3]); made = d and f[3] end -- (no docker on that side yet: one is set up)
       if f[3] ~= "float" and not d then return end -- (no spare docker either: the window stays where it is)
       list[#list + 1] = pre[f[2]] or windows_left[f[2]] or window_now(f[2]) -- (the original from before any style, if the last style moved it)
@@ -1065,7 +1130,14 @@ local function apply_feel(st, windows_left, as_base) -- (as_base: your own look 
         local idx = #list + 1
         list[idx] = "w||"
         later(function()
-          list[idx] = "w|" .. hexs(M.json_encode(M.windows_now(nil, true) or {})) .. "|" -- (a put-back list: closed windows' docking kept)
+          local now = M.windows_now(nil, true) or {}
+          -- (a window this switch's dockers part already moved: its docker from before, as that part's k| line kept it. Round 4 engine review)
+          for _, l in ipairs(list) do
+            local id, old = l:match("^k|(%x*)|(%d+)$")
+            local e = id and now[unhexs(id)]
+            if e and e.s == 0 then e.dp = tonumber(old) end
+          end
+          list[idx] = "w|" .. hexs(M.json_encode(now)) .. "|" -- (a put-back list: closed windows' docking kept)
           save(true)
         end)
       end
@@ -1075,11 +1147,22 @@ local function apply_feel(st, windows_left, as_base) -- (as_base: your own look 
       for k in pairs(want) do ids[#ids + 1] = k end
       table.sort(ids) -- (the same order every time, so the put-back list reads the same)
       for _, k in ipairs(ids) do
-        local was = M.dock_docker_now(k)
-        -- (shortcut: a window with no docker of its own yet keeps the persona's after a switch away; REAPER can't forget one)
-        if not as_base and was and was ~= want[k] then list[#list + 1] = "k|" .. hexs(k) .. "|" .. was end
-        reaper.Dock_UpdateDockID(k, want[k])
-        if not moves[k] then M.dock_now(k, want[k]) end -- (one this persona's layout docks already: the layout's move, not two)
+        -- (a window this persona's layout also places, docked (a "dock" entry, or open on a side in its windows part): the layout decides
+        -- where it docks, and the dockers part leaves it alone; on the same side the layout uses that window's own docker anyway. Round 4)
+        if not placed[k] then
+          local d, spare = docker_on(want[k], k), false
+          -- (no docker on that side here: for the mixer and Media Explorer a spare one, sent to that side as the window docks into it, as their
+          -- layout does; another window can't be docked from here, so it's left as it is: shortcut, until a docker sits on that side)
+          if not d and WINDOWS[k] and SIDES[want[k]] then d = spare_docker(want[k]); spare = d ~= nil end
+          -- (where it goes now; for the mixer and Media Explorer through window_now, which knows a queued put-back. REAPER answers 0 for a
+          -- window it has never docked, so that's what goes back: Docker 1, where it would first dock anyway)
+          local was = WINDOWS[k] and tonumber(window_now(k):match(",(%d+)$")) or M.dock_docker_now(k)
+          if d then
+            if not as_base and was and was ~= d then list[#list + 1] = "k|" .. hexs(k) .. "|" .. was end
+            if spare then move_window(k, { shown = window_now(k):match("^d|[^|]+|(%d)") == "1", docker = d, side = want[k], pref = d })
+            elseif not M.dock_now(k, d) then reaper.Dock_UpdateDockID(k, d); M.dock_assigned[d] = true end
+          end
+        end
       end
     elseif f[1] == "midi_dock" then -- ["midi_dock", 1 docked / 0 floating, what]
       list[#list + 1] = "e|" .. (M.midi_docked() and 1 or 0) .. "|"
@@ -2120,10 +2203,15 @@ function M.scripts_missing()
   -- (and ones REAPER lost: a keymap put back from a backup, or imported with "replace", drops their registrations while scripts.json keeps
   -- the ids. Looked at most every 2 seconds: Check asks every frame. Round 3 install review)
   if not M._lost or reaper.time_precise() - M._lost.at > 2 then
-    local lost = 0
-    for _, part in ipairs({ M.scripts.main, M.scripts.midi }) do
-      for _, id in pairs(part) do if type(id) == "string" and reaper.NamedCommandLookup(id) == 0 then lost = lost + 1 end end
+    -- (only the ones ensure_scripts looks after: a persona deleted on another computer, or a MIDI key no persona has now, left an id nothing
+    -- registers again, and the count stayed short for good. Round 4 performance and changes reviews)
+    local lost, specs = 0, {}
+    for _, st in ipairs(M.styles) do for _, k in ipairs(st.midi_keys or {}) do specs[k[1]] = true end end
+    for name, id in pairs(M.scripts.main) do
+      local use = name:match("^use (.+)$")
+      if type(id) == "string" and (not use or M.by_id(use)) and reaper.NamedCommandLookup(id) == 0 then lost = lost + 1 end
     end
+    for spec, id in pairs(M.scripts.midi) do if type(id) == "string" and specs[spec] and reaper.NamedCommandLookup(id) == 0 then lost = lost + 1 end end
     M._lost = { at = reaper.time_precise(), n = lost }
   end
   return n + M._lost.n
@@ -2625,10 +2713,10 @@ function M.block_title(b)
   -- second colon read badly, and OSARA read it out. Round 3 UX review)
   local function low(s) s = tostring(s); return (s:match("^%u%u") or s:match("^Media ")) and s or (s:sub(1, 1):lower() .. s:sub(2)) end
   if b.kind == "daw" then
-    if M.block_slot(b) == "keys" then return b.id == "my_reaper" and "Your own shortcuts" or (name .. "'s shortcuts") end
+    if M.block_slot(b) == "keys" then return b.id == "my_reaper" and "your own shortcuts" or (name .. "'s shortcuts") end -- ("your": it's said mid-sentence, round 4)
     return name
   elseif b.kind == "mouse" then return name .. "'s mouse"
-  elseif b.kind == "feel" then return (b.id and (name .. "'s ") or "Your ") .. low(M.aspect_name(b.aspect)) -- (5.34: windows set on Layout have no persona)
+  elseif b.kind == "feel" then return (b.id and (name .. "'s ") or "your ") .. low(M.aspect_name(b.aspect)) -- (5.34: windows set on Layout have no persona)
   elseif b.kind == "settings" then return (group_by_id(b.group) or { name = tostring(b.group) }).name
   elseif b.kind == "theme" then return "the " .. tostring(b.file):gsub("%.ReaperTheme%a*$", "") .. " theme"
   elseif b.kind == "colour" then return "its colour"
@@ -2871,6 +2959,17 @@ function M.both_systems() -- personas you built before both systems' keys were k
   local changed, todo = {}, {}
   for _, st in ipairs(M.styles) do
     if st.user and st.kind == "built" and st.both_os ~= M.BOTH_OS and not st.keys_from and type(st.blocks) == "table" then todo[#todo + 1] = { st = st, old = st.keys or {} } end
+    -- (one saved from one DAW by 5.40/5.41 with a key moved or added: it borrowed the DAW's layer and the move was lost. It gets a layer of
+    -- its own and its keys from its blocks, once; its shortcuts then need installing, as Home says. Round 4 default)
+    if st.user and st.kind == "built" and st.both_os ~= M.BOTH_OS and st.keys_from and type(st.blocks) == "table" then
+      local moved = false
+      for _, b in ipairs(st.blocks) do
+        if type(b) == "table" and ((type(b.rebind) == "table" and next(b.rebind)) or (type(b.extra) == "table" and next(b.extra))) then moved = true end
+      end
+      local a = moved and free_alt()
+      if a then st.keys_from, st.alt = nil, a; todo[#todo + 1] = { st = st, old = {}, layer = true }
+      elseif moved then M.log(tostring(st.name) .. ": a key moved, but no shortcut layer is free for it") end
+    end
   end
   if #todo == 0 then return end
   local function rebuild(t)
@@ -2901,7 +3000,10 @@ function M.both_systems() -- personas you built before both systems' keys were k
   if next(changed) == nil then return end
   local users = load(USERS)
   if bad[USERS] then return end
-  for _, u in ipairs(users) do local st = changed[u.id]; if st then u.keys, u.midi_keys, u.both_os = st.keys, st.midi_all, M.BOTH_OS end end
+  for _, u in ipairs(users) do
+    local st = changed[u.id]
+    if st then u.keys, u.midi_keys, u.both_os = st.keys, st.midi_all, M.BOTH_OS; if not st.keys_from then u.keys_from, u.alt = nil, st.alt end end
+  end
   M.save_json(USERS, { styles = users })
 end
 function M.build_style(blocks, name, id) -- -> the persona (not saved yet), true when its shortcuts need installing; or nil + why
@@ -4006,7 +4108,7 @@ local function cmd_step(dir, p) -- (cmd, not PowerShell: PowerShell hangs at sta
     return sys .. 'tasklist.exe" /FI "IMAGENAME eq reaper.exe" /NH 2>nul | ' .. sys .. 'find.exe" /i "reaper.exe" >nul || goto ' .. label -- shortcut: any REAPER counts when this one's id wasn't found
   end
   b[#b + 1] = running_or("closed")
-  for _, l in ipairs({ "set /a n+=1", "if %n% geq 180 goto notclosed", sys .. 'ping.exe" -n 2 127.0.0.1 >nul', "goto wait", ":closed" }) do b[#b + 1] = l end -- (180 x 1 s: REAPER may be asking whether to save)
+  for _, l in ipairs({ "set /a n+=1", "if %n% geq 1800 goto notclosed", sys .. 'ping.exe" -n 2 127.0.0.1 >nul', "goto wait", ":closed" }) do b[#b + 1] = l end -- (1800 x 1 s, as install_shortcuts.py: a save prompt can stay open; round 4)
   for _, c in ipairs(p.checks) do
     if c[1] == "same" then b[#b + 1] = sys .. 'fc.exe" /b ' .. w(c[2]) .. " " .. w(c[3]) .. " >nul 2>&1 || goto changed"
     else b[#b + 1] = "if exist " .. w(c[2]) .. " goto changed" end
@@ -4073,7 +4175,7 @@ local function sh_step(dir, p) -- (POSIX sh and the tools every Mac and Linux ha
     "n=0", "while :; do",
     '  if [ -e "$cancel" ]; then g=0; while running && [ $g -lt 15 ]; do g=$((g + 1)); sleep 1; done; rm -f "$cancel"; running && finish; break; fi',
     "  running || break",
-    "  n=$((n + 1)); [ $n -ge 180 ] && outcome notclosed", "  sleep 1", "done" }) do b[#b + 1] = l end -- (180 x 1 s: REAPER may be asking whether to save)
+    "  n=$((n + 1)); [ $n -ge 1800 ] && outcome notclosed", "  sleep 1", "done" }) do b[#b + 1] = l end -- (1800 x 1 s, as install_shortcuts.py: a save prompt can stay open; round 4)
   for _, c in ipairs(p.checks) do
     if c[1] == "same" then b[#b + 1] = "cmp -s " .. q(c[2]) .. " " .. q(c[3]) .. " || outcome changed"
     else b[#b + 1] = "[ -e " .. q(c[2]) .. " ] && outcome changed" end
@@ -5688,7 +5790,10 @@ end
 local CODE_MAX = 4 * 1024 * 1024
 -- (files the system makes beside yours: Finder's .DS_Store and ._ copies, Windows' Thumbs.db and desktop.ini. Never synced: a .DS_Store
 -- changes with every Finder view and landed as junk on Windows. Round 3 cross-platform review) (pure)
-function M.os_junk(name) local l = tostring(name):lower(); return l == ".ds_store" or l:sub(1, 2) == "._" or l == "thumbs.db" or l == "desktop.ini" end
+function M.os_junk(name) -- (and KDE Dolphin's .directory: round 4)
+  local l = tostring(name):lower()
+  return l == ".ds_store" or l:sub(1, 2) == "._" or l == "thumbs.db" or l == "desktop.ini" or l == ".directory"
+end
 -- Files: walk a folder of the resource path. -> { [relative path] = full path }
 local function walk(base, rel, out, keep)
   local dir = base .. (rel ~= "" and ("/" .. rel) or "")

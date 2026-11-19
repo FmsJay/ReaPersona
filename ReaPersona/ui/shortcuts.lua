@@ -100,7 +100,8 @@ function persona_keys_card()
   local lines, count, listed = b and core.build_preview({ b })[1] or {}, {}, 0
   for _, e in ipairs(lines) do if e.kind == "key" or e.kind == "midi" then listed = listed + 1 end end
   if b and listed == 0 then -- (your own shortcuts are REAPER's keymap as it is: nothing to list here, and an empty box looked broken. James, 2026-11-19)
-    muted("Your own shortcuts are your REAPER keymap, used as they are. Load a persona's or DAW's keys above to change them key by key, or add keys of your own below.")
+    muted(b.id == "my_reaper" and "Your own shortcuts are your REAPER keymap, used as they are, so there's nothing to list here. To change keys one by one, load a persona's or DAW's keys above (they take the place of yours in this persona), or add keys of your own below."
+      or ((core.by_id(b.id) or { name = "That persona" }).name .. " has no shortcuts of its own, so your REAPER keymap is used. Load another persona's or DAW's keys above, or add keys of your own below."))
     b = nil
   end
   if b then

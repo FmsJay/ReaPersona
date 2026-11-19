@@ -8,6 +8,7 @@ Fails on:
   LuaLS sees every file of the folder at once, so it counts those as defined. That's why the folder is checked as a whole.
 - lowercase-global outside ui/: the engine, the key helpers, colours and the loader are modules; a global written there leaks into
   every script REAPER runs. (In ui/ every shared name is such a global by design, so it's ignored there.)
+- a syntax error (miss-end, miss-symbol, unexpect-symbol...: round 4). tools/check.py also compiles every file.
 Everything else is counted and printed, not failed: known false positives include unbalanced-assignments on
 `ok, p = reaper.JS_x and reaper.JS_x(...)`, undefined-field on tables filled at runtime, and need-check-nil.
 """
@@ -27,9 +28,14 @@ def luals():
     return found
 
 
+def syntax_code(code):
+    """LuaLS's syntax-error codes (miss-end, miss-symbol, unexpect-symbol, err-..., malformed-number...). Pure."""
+    return code.startswith(("miss-", "unexpect-", "err-", "malformed-")) or code in ("unknown-symbol", "unsupport-symbol", "keyword")
+
+
 def must_fix(rel, code):
     """Is this diagnostic a failure? rel: the file's path inside the checked folder, with / separators. Pure."""
-    return code == "undefined-global" or (code == "lowercase-global" and not rel.startswith("ui/"))
+    return code == "undefined-global" or (code == "lowercase-global" and not rel.startswith("ui/")) or syntax_code(code)
 
 
 def main():

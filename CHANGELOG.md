@@ -1,5 +1,23 @@
 # Changelog
 
+## 5.44.0
+Fixes from review round 4 (fresh reviewers on 5.43.0; performance came back solid; reports in reapersona-round4/). The review loop pauses here.
+- **Window dockers go by side now** (James): a persona says a window docks bottom, left, top, right or in a floating docker, and each
+  computer uses a docker on that side, so a synced persona puts StudioSync or a toolbar in the right place everywhere. Personas saved by
+  5.43.0 with docker numbers are read as the side that docker has here.
+- **The dockers card:** StudioSync and other script windows show under their own name (not their dialogs'); each window starts on the side
+  it docks on now; the docker list has a heading and reads "Docker 1 (bottom): Mixer, ..."; Help, the Layout tab's text and search mention
+  the card; Load from only shows when a persona has dockers; it says so when its switch in Settings > Personas is off.
+- **Dockers fixed:** applying a persona again keeps its mixer and Media Explorer dockers; switching from a persona that docks the Media
+  Explorer remembers your own docker; dockers are read from REAPER, not from settings a persona left in reaper.ini; a docked but closed
+  mixer is seen as docked on every computer (REAPER's [reaper] section in any case).
+- **Undo and Redo with Preview on** switch REAPER once, about 0.15 s after your last press (James). **Saving My REAPER** during a preview
+  works like any persona: it's in use and Undo switch goes back (James). Save no longer turns your remembered Preview tick off.
+- **Smaller:** the install without Python waits up to 30 minutes for a save question too; a cut-short JSON file is refused, not half read;
+  Flatpak: the command is only said to be copied when it was, and the steps say to paste it before closing REAPER; the wheel form on Mouse &
+  trackpad waits for Add like the drag form; closing the window during an install's quit check can't make REAPER restart later by itself.
+- **For developers:** tools/check.py syntax-checks every .py and .lua file and gives each step a time limit; test_ui opens combos and popups.
+
 ## 5.43.0
 - **Layout > More windows and dockers** (James): a persona can now say which docker any dockable window goes into. It lists your dockers
   and what REAPER keeps in each; **Add a window** offers every window REAPER has docked (toolbars, the transport, the mixer, script windows

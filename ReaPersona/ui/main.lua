@@ -10,7 +10,7 @@ GROUPS = { -- { name, what it's for, its pages (tabs), the tabs' labels }
   { "Colours", "Colour the project: tracks, items and regions, by gradient, folder, instrument, section and more.", { "Colours" }, { "Colours" } }, -- (its own tab since 5.25: James)
   { "Shortcuts", "Your persona's shortcuts, and every key of any persona with REAPER's action for it.", { "Shortcuts" }, { "Shortcuts" } },
   { "Mouse & trackpad", "Your persona's mouse wheel, trackpad gestures, drags and clicks, from any persona.", { "Mouse" }, { "Mouse & trackpad" } },
-  { "Layout", "Your persona's mixer, transport, browser, toolbar, MIDI editor, and snap and ripple, each from any persona.", { "Layout" }, { "Layout" } },
+  { "Layout", "Your persona's mixer, transport, browser, toolbar, MIDI editor, and snap and ripple, each from any persona; and which docker each window goes into (toolbars and script windows too).", { "Layout" }, { "Layout" } },
   { "Project", "Your persona's project defaults: sample rate, tempo, time signature, grid, starter tracks or a template, a window set.", { "Project" }, { "Project defaults" } },
   { "REAPER", "REAPER's own options and SWS's, an area per tab, each to make part of your persona.", {}, {} }, -- (tabs: below, one per setting group)
   { "Settings", "ReaPersona's own settings: your other computers, what personas may change, scrolling and zoom, its look, updates.", { "Settings", "SetPersonas", "SetScroll", "SetLook", "SetUpdates", "SetRemove" }, { "Sync", "Personas", "Scrolling & zoom", "Look", "Updates", "Remove" } },
@@ -56,7 +56,7 @@ GUIDE = {
     "Colours: colour the whole project at once: tracks by gradient, folder or instrument, items by section or take, regions too. Try it first, then keep it or put it back.",
     "Shortcuts: your persona's keys (change any, add any action), and every key of every persona with the REAPER action it runs.",
     "Mouse & trackpad: your persona's mouse wheel, trackpad gestures, drags and clicks, from any persona, each one changeable.",
-    "Layout: drag the mixer, Media Explorer, transport and MIDI editor where you want them; the toolbar, snap and ripple from any persona; and Other windows: the Actions list, Undo History, Region Manager and the rest, open or closed, docked or in their own window.",
+    "Layout: drag the mixer, Media Explorer, transport and MIDI editor where you want them; the toolbar, snap and ripple from any persona; and Other windows: the Actions list, Undo History, Region Manager and the rest, open or closed, docked or in their own window; and More windows and dockers (at the bottom): which side any window docks on, toolbars and script windows such as StudioSync included.",
     "Project: what a new project gets with your persona: sample rate, tempo, time signature, grid, render settings, starter tracks or a template, a window set.",
     "REAPER: REAPER's and SWS's options, an area per tab, each one In my persona or not; and Preferences: fades and crossfades, zoom, new tracks, recording and solo, which go in when REAPER restarts.",
     "Settings: Sync (your other computers), Personas (what a persona may change, a persona per project, ReaPersona's actions), Scrolling & zoom, Look (this window, the screen-reader menu), Updates, and Remove.",
@@ -632,6 +632,9 @@ do -- (the rule lives in the engine, core.fix_current: round 2)
   elseif now ~= was then say(core.current().name .. " is in use: the persona in use before isn't there any more.") end
 end
 reaper.atexit(function()
+  -- (an install's quit still being checked: the installer is told it may have been cancelled, so it can't start REAPER again by itself up to
+  -- 30 minutes later. When REAPER really is quitting, the installers see it gone within their 15 s grace and go on. Round 4, changes 4)
+  if quit_check then core.write(here .. "/install_cancelled", "the window closed before the quit was checked\n") end
   if bld.back or core.is_trial() then -- (a preview or Try it ends when the window closes: what you had goes back. Review 2026-11-19)
     core.try("closing a preview", bld_end_trial, true) -- (true: queued window moves can't wait for a frame that won't come)
   end

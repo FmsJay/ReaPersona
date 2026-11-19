@@ -131,10 +131,17 @@ IS_MAC = core.IS_MAC
 -- with a restart. The shortcuts go in by import; the rest with the installer run from a terminal while REAPER is closed. (Cross-platform
 -- review 2026-11-19; the command lines are the installer's own, round 2)
 FLATPAK = not IS_MAC and not reaper.GetOS():find("^Win") and reaper.file_exists("/.flatpak-info")
-function flatpak_cmd(args) -- the terminal command, also put on the clipboard: Linux message boxes can't be copied from (round 3)
+function flatpak_cmd(args) -- the terminal command, also put on the clipboard: Linux message boxes can't be copied from (round 3). -> it, copied?
   local c = "python3 '" .. (here .. "/install_shortcuts.py"):gsub("'", "'\\''") .. "' " .. args -- (single quotes: a $ or ! in the path stays as it is)
-  if reaper.CF_SetClipboard then reaper.CF_SetClipboard(c) else ImGui.SetClipboardText(ctx, c) end
-  return c
+  if reaper.CF_SetClipboard then reaper.CF_SetClipboard(c); return c, true end
+  -- (without SWS, ImGui's clipboard: not from the screen-reader menu, where ReaImGui has let go of the context. Round 4)
+  local copied = not menu_mode and ImGui.ValidatePtr(ctx, "ImGui_Context*") and pcall(ImGui.SetClipboardText, ctx, c)
+  return c, copied == true
+end
+function flatpak_steps(args) -- what to do with the command: pasted while REAPER is open (the clipboard can go when REAPER quits), run once it's closed
+  local c, copied = flatpak_cmd(args)
+  return (copied and "Open a terminal and paste this now (it's on the clipboard; don't press Enter yet)" or "Open a terminal and type this now (don't press Enter yet)") ..
+    ", close REAPER, press Enter, then start REAPER again:\n\n" .. c
 end
 -- Where a persona's shortcuts go in, and the button that puts in what waits for a restart: a Flatpak REAPER can't restart itself.
 INSTALL_WHERE = FLATPAK and "Home > Install (you import them; the steps say how)" or "Home > Install and restart"

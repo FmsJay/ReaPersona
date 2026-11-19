@@ -49,7 +49,8 @@ local function run()
   -- ------------------------------------------------ a stand-in ImGui: flags are 0, windows open, nothing pressed unless `press` says so
   local press, active, images_made, texts = {}, false, 0, {}
   local FN_PREFIX = { DrawList = 1, ListClipper = 1, TextFilter = 1, Viewport = 1, Image = 1, Function = 1, FontAtlas = 1 }
-  local OPEN = { Begin = 1, BeginChild = 1, BeginTable = 1, BeginTabBar = 1, BeginTabItem = 1, BeginGroup = 1, TreeNode = 1, TreeNodeEx = 1, CollapsingHeader = 1, BeginMenuBar = 1 }
+  local OPEN = { Begin = 1, BeginChild = 1, BeginTable = 1, BeginTabBar = 1, BeginTabItem = 1, BeginGroup = 1, TreeNode = 1, TreeNodeEx = 1, CollapsingHeader = 1, BeginMenuBar = 1,
+    BeginCombo = 1, BeginPopup = 1, BeginPopupModal = 1, BeginPopupContextItem = 1, BeginListBox = 1, BeginMenu = 1, BeginTooltip = 1 } -- (round 4: combos and popups open, so what's in them is drawn too)
   local ImGui = setmetatable({
     Button = function(_, label) return press[label] == true end,
     SmallButton = function(_, label) return press[label] == true end,
@@ -343,20 +344,204 @@ local function run()
   assert(not R2.core.is_trial(), "and the leftover preview is ended")
   assert(R2.toast:find("A preview was still on", 1, true), "and the window says so: " .. tostring(R2.toast))
 
-  -- 10. Layout > More windows and dockers (5.43): the card draws from reaper.ini's dockers, a window added is a dockpref block in the
-  -- persona being made, and "As it is" on the last one takes the block out.
+  -- 10. Layout > More windows and dockers (5.43; by side since round 4, James): the card draws, a window added is a dockpref block in the
+  -- persona being made, keeping a side, and "Leave as it is" on the last one takes the block out.
   write(tmp .. "/reaper.ini", "[REAPER]\ndockermode3=1\n[REAPERdockpref]\nreaimgui:16B0B3D8=0.5 3\ntoolbar:26=-0.85 15\n")
   R.bld_new(); mb_answer = 6; R.bld_new(); mb_answer = 1
   T = T + 5; texts = {}; frame("Layout")
-  assert(texts["Pick the docker a window goes into: toolbars, REAPER's windows, and script windows such as StudioSync. Add a window, then choose its docker."], "the dockers card draws")
-  R.dockpref_set("reaimgui:16B0B3D8", 1)
+  local drew = false
+  for s in pairs(texts) do if s:find("^Pick the side a window docks on") then drew = true end end
+  assert(drew, "the dockers card draws")
+  R.dockpref_set("reaimgui:16B0B3D8", "left")
   local db = core.draft_get(bld.blocks, "feel dockpref")
-  assert(db and db.items["reaimgui:16B0B3D8"] == 1 and bld.active, "a window added is in the persona being made")
+  assert(db and db.items["reaimgui:16B0B3D8"] == "left" and bld.active, "a window added is in the persona being made, with its side")
   local entry = core.build_preview({ db })[1][1]
-  assert(entry and entry.entry[1] == "dockpref" and entry.label:find("in Docker 2", 1, true), "the draft shows it: " .. tostring(entry and entry.label))
+  assert(entry and entry.entry[1] == "dockpref" and entry.entry[2]["reaimgui:16B0B3D8"] == "left", "the draft keeps the side")
   frame("Layout") -- (with a row now)
   R.dockpref_set("reaimgui:16B0B3D8", nil)
-  assert(not core.draft_get(bld.blocks, "feel dockpref"), "As it is on the last window takes the block out")
+  assert(not core.draft_get(bld.blocks, "feel dockpref"), "Leave as it is on the last window takes the block out")
+
+  -- 11. Round 4 (code-health probe_ui_r4.lua, adapted to sides; plus C1-C8). Combos are opened by the stand-in (OPEN), so their bodies draw.
+  local real_sel, real_chk, real_dl, real_combo = ImGui.Selectable, ImGui.Checkbox, ImGui.DrawList_AddText, ImGui.BeginCombo
+  local sel_labels, pick, tick_box, combos = {}, {}, {}, {}
+  rawset(ImGui, "BeginCombo", function(_, label) combos[label] = true; return true end)
+  rawset(ImGui, "Selectable", function(_, label) sel_labels[#sel_labels + 1] = label; return pick[label] == true end)
+  rawset(ImGui, "Checkbox", function(_, label, v) if tick_box[label] then return true, true end return false, v end)
+  local function fresh() R.bld_new(); mb_answer = 6; R.bld_new(); mb_answer = 1 end
+
+  -- C5: no persona has dockers yet, so no Load from; the switch off in Settings > Personas is said on the card
+  fresh(); combos = {}; texts = {}
+  local real_on = core.aspect_on
+  core.aspect_on = function(a) if a == "dockpref" then return false end return real_on(a) end
+  frame("Layout")
+  core.aspect_on = real_on
+  assert(not combos["##dpload"], "Load from is left out while no persona has dockers")
+  local off_said = false
+  for s in pairs(texts) do if s:find("^Off in Settings > Personas") then off_said = true end end
+  assert(off_said, "the card says the switch is off")
+
+  -- UPD1: dockers loaded from a persona aren't turned into yours by being drawn; changing one keeps the others, and then it's yours
+  core.styles[#core.styles + 1] = { id = "built_dkp", name = "DKP", user = true, kind = "built", keys = {}, alt = 0,
+    feel = { { "dockpref", { ["toolbar:26"] = "left", transport = "bottom" }, "x" } } }
+  fresh()
+  core.draft_add(bld.blocks, core.new_block("feel", "built_dkp", "dockpref"))
+  combos = {}; frame("Layout")
+  db = core.draft_get(bld.blocks, "feel dockpref")
+  assert(db.id == "built_dkp" and db.items == nil, "drawing the card doesn't turn a loaded block into yours")
+  assert(combos["##dpload"], "Load from shows once a persona has dockers")
+  R.dockpref_set("transport", "top")
+  db = core.draft_get(bld.blocks, "feel dockpref")
+  assert(db.items["toolbar:26"] == "left" and db.items.transport == "top", "changing one loaded window keeps the others")
+  assert(core.block_title(db):lower() == "your window dockers", "and it's your own now: " .. core.block_title(db))
+
+  -- UPD2: loading the whole layout from a DAW leaves your dockers in the persona (no DAW has any)
+  local daw
+  for _, st in ipairs(R.styles) do if st.id ~= "my_reaper" and not st.user and R.has_aspect(st, "transport") then daw = st; break end end
+  assert(daw, "a DAW with a layout")
+  pick[daw.name .. "##lall" .. daw.id] = true; frame("Layout"); pick = {}
+  assert(core.draft_get(bld.blocks, "feel dockpref"), "the whole layout from " .. daw.name .. " kept your dockers")
+
+  -- UPD3: Leave them all as they are takes the dockers out
+  press["Leave them all as they are##dpclr"] = true; frame("Layout"); press["Leave them all as they are##dpclr"] = nil
+  assert(not core.draft_get(bld.blocks, "feel dockpref"), "Leave them all as they are")
+
+  -- UPD4: Add a window offers only names a persona can carry, sorted, and a window starts on the side it docks on now
+  write(tmp .. "/reaper.ini", "[REAPER]\ndockermode15=1\n[REAPERdockpref]\nbad&name.lua=0.5 2\ntoolbar:26=-0.85 15\nreaimgui=0.5 0\n")
+  T = T + 5; sel_labels = {}; frame("Layout")
+  local offered, names = 0, {}
+  for _, l in ipairs(sel_labels) do
+    assert(not l:find("bad&name", 1, true), "a name with & isn't offered: " .. l)
+    if l:find("##dpa", 1, true) then offered = offered + 1; names[#names + 1] = l:match("^(.-)##"):lower() end
+    assert(l ~= "reaimgui##dpareaimgui", "a bare reaimgui names no window")
+  end
+  assert(offered > 0, "Add a window offers windows")
+  for i = 2, #names do assert(names[i - 1] <= names[i], "the Add list is sorted: " .. names[i - 1] .. " / " .. names[i]) end
+  pick["Toolbar 26##dpatoolbar:26"] = true; frame("Layout"); pick = {}
+  db = core.draft_get(bld.blocks, "feel dockpref")
+  assert(db and db.items["toolbar:26"] == "left", "a window added starts on the side it docks on now: " .. tostring(db and db.items["toolbar:26"]))
+  table.remove(core.styles)
+
+  -- UPD5: a window added with no persona being made starts one (the bar at the top shows it)
+  bld.blocks, bld.active = {}, false
+  R.dockpref_set("transport", "right")
+  assert(bld.active and core.draft_get(bld.blocks, "feel dockpref"), "adding a window starts a persona to save")
+
+  -- UW1 + C6: the wheel's modifier ticks are its own, and an action picked there waits for Add, as in the drag form
+  fresh()
+  local real_find = core.find_actions
+  core.find_actions = function() return { { 40001, "Probe action" } } end
+  tick_box["Ctrl##mbw2"] = true; pick["Probe action##asrwadd40001"] = true
+  frame("Mouse")
+  pick = {}
+  assert(not core.draft_get(bld.blocks, "mouse"), "picking an action doesn't add it by itself")
+  press["Add to my persona##wadd"] = true; frame("Mouse"); press["Add to my persona##wadd"] = nil
+  tick_box = {}
+  core.find_actions = real_find
+  local mb = core.draft_get(bld.blocks, "mouse")
+  local added = mb and mb.extra and mb.extra[#mb.extra]
+  assert(added and added[1] == "Ctrl+Mousewheel" and added[2] == 40001, "Ctrl ticked for the wheel, added with Add: " .. tostring(added and added[1]))
+
+  -- US1 + C3: Save during a preview says what the project part did, and leaves the remembered Preview tick as you set it
+  fresh()
+  core.draft_add(bld.blocks, core.new_block("theme", "Saved4.ReaperTheme"))
+  bld.name = "Test saved4 " .. os.time()
+  local ru = core.use
+  core.use = function(st) core.last_project_setup = { "tempo 120" }; set_style(st.id) end
+  reaper.SetExtState(R.SECTION, "draft preview", "1", true)
+  bld.back, bld.preview = A.id, true; set_style("built_try")
+  local saved4 = R.bld_save()
+  assert(saved4 and bld.msg:find("and this project has its tempo 120", 1, true), "the project part, said: " .. bld.msg)
+  assert(not bld.preview and reaper.GetExtState(R.SECTION, "draft preview") == "1", "Preview off for this draft, the remembered tick kept")
+  core.delete_user_style(saved4.id); core.last_project_setup = {}
+
+  -- C2 (James): saving My REAPER during a preview ends it like any persona: My REAPER in use, Undo switch back
+  local rsl = core.save_look
+  core.save_look = function() end
+  R.bld_load(core.by_id("my_reaper"))
+  core.draft_add(bld.blocks, core.new_block("theme", "Mine4.ReaperTheme"))
+  bld.back, bld.preview = A.id, true; set_style("built_try"); R.last_style = nil
+  R.bld_save()
+  core.save_look, core.use = rsl, ru
+  assert(reaper.GetExtState(R.SECTION, "style") == "my_reaper" and bld.back == nil, "My REAPER is in use and the preview is over")
+  assert(R.last_style == A.id and bld.msg:find("My REAPER is saved and in use", 1, true), "Undo switch goes back, and it says so: " .. bld.msg)
+
+  -- C1 (James): Undo with Preview on: REAPER follows about 0.15 s after the LAST press
+  fresh(); set_style(A.id)
+  local tries = 0
+  core.use = function(st) tries = tries + 1; set_style(st.id) end
+  tick()
+  change(core.new_block("theme", "U1.ReaperTheme")); change(core.new_block("theme", "U2.ReaperTheme")); change(core.new_block("theme", "U3.ReaperTheme"))
+  bld.preview, bld.shown = true, bld.hist[bld.pos]
+  bld.step(-1); tick(0.1); bld.step(-1); tick(0.1)
+  assert(tries == 0, "not while the presses keep coming")
+  tick(0.1)
+  assert(tries == 1, "once, about 0.15 s after the last press: " .. tries)
+  tick(0.3); assert(tries == 1, "and only once")
+  core.use = ru; bld.back, bld.preview = nil, false; set_style(A.id)
+
+  -- C4: Flatpak text from the screen-reader menu without SWS: no ImGui clipboard call on a released context, and no "on the clipboard"
+  rawset(reaper, "CF_SetClipboard", false)
+  R.menu_mode = true
+  local steps = R.flatpak_steps("--apply-setup")
+  R.menu_mode = false
+  assert(steps:find("type this now", 1, true) and not steps:find("clipboard", 1, true), "not copied, so not said: " .. steps)
+  rawset(reaper, "CF_SetClipboard", nil)
+  assert(R.flatpak_steps("--apply-setup"):find("paste this now (it's on the clipboard", 1, true), "copied, then said")
+
+  -- UI4: the top bar shows the name the persona being made has now
+  local pills = {}
+  rawset(ImGui, "DrawList_AddText", function(_, _, _, _, text) pills[#pills + 1] = tostring(text) end)
+  bld.back, bld.preview, bld.name = A.id, false, "Renamed probe"; set_style("built_try")
+  frame("Home")
+  rawset(ImGui, "DrawList_AddText", real_dl)
+  bld.back = nil; set_style(A.id)
+  local shown = false
+  for _, t in ipairs(pills) do if t:find("^Renamed probe %(trying%)") then shown = true end end
+  assert(shown, "the top bar follows a rename: " .. table.concat(pills, " | "))
+
+  -- UI5: a workflow with colours is the one named as holding them
+  local rcur, rwf = core.current, core.current_workflow
+  core.current = function() return { id = "holds", name = "Holds colours", colours = { look = "x" } } end
+  core.current_workflow = function() return { id = "wfp", name = "WF probe", colours = { look = "y" } } end
+  texts = {}; frame("Colours")
+  core.current, core.current_workflow = rcur, rwf
+  local wf_named = false
+  for s in pairs(texts) do if s:find("^WF probe sets the colours") then wf_named = true end end
+  assert(wf_named, "the workflow on top holds the colours")
+
+  -- UI2: a Flatpak import keeps the new layer numbers (nothing comes back to say it went in)
+  local lc = {}
+  local rcl, rld, rmk, rprep, rflat = core.cancel_layers, core.layers_done, core.make_keymap, core.prepare_layers, R.FLATPAK
+  core.cancel_layers = function() lc[#lc + 1] = "cancel" end
+  core.layers_done = function() lc[#lc + 1] = "done" end
+  core.make_keymap = function() return tmp .. "/probe-keymap.ReaperKeyMap", 3, {} end
+  core.prepare_layers = function() end
+  R.FLATPAK = true
+  R.install_shortcuts(false, nil, true)
+  R.FLATPAK = rflat
+  assert(table.concat(lc, ",") == "done" and R.recount_keys, "Flatpak: layers kept, Home recounts: " .. table.concat(lc, ","))
+  R.recount_keys = nil
+
+  -- UI3: the screen-reader menu's own path reads last_install.txt through install_result
+  lc = {}
+  local rmenu = R.show_menu
+  R.show_menu = function() return 0 end
+  write(dir .. "/last_install.txt", "not installed: probe\n")
+  R.screen_reader_menu(true)
+  R.show_menu = rmenu
+  assert(lc[1] == "cancel" and not read(dir .. "/last_install.txt"), "the menu puts the layer numbers back: " .. table.concat(lc, ","))
+  core.cancel_layers, core.layers_done, core.make_keymap, core.prepare_layers = rcl, rld, rmk, rprep
+  R.menu_mode = nil
+
+  -- C8: closing the window while an install's quit is still being checked tells the installer (the second window's close handler)
+  os.remove(dir .. "/install_cancelled")
+  R2.quit_check = T + 4
+  at_exit()
+  assert(read(dir .. "/install_cancelled"), "the installer is told the quit may have been cancelled")
+  R2.quit_check = nil; os.remove(dir .. "/install_cancelled")
+
+  rawset(ImGui, "Selectable", real_sel); rawset(ImGui, "Checkbox", real_chk); rawset(ImGui, "BeginCombo", real_combo)
+  fresh()
 end
 
 local ok, err = xpcall(run, debug.traceback)

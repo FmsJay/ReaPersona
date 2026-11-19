@@ -130,7 +130,7 @@ do -- (the layout designer: its own scope)
       ImGui.SameLine(ctx)
       if ImGui.SmallButton(ctx, "Back to the persona's own##lyreset") then core.draft_clear(bld.blocks, "layout"); cache.items = nil end
     end
-    muted("REAPER's other windows (the Actions list, Undo History, Region Manager and the rest) are below, under Other windows.")
+    muted("REAPER's other windows (the Actions list, Undo History, Region Manager and the rest) are below, under Other windows; which side any window docks on, toolbars and script windows too, is at the bottom.")
     ImGui.Unindent(ctx, IND * UI)
     card_end()
   end
@@ -239,15 +239,15 @@ do
     { "left", "Docked on the left" }, { "top", "Docked at the top" }, { "right", "Docked on the right" } }
   local undock_note, undock_at = nil, -10
   local wins_seen = {} -- (REAPER's windows as last looked at)
-  local function block_items() -- -> the windows block's items (made from what it loads, the first time it's changed here), or nil
+  local function block_items(change) -- -> the windows block's items, or nil. change: it's made yours (loaded once) because it's being
+    -- changed; just drawing it leaves it as loaded (it turned into "your own", with an undo step and a preview, by being looked at. Round 4)
     local b = core.draft_get(bld.blocks, "feel windows")
     if not b then return nil end
-    if type(b.items) ~= "table" then
-      local items = {}
-      for _, e in ipairs(core.build_preview({ b })[1]) do if e.entry[1] == "windows" then items = e.entry[2] end end
-      b.items, b.id = items, nil
-    end
-    return b.items
+    if type(b.items) == "table" then return b.items end
+    local items = {}
+    for _, e in ipairs(core.build_preview({ b })[1]) do if e.entry[1] == "windows" then items = e.entry[2] end end
+    if change then b.items, b.id = items, nil end
+    return items
   end
   function windows_card()
     if not card("windows edit") then return end
@@ -275,8 +275,8 @@ do
       if ImGui.BeginCombo(ctx, "##wc" .. w[1], cur or (x and x.s == 1 and "Open") or "Leave as it is") then
         for _, c in ipairs(CHOICES) do
           if (w[2] or c[1] == nil or c[1] == "closed" or c[1] == "float") and ImGui.Selectable(ctx, (not w[2] and c[1] == "float") and "Open" or c[2], cur == c[2]) then
-            local list = block_items()
-            if not list then core.draft_add(bld.blocks, { kind = "feel", aspect = "windows", items = {} }); list = block_items() end
+            local list = block_items(true)
+            if not list then core.draft_add(bld.blocks, { kind = "feel", aspect = "windows", items = {} }); list = block_items(true) end
             if c[1] == nil then list[w[1]] = nil
             elseif c[1] == "closed" then list[w[1]] = { s = 0 }
             else
@@ -308,92 +308,120 @@ do
     card_end()
   end
 end
--- (in R: dockers_card, dockpref_set) -- (5.43: which docker any dockable window goes into: toolbars, REAPER's windows, StudioSync...)
+-- (in R: dockers_card, dockpref_set) -- (5.43: where any dockable window docks: toolbars, REAPER's windows, StudioSync...)
+-- (Round 4, James: a persona keeps a SIDE per window (bottom, left, top, right, or floating), and each computer docks it in a docker on
+-- that side, so it travels: docker numbers differ from one computer to the next.)
 do
-  local seen = { at = -10 } -- (reaper.ini as last read: every 2 s, not every frame)
-  local function block_items() -- -> the dockers block's items (made from what it loads, the first time it's changed here), or nil
-    local b = core.draft_get(bld.blocks, "feel dockpref")
-    if not b then return nil end
-    if type(b.items) ~= "table" then
-      local items = {}
-      for _, e in ipairs(core.build_preview({ b })[1]) do if e.entry[1] == "dockpref" then for k, v in pairs(e.entry[2]) do items[k] = v end end end
-      b.items, b.id = items, nil
+  local seen = { at = -10 } -- (reaper.ini's docked windows and the dockers, every 2 s, not every frame)
+  local SIDES = { { "bottom", "Bottom" }, { "left", "Left" }, { "top", "Top" }, { "right", "Right" }, { "floating", "Floating docker" } } -- (the engine's words: core.DOCK_SIDES)
+  local SIDE_NAME = {}
+  for _, x in ipairs(SIDES) do SIDE_NAME[x[1]] = x[2] end
+  local function loaded_items(b) -- the block's windows and sides as it applies them, without making it yours (only a change does that)
+    if type(b.items) == "table" then return b.items end
+    local items = {}
+    for _, e in ipairs(core.build_preview({ b })[1]) do
+      if e.entry and e.entry[1] == "dockpref" and type(e.entry[2]) == "table" then for k, v in pairs(e.entry[2]) do items[k] = v end end
     end
-    return b.items
+    return items
   end
-  function dockpref_set(ident, docker) -- a window's docker in the persona being made; nil ("As it is") takes its row out
-    local items = block_items()
-    if not items then
-      if docker == nil then return end
-      core.draft_add(bld.blocks, { kind = "feel", aspect = "dockpref", items = {} }); items = block_items()
-    end
-    items[ident] = docker
-    if next(items) == nil then core.draft_clear(bld.blocks, "feel dockpref") end
+  function dockpref_set(ident, side) -- a window's side in the persona being made; nil (Leave as it is) takes its row out
+    local b = core.draft_get(bld.blocks, "feel dockpref")
+    if not b then
+      if side == nil then return end
+      core.draft_add(bld.blocks, { kind = "feel", aspect = "dockpref", items = {} })
+      b = core.draft_get(bld.blocks, "feel dockpref")
+    elseif type(b.items) ~= "table" then b.items, b.id = loaded_items(b), nil end -- (changed here: it's yours from now on, loaded once)
+    b.items[ident] = side
+    if next(b.items) == nil then core.draft_clear(bld.blocks, "feel dockpref") end
     bld.active = true
+  end
+  local function side_now(ident) -- the side a window docks on now: REAPER's own answer when it has one, else reaper.ini's
+    local d = core.dock_docker_now(ident) or seen.docker_of[ident]
+    local dk = d and seen.dockers[d + 1]
+    return dk and core.DOCK_SIDES[dk.pos + 1] or nil
   end
   function dockers_card()
     if not card("dockers") then return end
     heading("More windows and dockers", 16)
-    muted("Pick the docker a window goes into: toolbars, REAPER's windows, and script windows such as StudioSync. Add a window, then choose its docker.")
+    muted("Pick the side a window docks on: toolbars, REAPER's windows, and script windows such as StudioSync. Add a window, then choose its side; " ..
+      "each computer puts it in a docker on that side.")
+    if not core.aspect_on("dockpref") then
+      ImGui.PushStyleColor(ctx, ImGui.Col_Text, C.YELLOW)
+      ImGui.TextWrapped(ctx, "Off in Settings > Personas: personas don't change where windows dock while it's off.")
+      ImGui.PopStyleColor(ctx)
+    end
     ImGui.Indent(ctx, IND * UI)
     if reaper.time_precise() - seen.at > 2 then
       local ini = core.read(reaper.GetResourcePath() .. "/reaper.ini") or ""
-      seen.at, seen.prefs, seen.dockers = reaper.time_precise(), core.dock_prefs(ini), core.dockers(ini)
+      seen.at, seen.prefs, seen.dockers, seen.docker_of = reaper.time_precise(), core.dock_prefs(ini), core.dockers(ini), {}
+      for _, p in ipairs(seen.prefs) do seen.docker_of[p.ident] = core.dock_docker_now(p.ident) or p.docker end -- (live where REAPER says)
     end
-    local inside = {} -- (docker -> the windows REAPER keeps there)
-    for _, p in ipairs(seen.prefs) do inside[p.docker] = inside[p.docker] or {}; table.insert(inside[p.docker], core.dock_window_name(p.ident)) end
+    local inside = {} -- (docker -> the windows that dock there now)
+    for _, p in ipairs(seen.prefs) do
+      local d = seen.docker_of[p.ident]
+      if d and p.ident ~= "reaimgui" then inside[d] = inside[d] or {}; table.insert(inside[d], core.dock_window_name(p.ident)) end
+    end
+    local listed = false
     for _, d in ipairs(seen.dockers) do
-      if inside[d.n] then ImGui.TextColored(ctx, C.MUTED, d.name .. ": " .. table.concat(inside[d.n], ", ")) end
-    end
-    local b = core.draft_get(bld.blocks, "feel dockpref")
-    ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Load from:"); ImGui.SameLine(ctx)
-    ImGui.SetNextItemWidth(ctx, 260 * UI)
-    if ImGui.BeginCombo(ctx, "##dpload", "a persona") then
-      for _, st in ipairs(sources(function(s) return has_aspect(s, "dockpref") end)) do
-        if ImGui.Selectable(ctx, st.name .. "##dpl" .. st.id) then
-          core.draft_add(bld.blocks, core.new_block("feel", st.id, "dockpref")); bld.active = true
-          say(st.name .. "'s dockers are in your persona: change any below.")
-        end
+      if inside[d.n] then
+        if not listed then ImGui.Text(ctx, "Where windows dock now:"); listed = true end
+        table.sort(inside[d.n])
+        ImGui.TextColored(ctx, C.MUTED, "Docker " .. (d.n + 1) .. " (" .. (SIDE_NAME[core.DOCK_SIDES[d.pos + 1]] or "Bottom"):lower() .. "): " .. table.concat(inside[d.n], ", "))
       end
-      ImGui.EndCombo(ctx)
     end
-    if b then ImGui.SameLine(ctx); if ImGui.SmallButton(ctx, "Leave them all as they are##dpclr") then core.draft_clear(bld.blocks, "feel dockpref"); b = nil end end
-    local items = b and block_items() or {}
-    local docker_at = {}
-    for _, p in ipairs(seen.prefs) do docker_at[p.ident] = p.docker end
-    local choices, have = {}, {} -- (every window REAPER has docked, then the tool windows it hasn't yet)
+    if listed then muted("Dockers on the same side sit side by side.") end
+    local b = core.draft_get(bld.blocks, "feel dockpref")
+    local from = sources(function(s) return has_aspect(s, "dockpref") end)
+    if #from > 0 then -- (no DAW has dockers: until a persona of yours does, there's nothing to load)
+      ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Load from:"); ImGui.SameLine(ctx)
+      ImGui.SetNextItemWidth(ctx, 260 * UI)
+      if ImGui.BeginCombo(ctx, "##dpload", "a persona") then
+        for _, st in ipairs(from) do
+          if ImGui.Selectable(ctx, st.name .. "##dpl" .. st.id) then
+            core.draft_add(bld.blocks, core.new_block("feel", st.id, "dockpref")); bld.active = true
+            say(st.name .. "'s dockers are in your persona: change any below.")
+          end
+        end
+        ImGui.EndCombo(ctx)
+      end
+      if b then ImGui.SameLine(ctx) end
+    end
+    if b and ImGui.SmallButton(ctx, "Leave them all as they are##dpclr") then core.draft_clear(bld.blocks, "feel dockpref"); b = nil end
+    local items = b and loaded_items(b) or {}
+    local choices, have = {}, { reaimgui = true } -- (every window REAPER has docked, then the tool windows it hasn't yet; a bare "reaimgui" names no window)
     for _, p in ipairs(seen.prefs) do if not have[p.ident] and core.dock_ident_ok(p.ident) then have[p.ident] = true; choices[#choices + 1] = p.ident end end
     for _, w in ipairs(core.TOOL_WINDOWS) do if w[2] and not have[w[1]] then have[w[1]] = true; choices[#choices + 1] = w[1] end end
+    table.sort(choices, function(x, y) return core.dock_window_name(x):lower() < core.dock_window_name(y):lower() end)
     ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Add a window:"); ImGui.SameLine(ctx)
     ImGui.SetNextItemWidth(ctx, 260 * UI)
     if ImGui.BeginCombo(ctx, "##dpadd", "choose a window") then
       for _, id in ipairs(choices) do
         if items[id] == nil and ImGui.Selectable(ctx, core.dock_window_name(id) .. "##dpa" .. id) then
-          dockpref_set(id, docker_at[id] or 0)
-          say(core.dock_window_name(id) .. " is in your persona: pick its docker below.")
+          dockpref_set(id, side_now(id) or "bottom") -- (it starts on the side it docks on now)
+          say(core.dock_window_name(id) .. " is in your persona: pick its side below.")
         end
       end
       ImGui.EndCombo(ctx)
     end
     local rows = {}
     for id in pairs(items) do rows[#rows + 1] = id end
-    table.sort(rows, function(x, y) return core.dock_window_name(x) < core.dock_window_name(y) end)
+    table.sort(rows, function(x, y) return core.dock_window_name(x):lower() < core.dock_window_name(y):lower() end)
     for _, id in ipairs(rows) do
-      local d = items[id]
-      ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, core.dock_window_name(id)); ImGui.SameLine(ctx, 260 * UI)
+      local side, name = items[id], core.dock_window_name(id)
+      ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, name)
+      if ImGui.CalcTextSize(ctx, name) < 250 * UI then ImGui.SameLine(ctx, 260 * UI) else ImGui.SameLine(ctx, 0, 12) end -- (a long name pushes its combo on)
       ImGui.SetNextItemWidth(ctx, 200 * UI)
-      local cur = seen.dockers[(tonumber(d) or 0) + 1]
-      if ImGui.BeginCombo(ctx, "##dpd" .. id, cur and cur.name or "As it is") then
-        if ImGui.Selectable(ctx, "As it is##dpn" .. id, false) then dockpref_set(id, nil) end
-        for _, x in ipairs(seen.dockers) do
-          if ImGui.Selectable(ctx, x.name .. (x.used and "" or " (empty)") .. "##dpo" .. id .. x.n, x.n == d) then dockpref_set(id, x.n) end
+      if ImGui.BeginCombo(ctx, "##dpd" .. id, SIDE_NAME[side] or "Leave as it is") then
+        if ImGui.Selectable(ctx, "Leave as it is##dpn" .. id, false) then dockpref_set(id, nil) end
+        for _, x in ipairs(SIDES) do
+          if ImGui.Selectable(ctx, x[2] .. "##dpo" .. id .. x[1], x[1] == side) then dockpref_set(id, x[1]) end
         end
         ImGui.EndCombo(ctx)
       end
-      if core.dock_is_script(id) then ImGui.SameLine(ctx); ImGui.TextColored(ctx, C.MUTED, "moves the next time its script docks it")
+      if core.dock_is_script(id) then ImGui.SameLine(ctx); ImGui.TextColored(ctx, C.MUTED, "moves when you close and open it again")
       elseif not core.WINDOWS[id] then ImGui.SameLine(ctx); ImGui.TextColored(ctx, C.MUTED, "moves the next time it docks") end
     end
-    if #rows == 0 then muted("No windows added: each stays in its own docker.") end
+    if #rows == 0 then muted("No windows added: each docks where it does now.") end
     ImGui.Unindent(ctx, IND * UI)
     card_end()
   end

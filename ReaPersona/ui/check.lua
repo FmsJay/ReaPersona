@@ -42,7 +42,8 @@ function check_page()
   if card("check install") then
     heading("Install the shortcuts")
     muted("REAPER reads its keymap when it starts, so the shortcut layers go in once, after adding or changing a persona. Two ways:")
-    ImGui.Bullet(ctx); ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, "In one step: " .. INSTALL_WHERE .. " (Windows, Mac or Linux; no Python needed). REAPER closes, the layers and the personas' toolbars go in, your keymap is backed up first, and REAPER opens again. By hand: close REAPER, run install_shortcuts.py in this folder, start REAPER.")
+    ImGui.Bullet(ctx); ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, FLATPAK and "In this Flatpak REAPER: Home > Install gives a terminal command (it puts everything in while REAPER is closed) and the steps to import the shortcuts without closing REAPER."
+      or "In one step: Home > Install and restart (Windows, Mac or Linux; no Python needed). REAPER closes, the layers and the personas' toolbars go in, your keymap is backed up first, and REAPER opens again. By hand: close REAPER, run install_shortcuts.py in this folder, start REAPER.")
     if ImGui.SmallButton(ctx, "Show the folder") then core.open_url(core.here) end
     ImGui.Bullet(ctx); ImGui.SameLine(ctx); ImGui.TextWrapped(ctx, "Without restarting: make a keymap file, then in REAPER's Actions window open Key Map > Import... and pick it (choose to merge, not replace). Toolbars aren't included: personas keep your own toolbar.")
     if ImGui.SmallButton(ctx, "Make the keymap file") then

@@ -24,6 +24,10 @@ reaper = setmetatable({ -- (only what loading the engine and these checks touch)
   NamedCommandLookup = function() return 0 end,
   GetToggleCommandState = function() return -1 end,
   time_precise = os.clock,
+  -- (REAPER always has a project in front: without this every switch in the suite stopped halfway at tostring(EnumProjects(-1)) and only
+  -- logged it. Round 4 code health review)
+  EnumProjects = function(i) if i == -1 then return "proj0", "" end end,
+  GetConfigWantsDock = function() return 0 end, -- (as REAPER answers for a window it has never docked: measured)
   EnumerateFiles = function(d, i) -- (a folder's files, listed once until asked again with -1, as REAPER does)
     if i < 0 then listing[d] = nil; return end
     if not listing[d] then
@@ -894,7 +898,7 @@ do
   assert(table.concat(kinds, ",") == "keys,mouse,feel,settings,theme,project", table.concat(kinds, ","))
   assert(core.keys_layer({ core.keys_block("logic"), core.new_block("mouse", "logic") }) == "borrow", "a DAW's keys and its mouse: its own layer, nothing to install")
   assert(core.keys_layer({ core.keys_block("logic"), core.new_block("mouse", "ableton") }) == "own", "another DAW's mouse wheel: a layer of its own")
-  assert(core.block_title(core.keys_block("logic")):find("shortcuts", 1, true) and core.block_title(core.keys_block("my_reaper")) == "Your own shortcuts")
+  assert(core.block_title(core.keys_block("logic")):find("shortcuts", 1, true) and core.block_title(core.keys_block("my_reaper")) == "your own shortcuts") -- (round 4: said mid-sentence)
   local has = reaper.HasExtState
   reaper.HasExtState = function(s, key) return ext[s .. "/" .. key] ~= nil end
   ext["ReaPersona/style"] = "ableton"; ext["ReaPersona/favourites"] = nil
@@ -1131,7 +1135,7 @@ do -- 28. every other window (5.34)
   for _, f in ipairs(st.feel) do if f[1] == "windows" then got = f[2] end end
   assert(got and got.navigator.p == "right", "the windows block into the persona")
   assert(core.aspect_of({ "windows", {} }) == "windows" and core.window_words({ s = 1, p = "left" }) == "docked left")
-  assert(core.block_title({ kind = "feel", aspect = "windows", items = {} }) == "Your other windows")
+  assert(core.block_title({ kind = "feel", aspect = "windows", items = {} }) == "your other windows")
 end
 do -- 29. REAPER's preferences in a persona (5.35)
   assert(core.pref_ok("deffadelen", 0.02) and not core.pref_ok("deffadelen", 11) and not core.pref_ok("deffadelen", "x"))
@@ -1918,8 +1922,11 @@ do -- 39. Round 3 review (2026-11-19). First the code health reviewer's probes (
   local jf, jr, jp = reaper.JS_Window_Find, reaper.JS_Window_GetRect, reaper.JS_WindowMessage_Post
   reaper.JS_Window_Find, reaper.JS_Window_GetRect, reaper.JS_WindowMessage_Post = function() end, function() end, function() end
   write(tmp .. "/reaper.ini", "[reaper]\nundownd_dock=1\n[regmgr]\nwnd_vis=0\ndock=1\n[REAPERdockpref]\nregmgr=0.5 3\n")
+  local gw = reaper.GetConfigWantsDock
+  reaper.GetConfigWantsDock = function(id) return id == "regmgr" and 7 or 0 end -- (round 4: REAPER's live docker wins over reaper.ini's 3)
   local wn, wp = core.windows_now(), core.windows_now(nil, true)
-  assert(wn.regmgr.s == 0 and wn.regmgr.d == nil and wp.regmgr.d == 1 and wp.regmgr.dp == 3 and wp.undo.d == 1, "only the put-back list keeps it")
+  reaper.GetConfigWantsDock = gw
+  assert(wn.regmgr.s == 0 and wn.regmgr.d == nil and wp.regmgr.d == 1 and wp.regmgr.dp == 7 and wp.undo.d == 1, "only the put-back list keeps it")
   for _, f in ipairs(core.feel_now(core.by_id("my_reaper"))) do if f[1] == "windows" then assert(f[2].regmgr.d == nil, "a look or preset: none") end end
 
   -- A2: Undo History and the Routing Matrix keep their docked flag in REAPER's main section, the Crossfade Editor in its own [xfadeedit] (as seen in reaper.ini on the laptop)
@@ -2088,40 +2095,289 @@ do -- 40. which docker a window goes into (5.43): reaper.ini's dock preferences 
   assert(core.dock_window_name("toolbar:26") == "Toolbar 26" and core.dock_window_name("toolbar") == "Main toolbar" and core.dock_window_name("mixer") == "Mixer")
   assert(core.dock_window_name("actions") == "Actions list" and core.dock_window_name("BirdBird_Global Sampler.lua") == "BirdBird_Global Sampler" and core.dock_window_name("odd") == "odd")
   assert(core.dock_is_script("reaimgui:16B0B3D8") and core.dock_is_script("x.lua") and not core.dock_is_script("toolbar:26"))
-  -- in a shared file: plain names and dockers 0-15 only
-  local kept = core.safe_feel({ { "dockpref", { ["reaimgui:16B0B3D8"] = 3, ["bad|one"] = 2, ["x;y"] = 1, toolbar = 16, mixer = -1, [string.rep("a", 129)] = 1, transport = 1.5 }, "x" },
-    { "dockpref", { ["a|b"] = 1 }, "y" }, { "dockpref", "nope", "z" } })
+  -- (round 4, James: dockers travel by SIDE. This computer's dockers here: 0 bottom, 1 left, 2 top, 3 right, 15 floating)
+  local dgp = reaper.DockGetPosition
+  local POS = { [0] = 0, [1] = 1, [2] = 2, [3] = 3, [15] = 4 }
+  reaper.DockGetPosition = function(n) return POS[n] or -1 end
+  -- in a shared file: plain names, each a side; a 5.43 docker number becomes the side that docker has here
+  local kept = core.safe_feel({ { "dockpref", { ["reaimgui:16B0B3D8"] = 3, ["bad|one"] = 2, ["x;y"] = 1, toolbar = 16, mixer = -1, [string.rep("a", 129)] = 1, transport = 1.5,
+    explorer = "sideways" }, "x" }, { "dockpref", { ["a|b"] = 1 }, "y" }, { "dockpref", "nope", "z" }, { "dockpref", { mixer = "left" }, "w" } })
   local n = 0
   for _ in pairs(kept[1] and kept[1][2] or {}) do n = n + 1 end
-  assert(#kept == 1 and n == 1 and kept[1][2]["reaimgui:16B0B3D8"] == 3 and kept[1][3] == "Window dockers: StudioSync in Docker 4", "only the good one: " .. tostring(kept[1] and kept[1][3]))
+  assert(#kept == 2 and n == 1 and kept[1][2]["reaimgui:16B0B3D8"] == "right" and kept[1][3] == "Window dockers: StudioSync on the right", "only the good one, as its side: " .. tostring(kept[1] and kept[1][3]))
+  assert(kept[2][2].mixer == "left" and kept[2][3] == "Window dockers: Mixer on the left", "a side as it is")
   assert(not core.dock_ident_ok("a|b") and not core.dock_ident_ok("") and core.dock_ident_ok("Track Tags (spk77).lua"))
   -- as a block of your own on Layout
   local st = assert(core.build_style({ { kind = "feel", aspect = "dockpref", items = { ["toolbar:26"] = 2 } } }, "Docks", "built_dk"))
   local got
   for _, f in ipairs(st.feel) do if f[1] == "dockpref" then got = f end end
-  assert(got and got[2]["toolbar:26"] == 2 and got[3] == "Window dockers: Toolbar 26 in Docker 3", "the dockers block into the persona")
-  assert(core.aspect_of({ "dockpref", {} }) == "dockpref" and core.block_title({ kind = "feel", aspect = "dockpref", items = {} }) == "Your window dockers")
+  assert(got and got[2]["toolbar:26"] == "top" and got[3] == "Window dockers: Toolbar 26 at the top", "the dockers block into the persona, a 5.43 number as its side")
+  assert(core.aspect_of({ "dockpref", {} }) == "dockpref" and core.block_title({ kind = "feel", aspect = "dockpref", items = {} }) == "your window dockers")
   -- in use and back: REAPER's docker before goes into the put-back list (as hex), and comes back on the switch away
   local hex = function(s) return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end)) end
   local du, gw = reaper.Dock_UpdateDockID, reaper.GetConfigWantsDock
   local prefs = { ["reaimgui:16B0B3D8"] = 3, ["toolbar:26"] = 15 }
   reaper.Dock_UpdateDockID = function(id, d) prefs[id] = d end
-  reaper.GetConfigWantsDock = function(id) return prefs[id] or -1 end
-  write(tmp .. "/reaper.ini", ini) -- (transport isn't in REAPER's answer here: reaper.ini's is used)
+  reaper.GetConfigWantsDock = function(id) return prefs[id] or 0 end -- (0 for a window REAPER has never docked: measured)
+  write(tmp .. "/reaper.ini", ini)
   ext["ReaPersona/style"], ext["ReaPersona/orig"] = "my_reaper", ""
   core.drain()
-  core.use({ id = "built_dk", name = "Docks", feel = { { "dockpref", { ["reaimgui:16B0B3D8"] = 1, ["toolbar:26"] = 15, transport = 2, ["New Script.lua"] = 4 }, "d" } }, keys = {}, alt = 0 })
+  core.use({ id = "built_dk", name = "Docks", feel = { { "dockpref", { ["reaimgui:16B0B3D8"] = "left", ["toolbar:26"] = "floating", transport = "top", ["New Script.lua"] = "right" }, "d" } }, keys = {}, alt = 0 })
   core.drain()
-  assert(prefs["reaimgui:16B0B3D8"] == 1 and prefs.transport == 2 and prefs["New Script.lua"] == 4, "in the persona's dockers")
+  assert(prefs["reaimgui:16B0B3D8"] == 1 and prefs.transport == 2 and prefs["New Script.lua"] == 3 and prefs["toolbar:26"] == 15, "a docker on each side here")
   local orig = ext["ReaPersona/orig"]
-  assert(orig:find("k|" .. hex("reaimgui:16B0B3D8") .. "|3", 1, true) and orig:find("k|" .. hex("transport") .. "|1", 1, true), "kept to put back: " .. orig)
-  assert(not orig:find("k|" .. hex("toolbar:26"), 1, true) and not orig:find(hex("New Script.lua"), 1, true), "not one already there, nor one that had none")
+  assert(orig:find("k|" .. hex("reaimgui:16B0B3D8") .. "|3", 1, true) and orig:find("k|" .. hex("transport") .. "|0", 1, true), "kept to put back: " .. orig)
+  assert(orig:find("k|" .. hex("New Script.lua") .. "|0", 1, true), "one REAPER never docked: 0, as REAPER says (Docker 1, where it first docks)")
+  assert(not orig:find("k|" .. hex("toolbar:26"), 1, true), "not one already on that side: its own docker kept")
   core.use(core.by_id("my_reaper"))
   core.drain()
-  assert(prefs["reaimgui:16B0B3D8"] == 3 and prefs.transport == 1 and prefs["toolbar:26"] == 15, "yours back")
-  reaper.Dock_UpdateDockID, reaper.GetConfigWantsDock = du, gw
+  assert(prefs["reaimgui:16B0B3D8"] == 3 and prefs.transport == 0 and prefs["toolbar:26"] == 15 and prefs["New Script.lua"] == 0, "yours back")
+  -- a window whose own docker is on that side keeps it (re-applying a persona, or a second docker on the side that you chose)
+  POS[4] = 1
+  prefs["toolbar:26"] = 4
+  ext["ReaPersona/orig"] = ""
+  core.use({ id = "built_dk2", name = "Docks", feel = { { "dockpref", { ["toolbar:26"] = "left" }, "d" } }, keys = {}, alt = 0 })
+  core.drain()
+  POS[4] = nil
+  assert(prefs["toolbar:26"] == 4 and not ext["ReaPersona/orig"]:find(hex("toolbar:26"), 1, true), "its own docker on the left, kept")
+  core.use(core.by_id("my_reaper"))
+  core.drain()
+  reaper.Dock_UpdateDockID, reaper.GetConfigWantsDock, reaper.DockGetPosition = du, gw, dgp
   ext["ReaPersona/orig"] = ""
   os.remove(tmp .. "/reaper.ini")
+end
+do -- 41. Round 4 code-health probes (probe_r4.lua): the dockers' live parts, restore's checks, end_trial's drain, the no-Python grace loop.
+  -- (the stand-in's EnumProjects is now at the top of the file, as the probe advised; PD3 is set for dockers by side: James, round 4)
+  local hex = function(s) return (s:gsub(".", function(c) return string.format("%02x", c:byte()) end)) end
+  local saved = {}
+  for _, k in ipairs({ "DockGetPosition", "Dock_UpdateDockID", "GetConfigWantsDock", "JS_Window_Find", "DockIsChildOfDock", "GetToggleCommandState",
+    "Main_OnCommand", "JS_Window_GetRect", "JS_WindowMessage_Post", "GetOS", "JS_Window_OnCommand" }) do saved[k] = rawget(reaper, k) end
+  local function put_back() for k in pairs(saved) do reaper[k] = saved[k] end end
+  local log_before = #(read(tmp .. "/errors.log") or "")
+  local function no_use_errors(what)
+    local new = (read(tmp .. "/errors.log") or ""):sub(log_before + 1)
+    assert(not new:find(" use [%w_]+: "), what .. ": the switch failed: " .. new)
+  end
+
+  -- PD1: REAPER's live answer for a docker's side wins over reaper.ini's dockermodeN
+  reaper.DockGetPosition = function(n) return n == 4 and 1 or -1 end
+  local ds = core.dockers("[REAPER]\r\ndockermode4=2\r\n")
+  assert(ds[5].name == "Docker 5: left" and ds[1].name == "Docker 1: bottom", "the live side: " .. ds[5].name)
+  reaper.DockGetPosition = saved.DockGetPosition
+
+  -- PD2: every kind of script window, docker 16 lines skipped, the label in a fixed order (sides now)
+  assert(core.dock_is_script("Tool.eel") and core.dock_is_script("tool.py") and core.dock_is_script("Tool.EEL") and core.dock_window_name("Tool.eel") == "Tool", "EEL and Python scripts too")
+  assert(#core.dock_prefs("[REAPERdockpref]\r\ntoolbar:3=0.5 16\r\ntoolbar:4=0.5 15\r\n") == 1, "a docker past 15 isn't one of REAPER's 16")
+  assert(core.dockpref_label({ transport = "left", mixer = "bottom", ["toolbar:2"] = "right" }) == "Window dockers: Mixer at the bottom, Toolbar 2 on the right, Transport on the left",
+    "the label reads the same every time")
+
+  -- PD3: the mixer, open and docked, moves at once into a docker on the persona's side and back on the switch away
+  local dock, prefs, toggles = 0, { mixer = 0 }, 0
+  reaper.DockGetPosition = function(n) return n == 0 and 0 or n == 2 and 3 or -1 end -- (docker 2 sits on the right here)
+  reaper.JS_Window_Find = function(title) return title == "Mixer" and "hwnd" or nil end
+  reaper.JS_Window_OnCommand = function() end
+  reaper.DockIsChildOfDock = function() return dock end
+  reaper.GetToggleCommandState = function(id) return id == 40078 and 1 or -1 end
+  reaper.Main_OnCommand = function(id) if id == 40083 then toggles = toggles + 1; if dock >= 0 then dock = -1 else dock = prefs.mixer end end end
+  reaper.Dock_UpdateDockID = function(id, d) prefs[id] = d end
+  reaper.GetConfigWantsDock = function(id) return prefs[id] or 0 end
+  reaper.JS_Window_GetRect, reaper.JS_WindowMessage_Post = function() end, function() end
+  ext["ReaPersona/style"], ext["ReaPersona/orig"] = "my_reaper", ""
+  core.drain()
+  assert(core.dock_now("mixer", 0) == true and toggles == 0, "already in that docker: nothing to do")
+  core.use({ id = "built_dm", name = "DM", feel = { { "dockpref", { mixer = 2 }, "d" } }, keys = {}, alt = 0 }) -- (a 5.43 number: docker 2's side here, the right)
+  core.drain()
+  assert(prefs.mixer == 2 and dock == 2, "the mixer moved into the right-hand docker now: docked in " .. dock)
+  assert(ext["ReaPersona/orig"]:find("k|" .. hex("mixer") .. "|0", 1, true), "its docker before, kept")
+  core.use(core.by_id("my_reaper"))
+  core.drain()
+  assert(prefs.mixer == 0 and dock == 0, "and back in Docker 1 on the switch away: docked in " .. dock)
+  no_use_errors("PD3")
+
+  -- PD4: a put-back list's docker lines are checked again before they're used
+  local set = {}
+  reaper.Dock_UpdateDockID = function(id, d) set[#set + 1] = id .. "=" .. d end
+  ext["ReaPersona/style"] = "built_dm"
+  ext["ReaPersona/orig"] = "k|" .. hex("a|b") .. "|3;;k|" .. hex("toolbar:9") .. "|16;;k|" .. hex("toolbar:8") .. "|2"
+  core.use(core.by_id("my_reaper"))
+  core.drain()
+  assert(table.concat(set, ",") == "toolbar:8=2", "only the good line: " .. table.concat(set, ","))
+  no_use_errors("PD4")
+  put_back()
+
+  -- changes.md probe4 (round 4 A1): applying the same persona again keeps the mixer in its docker; switching away puts yours back
+  local pref, docked, shown = { mixer = 0 }, 0, true
+  reaper.DockGetPosition = function(n) return n == 0 and 0 or n == 5 and 1 or -1 end -- (docker 5: the left here)
+  reaper.Dock_UpdateDockID = function(id, d) pref[id] = d end
+  reaper.GetConfigWantsDock = function(id) return pref[id] or 0 end
+  reaper.JS_Window_Find = function(t) return (t == "Mixer" and shown) and "HWND" or nil end
+  reaper.JS_Window_OnCommand = function() end
+  reaper.JS_Window_GetRect = function() return true, 0, 0, 10, 10 end
+  reaper.DockIsChildOfDock = function() return docked end
+  reaper.GetToggleCommandState = function(c) if c == 40078 then return shown and 1 or 0 end return -1 end
+  reaper.Main_OnCommand = function(c) if c == 40083 then if docked >= 0 then docked = -1 else docked = pref.mixer end elseif c == 40078 then shown = not shown end end
+  ext["ReaPersona/style"], ext["ReaPersona/orig"] = "my_reaper", ""
+  local P = { id = "built_dk4", name = "Docks", feel = { { "dockpref", { mixer = 5 }, "d" } }, keys = {}, alt = 0 }
+  core.use(P); core.drain(); assert(docked == 5 and pref.mixer == 5, "once: " .. docked .. " " .. pref.mixer)
+  core.use(P); core.drain(); assert(docked == 5 and pref.mixer == 5, "again: still its docker (" .. docked .. ", " .. pref.mixer .. ")")
+  local Q = { id = "built_dk5", name = "Docks too", feel = { { "dockpref", { mixer = "left" }, "d" } }, keys = {}, alt = 0 }
+  core.use(Q); core.drain(); assert(docked == 5 and pref.mixer == 5, "another persona on the same side: the same docker")
+  core.use(core.by_id("my_reaper")); core.drain(); assert(docked == 0 and pref.mixer == 0, "yours back (" .. docked .. ", " .. pref.mixer .. ")")
+  -- (engine 2) coming from a persona that docks the mixer elsewhere: the put-back still records YOUR docker
+  local R = { id = "built_dk6", name = "Right", feel = { { "dock", "mixer", "left", 1, "left" } }, keys = {}, alt = 0 }
+  core.use(R); core.drain(); assert(docked == 5, "the layout docked it on the left")
+  core.use(Q) -- (not drained: R's put-back move is still queued)
+  core.drain()
+  assert(ext["ReaPersona/orig"] == "" or not ext["ReaPersona/orig"]:find("k|" .. hex("mixer") .. "|5", 1, true), "not R's docker as yours: " .. ext["ReaPersona/orig"])
+  core.use(core.by_id("my_reaper")); core.drain(); assert(docked == 0 and pref.mixer == 0, "and yours back after: " .. docked .. " " .. pref.mixer)
+  no_use_errors("probe4")
+  put_back()
+
+  -- PR1: end_trial(now) runs the trial's queued steps first, so its windows entry is filled in and put back
+  reaper.JS_Window_Find, reaper.JS_Window_GetRect, reaper.JS_WindowMessage_Post = function() end, function() end, function() end
+  ext["ReaPersona/style"], ext["ReaPersona/orig"], ext["ReaPersona/trial back"] = "my_reaper", "", "my_reaper"
+  core.drain()
+  local aw, back_calls = core.apply_windows, 0
+  core.apply_windows = function(w, putback, ...) if putback then back_calls = back_calls + 1 end return aw(w, putback, ...) end
+  core.use({ id = "built_try", name = "Try", feel = { { "windows", { actions = { s = 0 } }, "w" } }, keys = {}, alt = 0 }) -- (not drained)
+  assert(core.end_trial(true), "a trial was on")
+  core.apply_windows = aw
+  assert(back_calls >= 1 and ext["ReaPersona/style"] == "my_reaper", "the windows came back at close: " .. back_calls)
+  no_use_errors("PR1")
+  ext["ReaPersona/trial back"], ext["ReaPersona/orig"] = nil, ""
+  put_back()
+
+  -- PR3: the no-Python /bin/sh step believes a cancel only after its 15 s look, as the cmd one and install_shortcuts.py do
+  reaper.GetOS = function() return "linux-x86_64" end
+  local step = core.stage_install({ pid = "999999", stamp = "20260101-000041" })
+  reaper.GetOS = saved.GetOS
+  local sh_text = read(assert(step, "a sh step"))
+  assert(sh_text:find("while running && [ $g -lt 15 ]", 1, true), "sh: 15 s look before believing install_cancelled")
+  assert(sh_text:find("[ $n -ge 1800 ]", 1, true), "round 4 A8: and waits 30 minutes for REAPER to close, as install_shortcuts.py")
+  os.remove(step)
+  put_back()
+end
+do -- 41b. PR2: json_decode refuses a file cut short after a whole value, so the updater's .json check catches it (round 4 A5)
+  local stage = tmp .. "/_upd4"
+  os.execute(win and ('mkdir "' .. stage:gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. stage .. "'"))
+  write(stage .. ".done", "<index></index>")
+  write(stage .. "/ReaPersona.lua", "-- @version 9.9\n")
+  write(stage .. "/styles.json", '{"styles": [{"id": "a", "name": "A"')
+  local styles_before = read(tmp .. "/styles.json")
+  local done, uwhy = core.update_poll({ stage = stage, until_t = math.huge, info = { version = "9.9", files = { { "ReaPersona.lua", "u" }, { "styles.json", "u" } } } })
+  assert(done == false and tostring(uwhy):find("incomplete", 1, true) and read(tmp .. "/styles.json") == styles_before, "a cut-short .json: " .. tostring(uwhy))
+  os.remove(stage .. "/ReaPersona.lua"); os.remove(stage .. "/styles.json")
+  for _, cut in ipairs({ '{"a": 1, "b": [1, 2], "c": 12', "[1, 2", '{"a": 1', '{"a": [1}', "[1}" }) do
+    assert(not pcall(core.json_decode, cut), "refused: " .. cut)
+  end
+  assert(core.json_decode('{"a": [1, {"b": 2}], "c": {}}').a[2].b == 2 and #core.json_decode("[]") == 0, "whole files as before")
+end
+do -- 42. Round 4 engine fixes (2026-11-19)
+  local saved = {}
+  for _, k in ipairs({ "DockGetPosition", "Dock_UpdateDockID", "GetConfigWantsDock", "JS_Window_Find", "DockIsChildOfDock", "GetToggleCommandState",
+    "Main_OnCommand", "JS_Window_GetRect", "JS_WindowMessage_Post", "JS_Window_OnCommand", "NamedCommandLookup" }) do saved[k] = rawget(reaper, k) end
+  local function put_back() for k in pairs(saved) do reaper[k] = saved[k] end end
+
+  -- A4: a section name in any case ([reaper] on this drive): a docked, closed mixer reads as docked
+  assert(core.ini_section("[reaper]\r\nmixwnd_dock=1\r\n[x]\r\n", "REAPER"):find("mixwnd_dock=1", 1, true), "[reaper] found as REAPER")
+  assert(core.ini_section("[REAPER]\nx=1\n", "reaper") and not core.ini_section("[reaper_explorer]\ndocked=1\n", "reaper"), "and the other way, whole names only")
+  write(tmp .. "/reaper.ini", "[reaper]\r\nmixwnd_dock=1\r\n")
+  reaper.JS_Window_OnCommand = function() end
+  reaper.JS_Window_Find = function() end
+  reaper.GetToggleCommandState = function() return 0 end
+  reaper.DockGetPosition = function(n) return n == 0 and 0 or -1 end
+  local mixer
+  for _, f in ipairs(core.feel_now(core.by_id("my_reaper"))) do if f[1] == "dock" and f[2] == "mixer" then mixer = f end end
+  assert(mixer and mixer[3] == "bottom" and mixer[4] == 0, "docked at the bottom and closed, not floating: " .. tostring(mixer and mixer[3]))
+  os.remove(tmp .. "/reaper.ini")
+  put_back()
+
+  -- A2: a closed window this switch's dockers part moved keeps its docker from before in the windows put-back, not the persona's
+  local prefs = { regmgr = 5 }
+  reaper.GetConfigWantsDock = function(id) return prefs[id] or 0 end
+  reaper.Dock_UpdateDockID = function(id, d) prefs[id] = d end
+  reaper.DockGetPosition = function(n) return n == 1 and 1 or n == 5 and 0 or -1 end
+  reaper.JS_Window_Find, reaper.JS_Window_GetRect, reaper.JS_WindowMessage_Post = function() end, function() end, function() end
+  ext["ReaPersona/style"], ext["ReaPersona/orig"] = "my_reaper", ""
+  core.drain()
+  core.use({ id = "built_r4w", name = "W", feel = { { "dockpref", { regmgr = "left" }, "d" }, { "windows", { actions = { s = 0 } }, "w" } }, keys = {}, alt = 0 })
+  core.drain()
+  assert(prefs.regmgr == 1, "docked on the left now")
+  local w = ext["ReaPersona/orig"]:match("w|(%x+)|")
+  local back = w and core.json_decode((w:gsub("%x%x", function(h) return string.char(tonumber(h, 16)) end)))
+  assert(back and back.regmgr and back.regmgr.dp == 5, "the windows put-back has its docker from before: " .. tostring(back and back.regmgr and back.regmgr.dp))
+  core.use(core.by_id("my_reaper"))
+  core.drain()
+  assert(prefs.regmgr == 5, "and it's back")
+  put_back()
+
+  -- A3: a spare docker isn't one ReaPersona gave a window this session (reaper.ini doesn't know those yet)
+  reaper.DockGetPosition = function() return 0 end
+  ext["ReaPersona/docker top"] = nil
+  core.dock_assigned[15] = true
+  assert(core.spare_docker("top") == 14, "15 was given out this session")
+  core.dock_assigned[15], ext["ReaPersona/docker top"] = nil, nil
+  -- and two windows sent to spare dockers in one switch get two (move_window marks each as it's given out)
+  local ups = {}
+  reaper.JS_Window_OnCommand, reaper.JS_Window_Find, reaper.GetToggleCommandState = function() end, function() end, function() return 0 end
+  reaper.Main_OnCommand = function() end
+  reaper.Dock_UpdateDockID = function(id, d) ups[id] = d end
+  ext["ReaPersona/docker left"], ext["ReaPersona/style"], ext["ReaPersona/orig"] = nil, "my_reaper", ""
+  core.dock_assigned = {}
+  core.use({ id = "built_r4s", name = "S", feel = { { "dockpref", { mixer = "top", explorer = "left" }, "d" } }, keys = {}, alt = 0 })
+  core.drain()
+  local top, left = ext["ReaPersona/docker top"], ext["ReaPersona/docker left"] -- (each spare as it was picked)
+  assert(top and left and top ~= left, "two spares: " .. tostring(top) .. " " .. tostring(left))
+  ext["ReaPersona/docker top"], ext["ReaPersona/docker left"], ext["ReaPersona/style"], ext["ReaPersona/orig"] = nil, nil, nil, ""
+  core.dock_assigned = {}
+  put_back()
+
+  -- A7: a ReaImGui script by its main window's name, "###Name" and "Label###Name" ids included; its other dialogs left out
+  os.execute(win and ('mkdir "' .. (tmp .. "/ReaImGui"):gsub("/", "\\") .. '" 2>nul') or ("mkdir -p '" .. tmp .. "/ReaImGui'"))
+  write(tmp .. "/ReaImGui/2AB7C12E.ini", "[Window][Debug##Default]\r\nPos=60,60\r\n\r\n[Window][###StudioSync]\r\nPos=0,0\r\n\r\n[Window][Make a drum map]\r\n\r\n[Window][StudioSync feedback##fbwin]\r\n\r\n[Window][Invitation]\r\n\r\n[Window][###studiosync_call]\r\n")
+  write(tmp .. "/ReaImGui/882E9278.ini", "[Window][Debug##Default]\r\n\r\n[Window][BandSync]\r\n\r\n[Window][New side room]\r\n\r\n[Window][###BandSync]\r\n")
+  write(tmp .. "/ReaImGui/16B0B3D9.ini", "[Window][Debug##Default]\r\n\r\n[Window][Room 3###ReaPersona]\r\n\r\n[Window][ReaPersona UI test]\r\n")
+  assert(core.dock_window_name("reaimgui:2AB7C12E") == "StudioSync", core.dock_window_name("reaimgui:2AB7C12E"))
+  assert(core.dock_window_name("reaimgui:882E9278") == "BandSync" and core.dock_window_name("reaimgui:16B0B3D9") == "ReaPersona", "one name each")
+
+  -- A8: scripts_missing counts only ids today's personas and MIDI keys use
+  local live = {}
+  reaper.NamedCommandLookup = function(id) return live[id] and 1 or 0 end
+  for _, part in ipairs({ core.scripts.main, core.scripts.midi }) do for _, id in pairs(part) do live[id] = true end end
+  core._lost = nil
+  local base = core.scripts_missing()
+  core.scripts.main["use built_gone_r4"], core.scripts.midi["Ctrl+Alt+Shift+Win+F9"] = "_RSdead1", "_RSdead2"
+  core._lost = nil
+  assert(core.scripts_missing() == base, "a deleted persona's and an unused MIDI key's ids aren't counted")
+  core.scripts.main["use built_gone_r4"], core.scripts.midi["Ctrl+Alt+Shift+Win+F9"], core._lost = nil, nil, nil
+  put_back()
+  -- the no-Python cmd step waits 30 minutes too
+  reaper.GetOS = function() return "Win64" end
+  local cmd_text = read(assert(core.stage_install({ pid = "999999", stamp = "20260101-000042", remove = true })))
+  assert(cmd_text:find("if %n% geq 1800 goto notclosed", 1, true), "cmd: 1800 x 1 s")
+  -- KDE's .directory is junk too; a settings block's "3" beside 3 is written once (the number)
+  assert(core.os_junk(".directory") and not core.os_junk("directory"))
+  local j = core.json_encode(setmetatable({ [3] = 0, ["3"] = 1, [1] = 1 }, core.OBJECT))
+  assert(select(2, j:gsub('"3"', "")) == 1 and core.json_decode(j)[3] == 0, j)
+  -- personas 5.40/5.41 saved from one DAW with a moved key: built once more, with a layer of their own, so the move holds
+  write(tmp .. "/user_styles.json", core.json_encode({ styles = { { id = "built_r4m", name = "Moved", kind = "built", keys_from = "pro_tools", both_os = true,
+    blocks = { { kind = "daw", id = "pro_tools", keys = true, feel = false, theme = false, mouse = false, rebind = { ["Ctrl+S"] = "Ctrl+Alt+Shift+F12" } } } } } }))
+  core = load_core()
+  local m = core.load_json(tmp .. "/user_styles.json").styles[1]
+  local moved
+  for _, k in ipairs(m.keys or {}) do if k[1] == "Ctrl+Alt+Shift+F12" and k[2] == 40026 then moved = true end end
+  assert(m.both_os == 2 and m.keys_from == nil and (m.alt or 0) > 0 and moved, "rebuilt with its move: " .. core.json_encode(m.alt))
+  write(tmp .. "/user_styles.json", '{"styles": []}')
+  core = load_core()
+  -- block titles said mid-sentence: no capital "Your"
+  assert(core.block_title({ kind = "feel", aspect = "dockpref", items = {} }) == "your window dockers" and core.block_title(core.keys_block("my_reaper")) == "your own shortcuts")
+  put_back()
+  ext["ReaPersona/style"], ext["ReaPersona/orig"] = nil, ""
+end
+do -- 43. round 4 A6: no switch anywhere in this file failed (each logs "use <id>: ..." when it does); built_err fails on purpose (37, A7)
+  for line in (read(tmp .. "/errors.log") or ""):gmatch("[^\n]+") do
+    if line:find(" use [%w_]+: ") and not line:find(" use built_err: ", 1, true) then error("a switch failed in the tests: " .. line) end
+  end
 end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))

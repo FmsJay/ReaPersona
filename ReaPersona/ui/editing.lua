@@ -67,41 +67,42 @@ function bld_blocks() -- what's saved: built in a fixed order, with your own key
   return blocks
 end
 function bld_save() -- -> the saved persona, or nil (bld.msg says why)
+  -- (James, rounds 3-4: saved during a preview or Try it, the saved persona is the one in use, My REAPER too, project part and all, and Undo
+  -- switch takes you back to what you had before the preview. The preview is over: Go back and closing the window no longer put anything
+  -- back. Preview is off for this draft only: the remembered tick stays as you set it.)
+  local before, trial, was_on = bld.back and core.by_id(bld.back), bld.back ~= nil, bld.preview
+  local st, install, note
   if bld.id == "my_reaper" then -- (My REAPER: everything but its keys becomes its look, on every computer; the look before is kept as a version)
-    local st = core.build_style(bld_blocks(), "My REAPER", "built_try")
-    if not st then bld.msg = "Not saved."; return end
-    core.save_look(core.look_from_style(st))
-    if reaper.GetExtState(SECTION, "style") == "my_reaper" then core.use(core.by_id("my_reaper")) end
+    local look = core.build_style(bld_blocks(), "My REAPER", "built_try")
+    if not look then bld.msg = "Not saved."; return end
+    core.save_look(core.look_from_style(look))
+    st = core.by_id("my_reaper")
     local keys = core.draft_get(bld.blocks, "keys")
-    bld.msg = "My REAPER is saved: its layout, mouse, theme and colours are your look on every computer (Earlier versions, on its page, puts one back)." ..
-      ((keys and keys.id ~= "my_reaper") and " Its shortcuts are your own keymap, so another persona's keys don't go into it." or "")
-    say(bld.msg)
-    bld.snap = bld.json(bld.blocks) -- (saved: Stop, New and Edit don't ask about it. Round 2: they warned it wasn't)
-    return core.by_id("my_reaper")
-  end
-  if bld.name:match("^%s*$") then -- (never over a DAW: a new persona, "<DAW> - custom" unless you name it; one you're editing keeps its name)
-    bld.name = bld.id and (core.by_id(bld.id) or {}).name or bld_default_name()
-  end
-  local st, install = core.save_built(bld_blocks(), bld.name, bld.id)
-  if st then
+    note = (keys and keys.id ~= "my_reaper") and " Its shortcuts are your own keymap, so another persona's keys don't go into it." or ""
+  else
+    if bld.name:match("^%s*$") then -- (never over a DAW: a new persona, "<DAW> - custom" unless you name it; one you're editing keeps its name)
+      bld.name = bld.id and (core.by_id(bld.id) or {}).name or bld_default_name()
+    end
+    st, install = core.save_built(bld_blocks(), bld.name, bld.id)
+    if not st then bld.msg = "Not saved: " .. tostring(install); return end
     bld.id, selected, ensure_new = st.id, st.id, true
-    -- (James, round 3: saved during a preview or Try it, the saved persona is the one in use, project part and all, and Undo switch takes
-    -- you back to what you had before the preview. The preview is over: Go back and closing the window no longer put anything back.)
-    local before = bld.back and core.by_id(bld.back)
-    local in_use_now = bld.back ~= nil
-    if bld.back or reaper.GetExtState(SECTION, "style") == st.id then core.use(st); bld.back, bld.later = nil, nil end -- (the persona in use: its changes now)
-    if in_use_now and bld.preview then bld.preview_off() end
-    if before and before.id ~= st.id then last_style = before.id; reaper.SetExtState(SECTION, "last style", before.id, true) end
-    bld.snap = bld.json(bld.blocks) -- (saved: Stop, New and Edit don't ask about it)
-    local setup = in_use_now and core.last_project_setup or {}
-    bld.msg = st.name .. (in_use_now and (" is saved and in use" .. (#setup > 0 and (", and this project has its " .. table.concat(setup, ", ")) or "") .. "." ..
-      ((before and before.id ~= st.id) and (" Undo switch (top) puts " .. before.name .. " back.") or "") .. " It's in Personas > Your personas.")
-      or " is saved: it's in Personas > Your personas.") ..
-      (install and (" Install its shortcuts (" .. INSTALL_WHERE .. ") to use its keys.") or "")
-    say(bld.msg)
-    return st
   end
-  bld.msg = "Not saved: " .. tostring(install)
+  if trial or reaper.GetExtState(SECTION, "style") == st.id then core.use(st); bld.back, bld.later = nil, nil end -- (the persona in use: its changes now)
+  if trial then
+    bld.preview = false
+    if before and before.id ~= st.id then last_style = before.id; reaper.SetExtState(SECTION, "last style", before.id, true) end
+  end
+  bld.snap = bld.json(bld.blocks) -- (saved: Stop, New and Edit don't ask about it)
+  local setup = trial and core.last_project_setup or {}
+  local mine = st.id == "my_reaper"
+  bld.msg = st.name .. " is saved" .. (trial and (" and in use" .. (#setup > 0 and (", and this project has its " .. table.concat(setup, ", ")) or "")) or "") ..
+    (mine and ": its layout, mouse, theme and colours are your look on every computer (Earlier versions, on its page, puts one back)." or ".") ..
+    ((trial and before and before.id ~= st.id) and (" Undo switch (top) puts " .. before.name .. " back.") or "") ..
+    ((trial and was_on) and " Preview is off for now." or "") ..
+    (mine and "" or " It's in Personas > Your personas.") .. (note or "") ..
+    (install and (" Install its shortcuts (" .. INSTALL_WHERE .. ") to use its keys.") or "")
+  say(bld.msg)
+  return st
 end
 -- Preview and undo while making a persona (5.38; James: "have changes audition in the background on reaper so you could see how it would
 -- look in real time, along with an undo"). Every change on any tab is kept (bld.hist: the blocks as JSON, looked at 4 times a second),
@@ -157,7 +158,7 @@ local function record(now) -- the draft into the history, when it changed since 
   local total = 0
   for _, h in ipairs(bld.hist) do total = total + #h end
   while #bld.hist > 1 and (#bld.hist > 60 or total > HIST_BYTES) do total = total - #bld.hist[1]; table.remove(bld.hist, 1) end -- (60 steps, and a few MB at most)
-  bld.pos, bld.changed_at = #bld.hist, now
+  bld.pos, bld.changed_at, bld.stepped = #bld.hist, now, nil -- (a real change: the usual moment's wait)
 end
 local function part_words(b) -- a part as said after "Undone: ": "mouse from Logic Pro", not "Logic Pro: Mouse" (a screen reader read both colons. Round 3)
   if b.kind == "colour" then return "its colour"
@@ -167,7 +168,8 @@ local function part_words(b) -- a part as said after "Undone: ": "mouse from Log
   local t = core.block_title(b)
   local who, what = t:match("^(.-): (.+)$")
   if not who then return t end
-  return who == "Your own" and ("your own " .. what:lower()) or (what:lower() .. " from " .. who)
+  -- (the engine's titles are lower case already, names like MIDI and REAPER kept: lowering them again said "midi". Round 4)
+  return who:lower() == "your own" and ("your own " .. what) or (what .. " from " .. who)
 end
 local function changed_parts(a, b) -- the names of the parts that differ between two drafts, for "Undone: ..."
   local ma, mb, slots, out = {}, {}, {}, {}
@@ -189,7 +191,7 @@ function bld.step(d) -- Undo (-1) or Redo (+1) of your changes to the persona be
   untokens(t)
   local what = changed_parts(bld.blocks, t)
   bld.pos, bld.blocks, bld.changed_at = bld.pos + d, t, reaper.time_precise()
-  if bld.preview then bld.changed_at, bld.seen_at = -math.huge, 0 end -- (with Preview on, REAPER follows on the next frame: James, 2026-11-19)
+  bld.stepped = bld.preview or nil -- (with Preview on, REAPER follows about 0.15 s after the last press, so quick presses are one switch: James, round 4)
   h[bld.pos] = bld.json(t) -- (as this encodes it now, so the next look doesn't take the step for a change)
   local c = core.draft_get(bld.blocks, "colour")
   bld.colour = c and tonumber((c.hex or ""):gsub("#", ""), 16) or nil
@@ -209,19 +211,18 @@ function bld.tick() -- each frame: the change history, Ctrl+Z / Ctrl+Shift+Z, an
     if ImGui.IsKeyChordPressed(ctx, ImGui.Mod_Ctrl | ImGui.Mod_Shift | ImGui.Key_Z) or ImGui.IsKeyChordPressed(ctx, ImGui.Mod_Ctrl | ImGui.Key_Y) then bld.step(1)
     elseif ImGui.IsKeyChordPressed(ctx, ImGui.Mod_Ctrl | ImGui.Key_Z) then bld.step(-1) end
   end
-  if held or now - (bld.seen_at or 0) < 0.25 then return end -- (a drag is one step: looked at once it's let go)
-  bld.seen_at = now
-  record(now)
-  -- (a moment after the last change, and not while the last switch's window moves are still going)
-  if bld.preview and bld.shown ~= bld.hist[bld.pos] and now - (bld.changed_at or 0) > 0.6 and not core.busy() then
-    bld.shown = bld.hist[bld.pos]
+  if held then return end -- (a drag is one step: looked at once it's let go)
+  if now - (bld.seen_at or 0) >= 0.25 then bld.seen_at = now; record(now) end
+  -- (a moment after the last change (0.6 s), or the last Undo/Redo press (0.15 s), and not while the last switch's window moves are still going)
+  if bld.preview and bld.hist and bld.shown ~= bld.hist[bld.pos] and now - (bld.changed_at or 0) > (bld.stepped and 0.15 or 0.6) and not core.busy() then
+    bld.shown, bld.stepped = bld.hist[bld.pos], nil
     bld.try(true)
   end
 end
 function draft_strip() -- the persona being made, over every tab
   if not bld.active and #bld.blocks == 0 then return end
   local titles = {}
-  for _, b in ipairs(core.draft_order(bld.blocks)) do if b.kind ~= "colour" then titles[#titles + 1] = core.block_title(b) end end
+  for _, b in ipairs(core.draft_order(bld.blocks)) do if b.kind ~= "colour" then titles[#titles + 1] = (core.block_title(b):gsub("^%l", string.upper)) end end -- (each starts a line in the bar)
   if card("draft strip") then
     ImGui.AlignTextToFramePadding(ctx)
     ImGui.TextColored(ctx, C.ACCENT, bld.id and ("Editing " .. ((core.by_id(bld.id) or {}).name or bld.name)) or ("Making " .. (bld.name ~= "" and bld.name or bld_default_name())))
@@ -314,7 +315,7 @@ function slot_card(id, title, tip, slot, list, make, leave, section_of)
   local from = b and b.id and core.by_id(b.id)
   ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Load from:"); ImGui.SameLine(ctx)
   ImGui.SetNextItemWidth(ctx, 260 * UI)
-  if ImGui.BeginCombo(ctx, "##from" .. id, b and (from and from.name or core.block_title(b)) or leave) then
+  if ImGui.BeginCombo(ctx, "##from" .. id, b and (from and from.name or (core.block_title(b):gsub("^%l", string.upper))) or leave) then
     if ImGui.Selectable(ctx, leave .. "##leave" .. id, b == nil) then core.draft_clear(bld.blocks, slot); bld.active = true end
     for _, st in ipairs(list) do
       if ImGui.Selectable(ctx, st.name .. "##" .. id .. st.id, b ~= nil and b.id == st.id) then core.draft_add(bld.blocks, make(st)); bld.active = true end

@@ -61,9 +61,10 @@ end
 -- A Flatpak REAPER (FLATPAK, base.lua): the shortcuts go in by import, the rest with the installer from a terminal.
 -- (Round 3: the command first, and on the clipboard, since a Linux message box can't be copied from; Remove's before ReaPack's uninstall,
 -- which takes install_shortcuts.py with it.)
-local CLIPBOARD = "\n\n(It's on the clipboard: paste it into a terminal.)"
+-- (Round 4: pasted while REAPER is still open, since some Linux desktops empty the clipboard when REAPER quits; "on the clipboard" only
+-- when it is: flatpak_steps, base.lua.)
 local function flatpak_remove_text()
-  return "Close REAPER, run this in a terminal, then start REAPER again:\n\n" .. flatpak_cmd("--remove --apply-prefs") .. CLIPBOARD ..
+  return flatpak_steps("--remove --apply-prefs") ..
     "\n\nIt takes the shortcut layers and toolbars out of your keymap (backed up first) and puts your own preferences and windows back. " ..
     "Run it before you uninstall ReaPersona in ReaPack: it needs ReaPersona's files."
 end
@@ -72,8 +73,7 @@ local function flatpak_install(remove)
   local path, n, skipped = core.make_keymap()
   if not path then core.cancel_layers(); return reaper.MB("No keymap made: " .. tostring(skipped[1]), "ReaPersona", 0) end
   reaper.MB("This REAPER runs as a Flatpak, which closes anything waiting for REAPER to quit, so ReaPersona can't install with a restart.\n\n" ..
-    "Everything at once (the shortcuts, toolbars, and whatever is waiting for a restart): close REAPER, run this in a terminal, then start REAPER again:\n\n" ..
-    flatpak_cmd("--apply-setup") .. CLIPBOARD ..
+    "Everything at once (the shortcuts, toolbars, and whatever is waiting for a restart). " .. flatpak_steps("--apply-setup") ..
     "\n\nOr just the shortcuts, without closing REAPER: in the Actions window (opening now), choose Key Map > Import..., pick\n" .. path ..
     "\nand choose to merge, not replace. That's " .. n .. " shortcuts." .. (#skipped > 0 and (" Skipped (no action here yet): " .. table.concat(skipped, ", ") .. ".") or ""),
     "ReaPersona: install the shortcuts", 0)

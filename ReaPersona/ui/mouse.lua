@@ -179,9 +179,14 @@ local function persona_mouse_card()
       ImGui.EndCombo(ctx)
     end
     mods_boxes("w", "wmods")
+    -- (an action picked here waits for Add, as in the drag form below: a click while browsing added a line. Round 4)
     local cmd, name = action_search("wadd", nil)
-    if cmd then add_wheel(wheel_spec(mq.wmods or 0, mq.wheel), cmd, name) end
-    muted("Pick the action to add " .. keyname(wheel_spec(mq.wmods or 0, mq.wheel)) .. " (the View: Scroll and Zoom actions marked mousewheel are the usual ones).")
+    if cmd then mq.wact, mq.wact_name = cmd, name end
+    if mq.wact then
+      ImGui.SameLine(ctx); ImGui.Text(ctx, tostring(mq.wact_name)); ImGui.SameLine(ctx)
+      if primary("Add to my persona##wadd") then add_wheel(wheel_spec(mq.wmods or 0, mq.wheel), mq.wact, mq.wact_name); mq.wact, mq.wact_name = nil, nil end
+    end
+    muted("Search for what " .. keyname(wheel_spec(mq.wmods or 0, mq.wheel)) .. " should do, then Add (the View: Scroll and Zoom actions marked mousewheel are the usual ones).")
   end
   ImGui.Dummy(ctx, 0, 4)
   ImGui.AlignTextToFramePadding(ctx); ImGui.Text(ctx, "Add a drag or click:"); ImGui.SameLine(ctx)
