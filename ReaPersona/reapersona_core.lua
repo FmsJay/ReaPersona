@@ -1713,9 +1713,30 @@ local function block_entries(b) -- what one block sets: { slot, kind = "key"|"mi
         end
       end
     end
+    local mat = {}
+    local function mfeel(f, extra) -- (5.31: a mouse line changed, b.mset[slot] = behaviour, or added, b.mextra; one per context and modifiers)
+      local s = feel_slot(f)
+      local v = not extra and type(b.mset) == "table" and s and b.mset[s] -- (an added line is changed in b.mextra itself)
+      if v then f = { "mouse", f[2], f[3], v, f[#f] } end
+      local before = #out
+      feel(f)
+      if #out > before then
+        local e = out[#out]
+        e.changed, e.extra = v and true or nil, extra
+        if mat[e.slot] then out[mat[e.slot]] = e; out[#out] = nil else mat[e.slot] = #out end
+      end
+    end
     for _, f in ipairs(st.feel or {}) do
-      if f[1] == "mouse" then if mouse or (mouse == nil and b.feel) then feel(f) end
+      if f[1] == "mouse" then if mouse or (mouse == nil and b.feel) then mfeel(f) end
       elseif daw and b.feel then feel(f) end
+    end
+    if b.kind == "mouse" then
+      for i, k in ipairs(type(b.extra) == "table" and b.extra or {}) do -- (wheel and trackpad bindings added: keys on the wheel)
+        if type(k) == "table" and type(k[1]) == "string" and M.is_wheel(k[1]) and M.encode(k[1]) then key({ k[1], k[2], tostring(k[3] or k[2]) }, true, i) end
+      end
+      for i, f in ipairs(type(b.mextra) == "table" and b.mextra or {}) do
+        if type(f) == "table" and type(f[2]) == "string" and tonumber(f[3]) and type(f[4]) == "string" then mfeel({ "mouse", f[2], tonumber(f[3]), f[4], tostring(f[5] or f[4]) }, i) end
+      end
     end
     local th = daw and b.theme and M.theme_for(st)
     if th then out[#out + 1] = { slot = "theme", kind = "theme", label = th, value = th } end
@@ -3328,7 +3349,8 @@ function M.keymap_keys(kb) -- (pure) -> { {spec, cmd, name, section} } for reape
   end
   return out
 end
-function M.catalog(styles, kb) -- (pure) -> rows { spec, cmd, name, kind, section, sources = {names}, common }, the most used first
+function M.catalog(styles, kb, reaper_keys) -- (pure) -> rows { spec, cmd, name, kind, section, sources = {names}, common }, the most used first
+  -- (reaper_keys: { {spec, cmd, name, section} } every key REAPER has now, its defaults included, read off its own page. 5.31)
   local rows, by, uses = {}, {}, {}
   local function add(spec, cmd, name, section, source)
     if type(spec) ~= "string" or cmd == nil then return end
@@ -3347,8 +3369,128 @@ function M.catalog(styles, kb) -- (pure) -> rows { spec, cmd, name, kind, sectio
     end
   end
   for _, k in ipairs(M.keymap_keys(kb)) do add(k[1], k[2], k[3], k[4], "Your keymap") end
+  for _, k in ipairs(reaper_keys or {}) do add(k[1], k[2], k[3], k[4], "REAPER (as set now)") end
   for _, r in ipairs(rows) do r.common = uses[tostring(r.cmd)] or 0 end
   table.sort(rows, function(a, b) if a.common ~= b.common then return a.common > b.common end if a.name ~= b.name then return a.name < b.name end return a.spec < b.spec end)
+  return rows
+end
+-- Mouse contexts (5.31): REAPER's ids and the names its "Mouse modifier keys and action shortcuts" page (action 40308) gives them, read off
+-- REAPER 7.86 by giving each id a code on the Win modifiers, writing the page once and putting everything back.
+M.MOUSE_CONTEXTS = {
+  { "MM_CTX_ARRANGE_MMOUSE_CLK", "Arrange view middle click" }, { "MM_CTX_ARRANGE_MMOUSE", "Arrange view middle drag" },
+  { "MM_CTX_ARRANGE_A", "Arrange view override A left drag" }, { "MM_CTX_ARRANGE_B", "Arrange view override B left drag" },
+  { "MM_CTX_ARRANGE_C", "Arrange view override C left drag" }, { "MM_CTX_ARRANGE_D", "Arrange view override D left drag" },
+  { "MM_CTX_ARRANGE_RMOUSE", "Arrange view right drag" }, { "MM_CTX_POOLEDENV_DBLCLK", "Automation item double click" },
+  { "MM_CTX_POOLEDENVEDGE", "Automation item edge left drag" }, { "MM_CTX_POOLEDENV", "Automation item left drag" },
+  { "MM_CTX_CURSORHANDLE", "Edit cursor handle left drag" }, { "MM_CTX_ENVCP_DBLCLK", "Envelope control panel double click" },
+  { "MM_CTX_ENVLANE_DBLCLK", "Envelope lane double click" }, { "MM_CTX_ENVLANE", "Envelope lane left drag" },
+  { "MM_CTX_ENVPT_DBLCLK", "Envelope point double click" }, { "MM_CTX_ENVPT", "Envelope point left drag" },
+  { "MM_CTX_ENVSEG_DBLCLK", "Envelope segment double click" }, { "MM_CTX_ENVSEG", "Envelope segment left drag" },
+  { "MM_CTX_FADER_MOUSEWHEEL", "Fader (misc window/plug-in) mouse wheel" },
+  { "MM_CTX_MCP_FADER_MOUSEWHEEL", "Fader (mixer control panel) mouse wheel" },
+  { "MM_CTX_TCP_FADER_MOUSEWHEEL", "Fader (track control panel) mouse wheel" }, { "MM_CTX_LINKEDLANE_DBLCLK", "Fixed lane comp area double click" },
+  { "MM_CTX_LINKEDLANE_CLK", "Fixed lane comp area left click" }, { "MM_CTX_LINKEDLANE", "Fixed lane comp area left drag" },
+  { "MM_CTX_FIXEDLANETAB_DBLCLK", "Fixed lane header button double click" }, { "MM_CTX_FIXEDLANETAB_CLK", "Fixed lane header button left click" },
+  { "MM_CTX_MARKER", "Marker left drag" }, { "MM_CTX_ITEMLOWER_DBLCLK", "Media item bottom half double click" },
+  { "MM_CTX_ITEMLOWER_CLK", "Media item bottom half left click" }, { "MM_CTX_ITEMLOWER", "Media item bottom half left drag" },
+  { "MM_CTX_ITEM_DBLCLK", "Media item double click" }, { "MM_CTX_ITEMEDGE", "Media item edge left drag" },
+  { "MM_CTX_CROSSFADE_DBLCLK", "Media item fade intersection double click" }, { "MM_CTX_CROSSFADE_CLK", "Media item fade intersection left click" },
+  { "MM_CTX_CROSSFADE", "Media item fade intersection left drag" }, { "MM_CTX_ITEMFADE_DBLCLK", "Media item fade/autocrossfade double click" },
+  { "MM_CTX_ITEMFADE_CLK", "Media item fade/autocrossfade left click" }, { "MM_CTX_ITEMFADE", "Media item fade/autocrossfade left drag" },
+  { "MM_CTX_ITEM_CLK", "Media item left click" }, { "MM_CTX_ITEM", "Media item left drag" },
+  { "MM_CTX_ITEMSTRETCHMARKER_DBLCLK", "Media item stretch marker double click" },
+  { "MM_CTX_ITEMSTRETCHMARKER", "Media item stretch marker left drag" },
+  { "MM_CTX_ITEMSTRETCHMARKERRATE", "Media item stretch marker rate left drag" },
+  { "MM_CTX_ITEMTAKEMARKER_DBLCLK", "Media item take marker double click" }, { "MM_CTX_ITEMTAKEMARKER_CLK", "Media item take marker left click" },
+  { "MM_CTX_ITEMTAKEMARKER", "Media item take marker left drag" }, { "MM_CTX_MIDI_CCEVT_DBLCLK", "MIDI CC event double click" },
+  { "MM_CTX_MIDI_CCEVT", "MIDI CC event left click/drag" }, { "MM_CTX_MIDI_CCLANE_DBLCLK", "MIDI CC lane double click" },
+  { "MM_CTX_MIDI_CCLANE", "MIDI CC lane left click/drag" }, { "MM_CTX_MIDI_CCSEG_DBLCLK", "MIDI CC segment double click" },
+  { "MM_CTX_MIDI_CCSEG", "MIDI CC segment left click/drag" }, { "MM_CTX_MIDI_RMOUSE", "MIDI editor right drag" },
+  { "MM_CTX_MIDI_NOTE_DBLCLK", "MIDI note double click" }, { "MM_CTX_MIDI_NOTEEDGE", "MIDI note edge left drag" },
+  { "MM_CTX_MIDI_NOTE_CLK", "MIDI note left click" }, { "MM_CTX_MIDI_NOTE", "MIDI note left drag" },
+  { "MM_CTX_MIDI_PIANOROLL_DBLCLK", "MIDI piano roll double click" }, { "MM_CTX_MIDI_PIANOROLL_CLK", "MIDI piano roll left click" },
+  { "MM_CTX_MIDI_PIANOROLL", "MIDI piano roll left drag" }, { "MM_CTX_MIDI_RULER_DBLCLK", "MIDI ruler double click" },
+  { "MM_CTX_MIDI_MARKERLANES", "MIDI ruler lanes left drag" }, { "MM_CTX_MIDI_RULER_CLK", "MIDI ruler left click" },
+  { "MM_CTX_MIDI_RULER", "MIDI ruler left drag" }, { "MM_CTX_MIDI_ENDPTR", "MIDI source loop end marker left drag" },
+  { "MM_CTX_MCP_DBLCLK", "Mixer control panel double click" }, { "MM_CTX_MCP_MOUSEHWHEEL", "Mixer control panel mouse horizontal wheel" },
+  { "MM_CTX_MCP_MOUSEWHEEL", "Mixer control panel mouse wheel" }, { "MM_CTX_AREASEL_CLK", "Razor edit area left click" },
+  { "MM_CTX_AREASEL", "Razor edit area left drag" }, { "MM_CTX_AREASEL_EDGE", "Razor edit edge left drag" },
+  { "MM_CTX_AREASEL_ENV", "Razor edit envelope area left drag" }, { "MM_CTX_MARKER_REGIONEDGE", "Region edge left drag" },
+  { "MM_CTX_REGION", "Region left drag" }, { "MM_CTX_REGION_MARKER_DBLCLK", "Region/marker double click" },
+  { "MM_CTX_REGION_MARKER_CLK", "Region/marker left click" }, { "MM_CTX_RULER_DBLCLK", "Ruler double click" },
+  { "MM_CTX_RULERLANE_HDR_DBLCLK", "Ruler lane header double click" }, { "MM_CTX_MARKERLANES", "Ruler lane left drag" },
+  { "MM_CTX_RULER_CLK", "Ruler left click" }, { "MM_CTX_RULER", "Ruler left drag" }, { "MM_CTX_SAMPLEEDIT", "Sample edit left drag" },
+  { "MM_CTX_TEMPOMARKER", "Tempo/time signature marker left drag" }, { "MM_CTX_TCP_DBLCLK", "Track control panel double click" },
+  { "MM_CTX_TCP_MOUSEHWHEEL", "Track control panel mouse horizontal wheel" }, { "MM_CTX_TCP_MOUSEWHEEL", "Track control panel mouse wheel" },
+  { "MM_CTX_TRACK_CLK", "Track left click" }, { "MM_CTX_TRACK", "Track left drag" }
+}
+M.CTX_NAME = {}
+for _, c in ipairs(M.MOUSE_CONTEXTS) do M.CTX_NAME[c[1]] = c[2] end
+local MFLAG = { Shift = 1, Ctrl = 2, Alt = 4, Win = 8, Cmd = 2, Opt = 4, Option = 4, Control = 8 }
+function M.mouse_mods(flag) -- (pure) 5 -> "Shift+Alt", 0 -> ""
+  local out = {}
+  for _, x in ipairs({ { 1, "Shift" }, { 2, "Ctrl" }, { 4, "Alt" }, { 8, "Win" } }) do if (tonumber(flag) or 0) & x[1] ~= 0 then out[#out + 1] = x[2] end end
+  return table.concat(out, "+")
+end
+local function mods_flag(text) if text == "Default action" then return 0 end local f = 0; for m in text:gmatch("[^+]+") do f = f | (MFLAG[m] or 0) end return f end
+local function unhtml_text(s) return (s:gsub("&amp;", "&"):gsub("&lt;", "<"):gsub("&gt;", ">"):gsub("&quot;", '"'):gsub("%s+$", "")) end
+function M.parse_shortcut_page(html) -- (pure) REAPER's page -> { mouse = { [context name] = { [flag] = behaviour } }, wheel = { [flag] = action }, keys = { {spec, name, section} } }
+  local out = { mouse = {}, wheel = {}, keys = {} }
+  if type(html) ~= "string" then return out end
+  local cur, sec
+  for line in html:gmatch("[^\r\n]+") do
+    local head = line:match("<B>([^<]+)</B>%s*</FONT>")
+    local h3 = line:match("<h3>Section: ([^<]+)</h3>")
+    local a, b = line:match("^<TR><TD>([^<]*)</TD><TD>([^<]*)</TD></TR>")
+    if head then
+      sec = nil
+      if head == "Mousewheel modifiers" then cur = out.wheel
+      elseif head:match("^Mouse: ") then cur = {}; out.mouse[unhtml_text(head:sub(8))] = cur
+      else cur = nil end
+    elseif h3 then cur, sec = nil, (h3 == "Main" and "Main") or (h3:lower() == "midi editor" and "MIDI editor") or false
+    elseif a and a ~= "" and not a:find("<B>", 1, true) then
+      if cur then cur[mods_flag(a)] = unhtml_text(b)
+      elseif sec then out.keys[#out.keys + 1] = { (a:gsub("%s*%(.-%)%s*$", "")), unhtml_text(b), sec } end
+    end
+  end
+  return out
+end
+function M.shortcut_page_path() -- where REAPER writes it: the temp folder
+  for _, d in ipairs({ os.getenv("TEMP"), os.getenv("TMP"), os.getenv("TMPDIR"), "/tmp" }) do
+    local p = d and (d:gsub("[/\\]+$", "") .. "/ReaperKeyboardShortcuts.html")
+    if p and reaper.file_exists(p) then return p end
+  end
+end
+function M.mouse_catalog(styles, page, now) -- (pure but now(ctx, flag) -> REAPER's value, "" when it's the default) -> rows, by context then modifiers
+  local rows, by = {}, {}
+  local order = {}
+  for i, c in ipairs(M.MOUSE_CONTEXTS) do order[c[1]] = i end
+  local function add(ctx, flag, name, value, source)
+    local id = ctx .. " " .. flag
+    local r = by[id]
+    if not r then r = { ctx = ctx, ctxname = M.CTX_NAME[ctx] or ctx, flag = flag, name = name, value = value, sources = {} }; by[id] = r; rows[#rows + 1] = r end
+    for _, s in ipairs(r.sources) do if s == source then return end end
+    r.sources[#r.sources + 1] = source
+  end
+  for _, c in ipairs(M.MOUSE_CONTEXTS) do
+    for flag, name in pairs((page and page.mouse or {})[c[2]] or {}) do
+      local v = now and now(c[1], flag) or ""
+      add(c[1], flag, name, (v ~= "" and v ~= "0") and v or "-1", "REAPER (as set now)")
+    end
+  end
+  for _, st in ipairs(styles) do
+    if not st.preset then
+      for _, f in ipairs(st.feel or {}) do
+        local ctx = f[1] == "mouse" and M.for_os(f[2])
+        if ctx then add(ctx, f[3], tostring(f[#f]), f[4], st.name) end
+      end
+    end
+  end
+  table.sort(rows, function(a, b)
+    local oa, ob = order[a.ctx] or 999, order[b.ctx] or 999
+    if oa ~= ob then return oa < ob end
+    return a.flag < b.flag
+  end)
   return rows
 end
 local action_list_cache

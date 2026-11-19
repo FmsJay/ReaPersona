@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.31.0
+- **A mouse and trackpad editor.** Mouse & trackpad now has *Your persona's mouse and trackpad*: load any persona's mouse, then see its mouse wheel, trackpad swipe and drags and clicks by REAPER's own names (Media item left drag + Alt...), leave any out, change what one does (another behaviour known for that spot, REAPER's default, or any action), undo a change, or remove one you added. *Add your own*: a wheel or trackpad binding with any modifiers and action, or a drag or click on any of REAPER's 88 mouse contexts.
+- **Every mouse action.** Everything the mouse does in REAPER now, its defaults included, and every persona's mouse, grouped by where you click or drag (items, tracks and mixer, MIDI editor, envelopes, ruler and markers, razor edits, arrange view, lanes), each to add to your persona. REAPER lists them with Help > Mouse modifier keys and action shortcuts: *Read REAPER's list* has it write the list (it opens in your browser too) and ReaPersona reads it.
+- **REAPER's own keys in Every shortcut**, its defaults included, from the same list (*Read REAPER's keys*).
+- What a spot's lines can be changed to comes from what REAPER and the personas have set there: REAPER doesn't list every behaviour it has for a spot anywhere a script can read.
+
 ## 5.30.0
 - **A shortcut editor.** Shortcuts now has *Your persona's shortcuts*: load any persona's keys, then leave any out, change any (press the new keys; *Undo* puts it back), or remove keys you added, with a warning when two actions share a key. *Add a shortcut for any action* searches all of REAPER's actions, scripts and custom actions (over 10,000) and takes the keys you press.
 - **Every shortcut, the most used first.** Every persona's keys and your own keymap's (what you, a script or an extension set, Main and the MIDI editor), sorted by how many personas use the action, filtered by text, type (REAPER action, script, custom action, SWS / extension), where it comes from and section. *Add* puts any of them in your persona.

@@ -988,6 +988,61 @@ do
   assert(seen_mine, "your keymap's keys are in it")
   assert(core.action_kind(40001) == "REAPER action" and core.action_kind("_RS1234") == "Script" and core.action_kind("_" .. string.rep("a", 32)) == "Custom action" and core.action_kind("_SWS_ABOUT") == "SWS / extension")
 end
+-- 25. Mouse and trackpad (5.31): REAPER's own page read (contexts, wheel, every key with defaults), the mouse catalog, a mouse line changed
+-- or added, a wheel binding added.
+do
+  local page = table.concat({
+    '<TR><TD COLSPAN=2><FONT SIZE=4><B>Mousewheel modifiers</B></FONT></TD></TR>',
+    '<TR><TD>Default action</TD><TD>View: Scroll vertically </TD></TR>',
+    '<TR><TD>Ctrl</TD><TD>View: Zoom vertically </TD></TR>',
+    '<TR><TD COLSPAN=2><FONT SIZE=4><B>Mouse: Media item left drag</B></FONT></TD></TR>',
+    '<TR><TD>Default action</TD><TD>Move item ignoring time selection</TD></TR>',
+    '<TR><TD>Shift+Ctrl</TD><TD>Copy item ignoring snap</TD></TR>',
+    '<TR><TD><BR></TD></TR>',
+    '<TR><TD COLSPAN=2><h3>Section: Main</h3></TD></TR>',
+    '<TR><TD><B>Key</B></TD><TD><B>Action</B></TD></TR>',
+    '<TR><TD>Ctrl+F4</TD><TD>Close current project tab</TD></TR>',
+    '<TR><TD>Ctrl+Shift+H (GLOBAL + text fields)</TD><TD>Helgobox/General: Toggle app focus</TD></TR>',
+    '<TR><TD COLSPAN=2><h3>Section: Media Explorer</h3></TD></TR>',
+    '<TR><TD>Space</TD><TD>Preview: Play</TD></TR>' }, "\n")
+  local d = core.parse_shortcut_page(page)
+  assert(d.wheel[0] == "View: Scroll vertically" and d.wheel[2] == "View: Zoom vertically", "the wheel, by modifiers")
+  assert(d.mouse["Media item left drag"][0] == "Move item ignoring time selection" and d.mouse["Media item left drag"][3] == "Copy item ignoring snap", "Shift+Ctrl is 3")
+  assert(#d.keys == 2 and d.keys[1][1] == "Ctrl+F4" and d.keys[2][1] == "Ctrl+Shift+H" and d.keys[1][3] == "Main", "Main's keys, a note after the key dropped, other sections not")
+  assert(core.CTX_NAME.MM_CTX_ITEM == "Media item left drag" and core.CTX_NAME.MM_CTX_ITEMLOWER == "Media item bottom half left drag" and #core.MOUSE_CONTEXTS == 88)
+  assert(core.mouse_mods(0) == "" and core.mouse_mods(5) == "Shift+Alt" and core.mouse_mods(15) == "Shift+Ctrl+Alt+Win")
+  local rows = core.mouse_catalog(core.styles, d, function(ctx, flag) return (ctx == "MM_CTX_ITEM" and flag == 3) and "8 m" or "" end)
+  local item0, item3, persona = nil, nil, false
+  for _, r in ipairs(rows) do
+    if r.ctx == "MM_CTX_ITEM" and r.flag == 0 then item0 = r end
+    if r.ctx == "MM_CTX_ITEM" and r.flag == 3 then item3 = r end
+    for _, s in ipairs(r.sources) do if s == "Pro Tools" then persona = true end end
+  end
+  assert(item0.value == "-1" and item3.value == "8 m" and persona, "REAPER's default is -1, a value set is REAPER's id, the personas' are in")
+  -- a persona's mouse: a line changed, a line added (over one it had), a wheel binding added
+  local b = core.new_block("mouse", "pro_tools")
+  local first = core.build_preview({ b })[1]
+  local line
+  for _, e in ipairs(first) do if e.entry and e.entry[1] == "mouse" then line = e; break end end
+  assert(line, "Pro Tools has mouse lines")
+  b.mset = { [line.slot] = "4 m" }
+  b.mextra = { { "mouse", "MM_CTX_TRACK", 6, "2 m", "Ctrl+Alt+drag a track" }, { "mouse", line.entry[2], line.entry[3], "7 m", "over it" } }
+  b.extra = { { "Ctrl+Alt+Shift+Mousewheel", 990, "Zoom" }, { "Ctrl+Z", 40029, "not a wheel" } }
+  local lines = core.build_preview({ b })[1]
+  local changed, added, over, wheel, notwheel = nil, nil, nil, nil, false
+  for _, e in ipairs(lines) do
+    if e.slot == line.slot then over = e end
+    if e.entry and e.entry[2] == "MM_CTX_TRACK" and e.entry[3] == 6 then added = e end
+    if e.key == "Ctrl+Alt+Shift+Mousewheel" then wheel = e end
+    if e.key == "Ctrl+Z" then notwheel = true end
+  end
+  assert(over and over.entry[4] == "7 m" and over.extra == 2, "an added line on a context and modifiers it had: the added one, once " .. tostring(over and over.entry[4]) .. " " .. tostring(over and over.extra) .. " " .. line.slot .. " " .. tostring(over and over.slot))
+  assert(added and added.entry[4] == "2 m", "a line added")
+  assert(wheel and wheel.entry[2] == 990 and not notwheel, "a wheel binding added; only wheel keys on the mouse")
+  b.mextra = nil
+  for _, e in ipairs(core.build_preview({ b })[1]) do if e.slot == line.slot then changed = e end end
+  assert(changed and changed.entry[4] == "4 m" and changed.changed, "a line changed")
+end
 assert(tmp:match("^tests/_tmp%-%d+%-%d+$")) -- (the whole test folder goes: setup files, sync files, copies of files that didn't parse)
 os.execute(win and ('rmdir /s /q "' .. tmp:gsub("/", "\\") .. '"') or ("rm -rf '" .. tmp .. "'"))
 print("ok")
